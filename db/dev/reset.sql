@@ -1,0 +1,2 @@
+-- The scaffold has no product tables yet.
+-- Add DROP TABLE statements here as migrations are introduced.

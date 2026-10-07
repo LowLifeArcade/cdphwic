@@ -1,0 +1,44 @@
+{
+    "$schema": "node_modules/wrangler/config-schema.json",
+    "name": "cdphwic",
+    "main": "./.output/server/index.mjs",
+    "compatibility_date": "2026-10-07",
+    "assets": {
+        "binding": "ASSETS",
+        "directory": "./.output/public/"
+    },
+    "workers_dev": true,
+    "preview_urls": true,
+    "observability": {
+        "enabled": true
+    },
+    "compatibility_flags": [
+        "nodejs_compat"
+    ],
+    "vars": {
+        "ENV": "prod"
+    },
+    "d1_databases": [
+        {
+            "binding": "CDPHWIC",
+            "database_name": "cdphwic-db",
+            "database_id": "00000000-0000-0000-0000-000000000000",
+            "migrations_dir": "db/migrations"
+        }
+    ],
+    "env": {
+        "dev": {
+            "vars": {
+                "ENV": "dev"
+            },
+            "d1_databases": [
+                {
+                    "binding": "CDPHWIC",
+                    "database_name": "cdphwic-db-dev",
+                    "database_id": "00000000-0000-0000-0000-000000000000",
+                    "migrations_dir": "db/migrations"
+                }
+            ]
+        }
+    }
+}

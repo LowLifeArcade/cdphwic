@@ -1,0 +1,48 @@
+{
+    "name": "cdphwic",
+    "type": "module",
+    "private": true,
+    "scripts": {
+        "build": "nuxt build",
+        "dev": "NODE_OPTIONS=--no-deprecation CLOUDFLARE_ENV=dev nuxt dev",
+        "generate": "nuxt generate",
+        "test": "vitest run",
+        "preview": "npm run build && wrangler dev --config wrangler.jsonc --env dev",
+        "postinstall": "nuxt prepare",
+        "deploy": "npm test && npm run build && wrangler deploy --config wrangler.jsonc --env=\"\"",
+        "cf-typegen": "wrangler types",
+        "db:create": "wrangler d1 create cdphwic-db",
+        "db:list": "wrangler d1 list",
+        "db:info": "wrangler d1 info cdphwic-db",
+        "db:info:dev": "wrangler d1 info cdphwic-db-dev",
+        "db:migration": "wrangler d1 migrations create CDPHWIC",
+        "db:migrate:local": "wrangler d1 migrations apply CDPHWIC --local",
+        "db:migrate:local:dev": "wrangler d1 migrations apply CDPHWIC --local --env dev",
+        "db:migrate:remote": "wrangler d1 migrations apply CDPHWIC --remote",
+        "db:migrate:remote:dev": "wrangler d1 migrations apply CDPHWIC --remote --env dev",
+        "db:migrate:status": "wrangler d1 migrations list cdphwic-db",
+        "db:query:local": "wrangler d1 execute cdphwic-db --local --command",
+        "db:query:remote": "wrangler d1 execute cdphwic-db --remote --command",
+        "db:file:local": "wrangler d1 execute cdphwic-db --local --file",
+        "db:file:remote": "wrangler d1 execute cdphwic-db --remote --file",
+        "db:reset:local": "wrangler d1 execute CDPHWIC --local --file=./db/dev/reset.sql",
+        "db:seed": "wrangler d1 execute CDPHWIC --local --file=./db/dev/seed.sql",
+        "db:fresh": "npm run db:reset:local && npm run db:migrate:local && npm run db:seed",
+        "db:shell": "sqlite3 .wrangler/state/v3/d1/miniflare-D1DatabaseObject/*.sqlite",
+        "db:types": "wrangler types"
+    },
+    "dependencies": {
+        "nuxt": "^4.3.1",
+        "vue": "^3.5.30",
+        "vue-router": "^4.6.4"
+    },
+    "devDependencies": {
+        "@cloudflare/vitest-pool-workers": "^0.16.19",
+        "@cloudflare/workers-types": "^5.20261007.1",
+        "@types/node": "^25.4.0",
+        "nitro-cloudflare-dev": "^0.2.2",
+        "nitropack": "^2.13.1",
+        "vitest": "^4.1.9",
+        "wrangler": "^4.72.0"
+    }
+}

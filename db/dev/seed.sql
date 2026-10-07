@@ -1,0 +1,2 @@
+-- The scaffold has no product data yet.
+-- Add deterministic local seed statements here as migrations are introduced.
