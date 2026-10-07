@@ -3,7 +3,7 @@
 ## Goal
 
 Create a clean Nuxt 4 application scaffold for CDPHWIC that follows the
-structure and operational conventions of `/Users/Sonny/apps/stepthrough`,
+structure and operational conventions of `/Users/<user>/apps/stepthrough`,
 with Cloudflare Workers/Nitro and D1 ready for application development.
 
 ## Scope

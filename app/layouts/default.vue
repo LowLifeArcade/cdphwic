@@ -32,7 +32,7 @@ const demoUser = computed<SessionUser>(() => {
     <div class="app-shell">
         <AppSidebar :user="demoUser" />
         <div class="app-main">
-            <AppTopbar />
+            <AppTopbar :user="demoUser" />
             <main class="page-content"><slot /></main>
         </div>
     </div>

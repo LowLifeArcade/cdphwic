@@ -1,9 +1,12 @@
 <script setup lang="ts">
 const route = useRoute();
+const identity = useState<'admin' | 'agency' | 'internal'>('demo-identity', () => 'admin');
 const scope = computed(() => (route.query.scope === 'mine' ? 'mine' : 'all'));
 const agencyId = ref('');
 const repId = ref('');
+const { data: agencyData } = await useFetch('/api/agencies');
 const { data, refresh } = await useFetch('/api/requests', {
+    headers: computed(() => ({ 'x-demo-user': identity.value })),
     query: computed(() => ({
         scope: scope.value,
         agencyId: agencyId.value || undefined,
@@ -11,7 +14,20 @@ const { data, refresh } = await useFetch('/api/requests', {
     })),
 });
 const requests = computed(() => data.value?.requests ?? []);
-watch([agencyId, repId], () => refresh());
+const currentUser = computed(() => data.value?.user);
+const availableAgencies = computed(() => {
+    const all = agencyData.value?.agencies ?? [];
+    if (currentUser.value?.role === 'admin') return all;
+    if (currentUser.value?.memberType === 'agency' && currentUser.value.agencyId)
+        return all.filter((agency) => agency.id === currentUser.value?.agencyId);
+    return all.filter((agency) => currentUser.value?.handledAgencyIds?.includes(agency.id));
+});
+const availableReps = computed(() => {
+    const members = agencyData.value?.members ?? [];
+    const agencyIds = agencyId.value ? [Number(agencyId.value)] : availableAgencies.value.map((agency) => agency.id);
+    return members.filter((member) => agencyIds.includes(member.agencyId));
+});
+watch([agencyId, repId, identity], () => refresh());
 </script>
 
 <template>
@@ -42,17 +58,25 @@ watch([agencyId, repId], () => refresh());
             class="filter-select"
         >
             <option value="">All local agencies</option>
-            <option value="10">Mendocino County</option>
-            <option value="11">Lake County</option>
-            <option value="12">Sonoma County</option></select
+            <option
+                v-for="agency in availableAgencies"
+                :key="agency.id"
+                :value="String(agency.id)"
+            >
+                {{ agency.name }}
+            </option></select
         ><select
             v-model="repId"
             class="filter-select"
         >
             <option value="">All reps</option>
-            <option value="100">Maria Lopez</option>
-            <option value="101">David Chen</option>
-            <option value="102">Alicia Rivera</option></select
+            <option
+                v-for="member in availableReps"
+                :key="member.id"
+                :value="String(member.id)"
+            >
+                {{ member.name }}
+            </option></select
         ><span class="muted-copy">{{ requests.length }} requests</span>
     </div>
     <RequestList :requests="requests" />

@@ -76,14 +76,14 @@ be added only when a product requirement needs them.
 
 The home page is sign-in only. People without an account can use `Request an
 invitation` to submit an access request. Admins review those requests under
-`Signup Requests` or generate invitations under `Invitations`. Invitation URLs
+`Signup Requests`, where admins can review requests or send direct invitations. Invitation URLs
 are intentionally not linked from the public app: they first show an email
 verification step, then reveal the role-specific signup form after the code is
 verified. Local development returns the verification code and invitation URL
 in the response/UI as a delivery stub; production should replace this with a
 real email adapter before deployment.
 
-Seeded sign-in emails are `sonny@cdphwic.org`, `maria@mendocino.example`, and
+Seeded sign-in emails are `frank@cdphwic.org`, `maria@mendocino.example`, and
 `james@cdphwic.org`. The development password check accepts any non-empty
 password.
 
@@ -91,7 +91,7 @@ The current dashboard uses a local demo session so the role and navigation
 flows can be explored before production authentication is connected. Use the
 `View as` selector in the top bar to switch between:
 
-- Admin: all agencies, reports, McKesson Log, and invitations.
+- Admin: all agencies, reports, product/accounting fields, and signup requests.
 - Agency member: all requests for the agency plus rep-specific My Requests.
 - FPU analyst: all agencies with filters plus handled-agency/rep My Requests.
 

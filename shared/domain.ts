@@ -7,6 +7,8 @@ export interface SessionUser {
     id: number;
     name: string;
     email?: string;
+    phone?: string;
+    additionalInfo?: string;
     role: UserRole;
     memberType: MemberType;
     agencyId?: number;
@@ -75,6 +77,10 @@ export interface ProductRecord {
     form: string;
     category: 'standard' | 'exempt' | 'nutritional';
     unitsPerCase: number;
+    bottlesPerCase: number;
+    unitPrice?: number;
+    supplierReference?: string;
+    genericFields?: Record<string, string>;
 }
 
 export interface ParticipantRecord {

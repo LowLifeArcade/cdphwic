@@ -1,5 +1,5 @@
 INSERT OR IGNORE INTO users (id, email, name, role, member_type) VALUES
-    (1, 'sonny@cdphwic.org', 'Sonny Brown', 'admin', 'internal'),
+    (1, 'frank@cdphwic.org', 'Frank Browne', 'admin', 'internal'),
     (2, 'maria@mendocino.example', 'Maria Lopez', 'member', 'agency'),
     (3, 'james@cdphwic.org', 'James Kim', 'member', 'internal');
 

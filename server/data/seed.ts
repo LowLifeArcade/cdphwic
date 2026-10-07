@@ -11,8 +11,8 @@ import type {
 export const SEED_USERS: SessionUser[] = [
     {
         id: 1,
-        name: 'Sonny Brown',
-        email: 'sonny@cdphwic.org',
+        name: 'Frank Browne',
+        email: 'frank@cdphwic.org',
         role: 'admin',
         memberType: 'internal',
         internalMemberId: 200,
@@ -79,10 +79,46 @@ export const SEED_INTERNAL_MEMBERS: InternalMemberRecord[] = [
 ];
 
 export const SEED_PRODUCTS: ProductRecord[] = [
-    { id: 301, name: 'Nutramigen', form: 'Powder', category: 'nutritional', unitsPerCase: 6 },
-    { id: 302, name: 'EleCare', form: 'Powder', category: 'exempt', unitsPerCase: 6 },
-    { id: 303, name: 'Enfamil Infant', form: 'Powder', category: 'standard', unitsPerCase: 12 },
-    { id: 304, name: 'Neocate Splash', form: 'Ready-to-feed', category: 'nutritional', unitsPerCase: 24 },
+    {
+        id: 301,
+        name: 'Nutramigen',
+        form: 'Powder',
+        category: 'nutritional',
+        unitsPerCase: 6,
+        bottlesPerCase: 6,
+        unitPrice: 42.5,
+        supplierReference: 'MCX-NUT-301',
+    },
+    {
+        id: 302,
+        name: 'EleCare',
+        form: 'Powder',
+        category: 'exempt',
+        unitsPerCase: 6,
+        bottlesPerCase: 6,
+        unitPrice: 48,
+        supplierReference: 'MCX-ELE-302',
+    },
+    {
+        id: 303,
+        name: 'Enfamil Infant',
+        form: 'Powder',
+        category: 'standard',
+        unitsPerCase: 12,
+        bottlesPerCase: 12,
+        unitPrice: 31.25,
+        supplierReference: 'MCX-ENF-303',
+    },
+    {
+        id: 304,
+        name: 'Neocate Splash',
+        form: 'Ready-to-feed',
+        category: 'nutritional',
+        unitsPerCase: 24,
+        bottlesPerCase: 24,
+        unitPrice: 55,
+        supplierReference: 'MCX-NEO-304',
+    },
 ];
 
 export const SEED_PARTICIPANTS: ParticipantRecord[] = [

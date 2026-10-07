@@ -36,6 +36,7 @@ function toggleMobileNav() {
                 <span>View as</span>
                 <select
                     :value="identity"
+                    aria-label="View as"
                     @change="switchIdentity(($event.target as HTMLSelectElement).value as DemoIdentity)"
                 >
                     <option value="admin">Admin</option>
@@ -47,7 +48,7 @@ function toggleMobileNav() {
                 class="icon-button"
                 aria-label="Notifications"
             >
-                ♢
+                ⍾
             </button>
             <NuxtLink
                 class="button button-primary"

@@ -24,9 +24,7 @@ export function getNavigationItems(user: SessionUser): NavigationItem[] {
     if (user.role === 'admin') {
         items.push(
             { label: 'Signup Requests', to: '/signup-requests', icon: '✉' },
-            { label: 'Invitations', to: '/invitations', icon: '↗' },
             { label: 'Reports', to: '/reports', icon: '⌁' },
-            { label: 'McKesson Log', to: '/mckesson-log', icon: '▥' },
         );
     }
 

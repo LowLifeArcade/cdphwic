@@ -19,7 +19,7 @@ describe('dashboard navigation visibility', () => {
             ...(item.children?.map((child) => child.label) ?? []),
         ]);
         expect(labels).toContain('Reports');
-        expect(labels).toContain('McKesson Log');
+        expect(labels).not.toContain('McKesson Log');
     });
 
     it('keeps admin-only links out of member navigation', () => {

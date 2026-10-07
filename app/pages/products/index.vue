@@ -30,6 +30,16 @@ const { data } = await useFetch('/api/products');
                 <div>
                     <span>Units / case</span><strong>{{ product.unitsPerCase }}</strong>
                 </div>
+                <div>
+                    <span>Bottles / case</span><strong>{{ product.bottlesPerCase }}</strong>
+                </div>
+                <div>
+                    <span>Unit price</span
+                    ><strong>{{ product.unitPrice ? `$${product.unitPrice.toFixed(2)}` : 'Not set' }}</strong>
+                </div>
+                <div>
+                    <span>Supplier reference</span><strong>{{ product.supplierReference || 'Not set' }}</strong>
+                </div>
             </div>
         </article>
     </div>
