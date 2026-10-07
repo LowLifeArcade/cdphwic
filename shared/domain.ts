@@ -2,6 +2,8 @@ export type UserRole = 'admin' | 'member';
 export type MemberType = 'internal' | 'agency';
 export type RequestStatus = 'pending' | 'in_progress' | 'approved' | 'denied';
 export type RequestScope = 'all' | 'mine';
+export type ProductCoverage = 'wic' | 'medical';
+export type ProductForm = 'powder' | 'concentrate' | 'ready-to-feed';
 
 export interface SessionUser {
     id: number;
@@ -73,11 +75,20 @@ export interface InternalMemberRecord {
 
 export interface ProductRecord {
     id: number;
+    productId: string;
+    productCode: string;
     name: string;
-    form: string;
+    form: ProductForm;
     category: 'standard' | 'exempt' | 'nutritional';
     unitsPerCase: number;
-    bottlesPerCase: number;
+    coverage: ProductCoverage[];
+    poPrice?: number;
+    casesApproved?: number;
+    casesUsed?: number;
+    casesRemaining?: number;
+    dollarsApproved?: number;
+    dollarsUsed?: number;
+    dollarsRemaining?: number;
     unitPrice?: number;
     supplierReference?: string;
     genericFields?: Record<string, string>;

@@ -1,2 +1,3 @@
-import { SEED_PRODUCTS } from '../../data/seed';
-export default defineEventHandler(() => ({ products: SEED_PRODUCTS }));
+import { listProducts } from '../../utils/productStore';
+
+export default defineEventHandler(() => ({ products: listProducts() }));
