@@ -20,9 +20,12 @@ with seeded data while keeping business rules easy to extend.
 The first slice includes:
 
 - Nova-inspired dark dashboard shell with responsive left navigation and top bar.
-- Login and signup pages with a minimal local auth stub.
-- Admin and regular roles, plus internal/agency member type.
-- Admin invitation stubs for agency members and internal FPU members.
+- Sign-in landing page with email/password authentication stub.
+- Token-gated signup flow reachable only through an admin-issued invitation link.
+- Access request form for people who do not yet have an invitation.
+- Admin and member roles, plus internal/agency member type.
+- Admin invitation workflow for agency reps and internal FPU staff.
+- Admin signup-request queue with approve/deny actions.
 - Agency/staff assignment model used to filter the default request view.
 - Requests, products, participants, agencies, summary, reports, and McKesson Log sections.
 - Request list rows with status, submission date, decision date, ETA, agency, and participant.
@@ -32,10 +35,63 @@ The first slice includes:
 - API route stubs for creating and retrieving requests.
 - D1 migrations for the initial relational model.
 
-The first slice does not implement production OAuth, password recovery, email
-delivery, AI prescription validation, real file storage, accounting workflows,
-or final business-rule enforcement. Those features receive stable extension
-points and placeholder UI states.
+The first slice does not implement production password hashing/session storage,
+password recovery, real email delivery, OAuth/social login, 2FA/passkeys, AI
+prescription validation, real file storage, accounting workflows, or final
+business-rule enforcement. Those features receive stable extension points and
+placeholder UI states.
+
+## Closed B2B access flow
+
+The home route `/` is the sign-in page. There is no public signup link in the
+main navigation and no discoverable signup page. Signup is reachable only at a
+tokenized route such as `/signup/<token>` after an admin creates an invitation.
+
+People without an invitation may use a `Request access` link on the sign-in
+page. The access request form collects:
+
+- Name
+- Email
+- Local agency name, or staff ID when requesting internal staff access
+- A note explaining why access is needed
+
+Access requests are visible to all admins in an admin-only `Signup Requests`
+navigation section. An admin can approve or deny each request. Approval creates
+an invitation token tied to the submitted email and sends or displays the
+invitation link through the current development delivery stub. Denial records
+the decision and prevents signup from that request.
+
+Invitation links are unique, email-specific, single-use, and expirable. The
+signup route validates the token before rendering the verification step and
+rejects missing, expired, used, or email-mismatched tokens.
+
+The first page opened by an invitation is an email verification page, not the
+signup form. It shows a masked version of the invited email and asks the user
+to request a one-time verification code. The code is sent to the invited email
+address, expires quickly, is single-use, and has bounded attempts. Only after
+the code is verified does the app create a short-lived signup session and show
+the role-specific signup form. Sharing the invitation link alone is therefore
+not sufficient to complete signup.
+
+For local development, the email delivery adapter is a stub that exposes the
+code in the server response/logs. Production replaces that adapter with real
+email delivery without changing the token or verification contracts.
+
+### Invitation signup branches
+
+Agency representative invitations reference an existing Local Agency created
+by an admin. The signup form shows the agency name, county, and shipping
+address prefilled. The representative can edit those agency fields and their
+own name, email, and phone, but cannot change the agency identity, create a
+new agency, or attach themselves to another agency.
+
+Staff invitations show name, email, phone, and handled Local Agencies. Staff
+can select existing agencies or add a new agency during signup. Admins and
+staff can also add agencies from their dashboard; agency representatives cannot.
+
+The signin form accepts email and password only. Social login is intentionally
+excluded. Future 2FA and passkey support should attach to the same session
+boundary rather than change the invitation model.
 
 ## Roles and visibility
 
@@ -81,6 +137,7 @@ The app shell contains:
 - Requests with a nested “My Requests” item and role-aware filtering.
 - Products, Participants, Summary, and Agencies.
 - Admin-only Reports and McKesson Log items.
+- Admin-only Signup Requests and Invitations items.
 - Global search field in the top bar.
 - New Request action in the top bar.
 
@@ -156,10 +213,16 @@ The initial D1 migration creates these tables with explicit IDs and timestamps:
 
 ```text
 users
-  id, email, name, role, member_type, password_hash_stub, created_at
+  id, email, name, role, member_type, password_hash_stub, phone, staff_id, created_at
 
 signup_tokens
-  id, token, email, role, member_type, agency_id, expires_at, used_at
+  id, token, email, invitation_type, role, member_type, agency_id, access_request_id,
+  expires_at, used_at, verification_code_hash, verification_expires_at,
+  verification_attempts, verified_at, created_at
+
+access_requests
+  id, name, email, local_agency_name, staff_id, note, requested_member_type,
+  status, reviewed_by, reviewed_at, denial_reason, created_at
 
 agencies
   id, name, shipping_address, city, state, postal_code, active, created_at
@@ -209,8 +272,16 @@ Initial server routes:
 
 ```text
 POST /api/auth/login
-POST /api/auth/signup
+POST /api/access-requests
+GET  /api/signup-tokens/:token
+POST /api/signup-tokens/:token/verify/start
+POST /api/signup-tokens/:token/verify/complete
+POST /api/signup-tokens/:token/complete
 POST /api/invitations
+GET  /api/access-requests
+POST /api/access-requests/:id/approve
+POST /api/access-requests/:id/deny
+POST /api/agencies
 GET  /api/profile
 PUT  /api/profile
 GET  /api/requests
@@ -226,7 +297,11 @@ GET  /api/agencies
 
 The auth routes use a local session stub and clearly marked development
 behavior. Authorization helpers should centralize role/scope checks so future
-real auth can replace the session source without rewriting every route.
+real auth can replace the session source without rewriting every route. The
+token validation route must not return signup form data for an invalid token.
+Verification responses must not reveal the full invited email or whether an
+arbitrary email address belongs to an invitation. Signup completion requires a
+verified signup session, not only the invitation token.
 
 The first API implementation may return seeded records and perform basic
 validation. It must keep request filtering parameters explicit, including
@@ -245,17 +320,23 @@ Unauthorized admin-only access returns 403. Missing records return 404.
 
 The first slice is accepted when:
 
-1. Login/signup pages render and expose the local role/member-type flow.
-2. Admin navigation includes reports, invitations, and McKesson Log while regular navigation does not.
-3. Agency members see all agency requests, while `My Requests` limits to the logged-in rep.
-4. FPU members see all agencies with agency/rep filters, while `My Requests` limits to handled agencies and explicitly related reps.
-5. Agency members can update their preferred analyst and FPU members can update handled agencies/reps.
-6. A request can be created through the form with known fields and generic fields.
-7. A request row expands to show participant, agency, product, status, dates, ETA, comments, and attachment placeholders.
-8. Summary filters update the displayed seeded metrics.
-9. Admin can trigger an XLSX request-log download stub.
-10. D1 migrations apply locally and API route tests cover request creation and list retrieval.
-11. Existing Nuxt build and Wrangler dry-run verification continue to pass.
+1. `/` renders only the sign-in form with a `Request access` link.
+2. `/signup/<token>` opens only the email verification page and rejects missing, expired, used, and mismatched tokens.
+3. A valid verification code is required before the role-specific signup form is shown.
+4. Verification codes expire, are single-use, and enforce bounded attempts without exposing the invited email.
+5. Admin navigation includes Signup Requests, Invitations, Reports, and McKesson Log while members do not see them.
+6. Access requests collect name, email, agency/staff identifier, member type, and reason note.
+7. Admin approval creates an email-specific invitation link; denial records a reason and prevents signup.
+8. Agency rep signup edits only the invited Local Agency entity and attached rep profile.
+9. Staff signup can select existing agencies or create a new Local Agency.
+10. Agency members see all agency requests, while `My Requests` limits to the logged-in rep.
+11. FPU members see all agencies with agency/rep filters, while `My Requests` limits to handled agencies and explicitly related reps.
+12. A request can be created through the form with known fields and generic fields.
+13. A request row expands to show participant, agency, product, status, dates, ETA, comments, and attachment placeholders.
+14. Summary filters update the displayed seeded metrics.
+15. Admin can trigger an XLSX request-log download stub.
+16. D1 migrations apply locally and API tests cover access requests, token validation, verification, approval/denial, request creation, and list retrieval.
+17. Existing Nuxt build and Wrangler dry-run verification continue to pass.
 
 ## Future extension points
 

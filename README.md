@@ -11,7 +11,8 @@ npm run dev
 ```
 
 The local development environment uses the `dev` Cloudflare environment and
-the `CDPHWIC` D1 binding. The scaffold currently has no product tables.
+the `CDPHWIC` D1 binding. The app includes seeded products, agencies, requests,
+and the closed B2B access-flow schema.
 
 ## Project structure
 
@@ -72,6 +73,19 @@ migrations. Authentication, R2, queues, and other Cloudflare resources should
 be added only when a product requirement needs them.
 
 ## Dashboard demo
+
+The home page is sign-in only. People without an account can use `Request an
+invitation` to submit an access request. Admins review those requests under
+`Signup Requests` or generate invitations under `Invitations`. Invitation URLs
+are intentionally not linked from the public app: they first show an email
+verification step, then reveal the role-specific signup form after the code is
+verified. Local development returns the verification code and invitation URL
+in the response/UI as a delivery stub; production should replace this with a
+real email adapter before deployment.
+
+Seeded sign-in emails are `sonny@cdphwic.org`, `maria@mendocino.example`, and
+`james@cdphwic.org`. The development password check accepts any non-empty
+password.
 
 The current dashboard uses a local demo session so the role and navigation
 flows can be explored before production authentication is connected. Use the

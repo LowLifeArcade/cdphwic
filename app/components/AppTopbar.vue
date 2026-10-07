@@ -2,15 +2,27 @@
 import type { DemoIdentity } from '~/../shared/demoIdentity';
 
 const identity = useState<DemoIdentity>('demo-identity', () => 'admin');
+const mobileOpen = useState('mobile-nav-open', () => false);
 const search = ref('');
 
 function switchIdentity(value: DemoIdentity) {
     identity.value = value;
 }
+
+function toggleMobileNav() {
+    mobileOpen.value = !mobileOpen.value;
+}
 </script>
 
 <template>
     <header class="topbar">
+        <button
+            class="mobile-menu-button icon-button"
+            aria-label="Open navigation"
+            @click="toggleMobileNav"
+        >
+            ☰
+        </button>
         <div class="search-box">
             <span>⌕</span>
             <input

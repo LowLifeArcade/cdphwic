@@ -4,6 +4,7 @@ DROP TABLE IF EXISTS requests;
 DROP TABLE IF EXISTS products;
 DROP TABLE IF EXISTS participants;
 DROP TABLE IF EXISTS signup_tokens;
+DROP TABLE IF EXISTS access_requests;
 DROP TABLE IF EXISTS staff_rep_assignments;
 DROP TABLE IF EXISTS staff_agency_assignments;
 DROP TABLE IF EXISTS internal_members;

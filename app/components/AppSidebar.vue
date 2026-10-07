@@ -4,10 +4,31 @@ import { getNavigationItems } from '~/../shared/navigation';
 
 const props = defineProps<{ user: SessionUser }>();
 const navigation = computed(() => getNavigationItems(props.user));
+const mobileOpen = useState('mobile-nav-open', () => false);
+
+function closeMobileNav() {
+    mobileOpen.value = false;
+}
 </script>
 
 <template>
-    <aside class="sidebar">
+    <button
+        v-if="mobileOpen"
+        class="mobile-nav-overlay"
+        aria-label="Close navigation"
+        @click="closeMobileNav"
+    />
+    <aside
+        class="sidebar"
+        :class="{ 'is-open': mobileOpen }"
+    >
+        <button
+            class="mobile-close"
+            aria-label="Close navigation"
+            @click="closeMobileNav"
+        >
+            ×
+        </button>
         <NuxtLink
             class="brand"
             to="/summary"
@@ -28,6 +49,7 @@ const navigation = computed(() => getNavigationItems(props.user));
                 <NuxtLink
                     class="nav-item"
                     :to="item.to"
+                    @click="closeMobileNav"
                 >
                     <span class="nav-icon">{{ item.icon }}</span>
                     <span>{{ item.label }}</span>
@@ -37,6 +59,7 @@ const navigation = computed(() => getNavigationItems(props.user));
                     :key="child.label"
                     class="nav-child"
                     :to="child.to"
+                    @click="closeMobileNav"
                 >
                     <span>{{ child.icon }}</span>
                     <span>{{ child.label }}</span>

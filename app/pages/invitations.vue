@@ -2,7 +2,14 @@
 const form = reactive({ email: '', memberType: 'agency', agencyId: '10' });
 const sent = ref(false);
 async function invite() {
-    await $fetch('/api/invitations', { method: 'POST', body: { ...form, agencyId: Number(form.agencyId) } });
+    await $fetch('/api/invitations', {
+        method: 'POST',
+        body: {
+            email: form.email,
+            memberType: form.memberType,
+            ...(form.memberType === 'agency' ? { agencyId: Number(form.agencyId) } : {}),
+        },
+    });
     sent.value = true;
     form.email = '';
 }
@@ -41,7 +48,10 @@ async function invite() {
                     <option value="internal">Internal FPU staff</option>
                 </select>
             </div>
-            <div class="form-field">
+            <div
+                v-if="form.memberType === 'agency'"
+                class="form-field"
+            >
                 <label>Agency</label
                 ><select
                     v-model="form.agencyId"
