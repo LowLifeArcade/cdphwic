@@ -64,14 +64,20 @@ async function loadProfile() {
         agencyForm.state = profileResult.agency.state;
         agencyForm.postalCode = profileResult.agency.postalCode;
     }
-    if (profileResult.rep) Object.assign(repForm, profileResult.rep);
+    if (profileResult.rep) {
+        Object.assign(repForm, profileResult.rep);
+    }
+
     repForm.preferredInternalMemberId = profileResult.agency?.preferredInternalMemberId;
     selectedAgencyIds.value = profileResult.handledAgencyIds ?? [];
 }
 
 function addAgency(agency?: AgencyOption) {
     const next = agency ?? agencySuggestions.value[highlightedAgencyIndex.value];
-    if (!next || selectedAgencyIds.value.includes(next.id)) return;
+    if (!next || selectedAgencyIds.value.includes(next.id)) {
+        return;
+    }
+
     selectedAgencyIds.value.push(next.id);
     agencySearch.value = '';
     highlightedAgencyIndex.value = 0;

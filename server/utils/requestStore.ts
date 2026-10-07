@@ -25,7 +25,9 @@ export function createRequestRecord(input: Omit<RequestRecord, 'id'>): RequestRe
 
 export function updateRequestRecord(id: number, updates: Partial<RequestRecord>): RequestRecord | undefined {
     const index = requestStore.findIndex((request) => request.id === id);
-    if (index < 0) return undefined;
+    if (index < 0) {
+        return undefined;
+    }
     requestStore[index] = { ...requestStore[index], ...updates, id };
     return requestStore[index];
 }

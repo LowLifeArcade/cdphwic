@@ -11,8 +11,10 @@ export default defineEventHandler(async (event) => {
         state?: string;
         postalCode?: string;
     }>(event);
-    if (!body?.name || !body.shippingAddress || !body.city || !body.state || !body.postalCode)
+    if (!body?.name || !body.shippingAddress || !body.city || !body.state || !body.postalCode) {
         throw createError({ statusCode: 400, statusMessage: 'Agency name and shipping address are required.' });
+    }
+
     return {
         agency: createAgency({
             name: body.name,

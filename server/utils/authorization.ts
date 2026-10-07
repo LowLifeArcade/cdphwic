@@ -5,5 +5,6 @@ export function requireAdmin(user: SessionUser): SessionUser {
     if (!canAccessAdminFeatures(user)) {
         throw new Error('Admin access required');
     }
+
     return user;
 }

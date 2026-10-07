@@ -29,41 +29,67 @@ function userFor(identity: DemoIdentity) {
 
 export function getProfileAssignments(identity: DemoIdentity) {
     const user = userFor(identity);
-    if (!user || user.role === 'admin')
+    if (!user || user.role === 'admin') {
         return { identity, user, agencies: SEED_AGENCIES, handledAgencyIds: [] as number[] };
+    }
+
     if (identity === 'agency') {
         const agency = SEED_AGENCIES.find((item) => item.id === user.agencyId);
         const rep = SEED_MEMBERS.find((item) => item.id === user.agencyMemberId);
         return { identity, user, agency, rep, analysts: SEED_INTERNAL_MEMBERS };
     }
+
     const staff = SEED_INTERNAL_MEMBERS.find((item) => item.id === user.internalMemberId);
     return { identity, user, agencies: SEED_AGENCIES, handledAgencyIds: staff?.handledAgencyIds ?? [] };
 }
 
 export function updateProfileAssignments(identity: DemoIdentity, input: ProfileAssignmentInput) {
     const user = userFor(identity);
-    if (!user) return getProfileAssignments(identity);
-    if (input.user) Object.assign(user, input.user);
-    if (user.role === 'admin') return getProfileAssignments(identity);
+    if (!user) {
+        return getProfileAssignments(identity);
+    }
+
+    if (input.user) {
+        Object.assign(user, input.user);
+    }
+
+    if (user.role === 'admin') {
+        return getProfileAssignments(identity);
+    }
+
     if (identity === 'agency' && user.agencyId && user.agencyMemberId) {
         const agency = SEED_AGENCIES.find((item) => item.id === user.agencyId);
         const rep = SEED_MEMBERS.find((item) => item.id === user.agencyMemberId);
-        if (agency && input.agency) Object.assign(agency, input.agency);
-        if (agency && input.preferredInternalMemberId !== undefined)
+        if (agency && input.agency) {
+            Object.assign(agency, input.agency);
+        }
+
+        if (agency && input.preferredInternalMemberId !== undefined) {
             agency.preferredInternalMemberId = input.preferredInternalMemberId;
-        if (rep && input.rep) Object.assign(rep, input.rep);
-        if (rep && input.user)
+        }
+
+        if (rep && input.rep) {
+            Object.assign(rep, input.rep);
+        }
+
+        if (rep && input.user) {
             Object.assign(rep, { name: input.user.name, email: input.user.email, phone: input.user.phone });
+        }
+
         user.preferredInternalMemberId = input.preferredInternalMemberId;
     }
+
     if (identity === 'internal' && user.internalMemberId && input.handledAgencyIds) {
         const staff = SEED_INTERNAL_MEMBERS.find((item) => item.id === user.internalMemberId);
         if (staff) {
             staff.handledAgencyIds = [...new Set(input.handledAgencyIds)];
-            if (input.user)
+            if (input.user) {
                 Object.assign(staff, { name: input.user.name, email: input.user.email, phone: input.user.phone });
+            }
         }
+
         user.handledAgencyIds = [...new Set(input.handledAgencyIds)];
     }
+
     return getProfileAssignments(identity);
 }

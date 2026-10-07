@@ -39,15 +39,27 @@ export interface SignupCompletionInput {
 
 export function maskEmail(email: string): string {
     const [local, domain] = email.trim().toLowerCase().split('@');
-    if (!local || !domain) return 'hidden email';
+    if (!local || !domain) {
+        return 'hidden email';
+    }
+
     return `${local.slice(0, 1)}***@${domain}`;
 }
 
 export function validateAccessRequest(input: { name?: string; email?: string; note?: string }) {
     const errors: Record<string, string> = {};
-    if (!input.name?.trim()) errors.name = 'Name is required.';
-    if (!input.email?.trim() || !/^\S+@\S+\.\S+$/.test(input.email.trim())) errors.email = 'Enter a valid email.';
-    if (!input.note?.trim()) errors.note = 'A reason for access is required.';
+    if (!input.name?.trim()) {
+        errors.name = 'Name is required.';
+    }
+
+    if (!input.email?.trim() || !/^\S+@\S+\.\S+$/.test(input.email.trim())) {
+        errors.email = 'Enter a valid email.';
+    }
+
+    if (!input.note?.trim()) {
+        errors.note = 'A reason for access is required.';
+    }
+
     return errors;
 }
 

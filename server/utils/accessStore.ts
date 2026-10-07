@@ -73,7 +73,10 @@ export function createInvitation(input: {
 
 export function getTokenPreview(token: string): SignupTokenPreview | null {
     const item = tokens.get(token);
-    if (!item) return null;
+    if (!item) {
+        return null;
+    }
+
     return {
         token: item.token,
         email: item.email,
@@ -88,8 +91,10 @@ export function getTokenPreview(token: string): SignupTokenPreview | null {
 
 export function startVerification(token: string) {
     const item = tokens.get(token);
-    if (!item || item.usedAt || Date.parse(item.expiresAt) <= Date.now())
+    if (!item || item.usedAt || Date.parse(item.expiresAt) <= Date.now()) {
         throw new Error('Invitation is invalid or expired.');
+    }
+
     item.code = String(Math.floor(100000 + Math.random() * 900000));
     item.codeExpiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString();
     item.attempts = 0;
@@ -98,11 +103,19 @@ export function startVerification(token: string) {
 
 export function completeVerification(token: string, code: string) {
     const item = tokens.get(token);
-    if (!item || item.usedAt || !item.code || !item.codeExpiresAt || Date.parse(item.codeExpiresAt) <= Date.now())
+    if (!item || item.usedAt || !item.code || !item.codeExpiresAt || Date.parse(item.codeExpiresAt) <= Date.now()) {
         throw new Error('Verification code is invalid or expired.');
-    if (item.attempts >= 5) throw new Error('Too many verification attempts.');
+    }
+
+    if (item.attempts >= 5) {
+        throw new Error('Too many verification attempts.');
+    }
+
     item.attempts += 1;
-    if (item.code !== code) throw new Error('Verification code is invalid or expired.');
+    if (item.code !== code) {
+        throw new Error('Verification code is invalid or expired.');
+    }
+
     item.verifiedAt = new Date().toISOString();
     item.code = undefined;
     const signupSessionToken = randomToken('signup');
@@ -112,12 +125,19 @@ export function completeVerification(token: string, code: string) {
 
 export function completeSignup(input: SignupCompletionInput) {
     const session = signupSessions.get(input.signupSessionToken);
-    if (!session || Date.parse(session.expiresAt) <= Date.now())
+    if (!session || Date.parse(session.expiresAt) <= Date.now()) {
         throw new Error('Signup session is invalid or expired.');
+    }
+
     const item = tokens.get(session.token);
-    if (!item || !item.verifiedAt || item.usedAt) throw new Error('Signup session is invalid.');
-    if (item.invitationType === 'agency_rep' && input.agencyId && input.agencyId !== item.agencyId)
+    if (!item || !item.verifiedAt || item.usedAt) {
+        throw new Error('Signup session is invalid.');
+    }
+
+    if (item.invitationType === 'agency_rep' && input.agencyId && input.agencyId !== item.agencyId) {
         throw new Error('Agency cannot be changed for this invitation.');
+    }
+
     if (item.invitationType === 'agency_rep' && item.agencyId && input.agency) {
         const agency = SEED_AGENCIES.find((record) => record.id === item.agencyId);
         if (agency) {
@@ -126,6 +146,7 @@ export function completeSignup(input: SignupCompletionInput) {
             agency.city = input.agency.county;
         }
     }
+
     item.usedAt = new Date().toISOString();
     signupSessions.delete(input.signupSessionToken);
     return {
@@ -149,7 +170,10 @@ export function createAgency(input: Pick<AgencyRecord, 'name' | 'shippingAddress
 
 export function approveAccessRequest(id: number, invitationType: InvitationType, agencyId?: number) {
     const request = accessRequests.find((item) => item.id === id);
-    if (!request || request.status !== 'pending') throw new Error('Access request is not pending.');
+    if (!request || request.status !== 'pending') {
+        throw new Error('Access request is not pending.');
+    }
+
     request.status = 'approved';
     request.reviewedAt = new Date().toISOString();
     return createInvitation({ email: request.email, invitationType, agencyId, accessRequestId: id });
@@ -157,7 +181,10 @@ export function approveAccessRequest(id: number, invitationType: InvitationType,
 
 export function denyAccessRequest(id: number, denialReason: string) {
     const request = accessRequests.find((item) => item.id === id);
-    if (!request || request.status !== 'pending') throw new Error('Access request is not pending.');
+    if (!request || request.status !== 'pending') {
+        throw new Error('Access request is not pending.');
+    }
+
     request.status = 'denied';
     request.denialReason = denialReason;
     request.reviewedAt = new Date().toISOString();

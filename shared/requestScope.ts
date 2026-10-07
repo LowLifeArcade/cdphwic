@@ -16,12 +16,15 @@ export function filterRequestsByScope(
         if (user.memberType === 'agency' && user.agencyId) {
             scoped = scoped.filter((request) => request.agencyId === user.agencyId);
         }
+
         if (user.memberType === 'internal' && user.handledAgencyIds) {
             scoped = scoped.filter((request) => user.handledAgencyIds?.includes(request.agencyId));
         }
+
         if (scope === 'mine' && user.memberType === 'agency' && user.agencyMemberId) {
             scoped = scoped.filter((request) => request.agencyMemberId === user.agencyMemberId);
         }
+
         if (scope === 'mine' && user.memberType === 'internal') {
             scoped = scoped.filter((request) => user.handledRepIds?.includes(request.agencyMemberId));
         }
@@ -32,6 +35,7 @@ export function filterRequestsByScope(
     if (filters.agencyId) {
         scoped = scoped.filter((request) => request.agencyId === filters.agencyId);
     }
+
     if (filters.repId) {
         scoped = scoped.filter((request) => request.agencyMemberId === filters.repId);
     }

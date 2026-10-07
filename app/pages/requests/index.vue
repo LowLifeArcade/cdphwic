@@ -17,9 +17,14 @@ const requests = computed(() => data.value?.requests ?? []);
 const currentUser = computed(() => data.value?.user);
 const availableAgencies = computed(() => {
     const all = agencyData.value?.agencies ?? [];
-    if (currentUser.value?.role === 'admin') return all;
-    if (currentUser.value?.memberType === 'agency' && currentUser.value.agencyId)
+    if (currentUser.value?.role === 'admin') {
+        return all;
+    }
+
+    if (currentUser.value?.memberType === 'agency' && currentUser.value.agencyId) {
         return all.filter((agency) => agency.id === currentUser.value?.agencyId);
+    }
+
     return all.filter((agency) => currentUser.value?.handledAgencyIds?.includes(agency.id));
 });
 const availableReps = computed(() => {

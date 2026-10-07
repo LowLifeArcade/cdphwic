@@ -8,6 +8,7 @@ export default defineEventHandler(async (event) => {
     if (!body?.email) {
         throw createError({ statusCode: 400, statusMessage: 'Email is required.' });
     }
+
     const invitation = createInvitation({
         email: body.email,
         invitationType: body.memberType === 'internal' ? 'staff' : 'agency_rep',

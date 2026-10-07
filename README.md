@@ -72,6 +72,50 @@ Product features should keep client code in `app/`, server-only code in
 migrations. Authentication, R2, queues, and other Cloudflare resources should
 be added only when a product requirement needs them.
 
+## Style guide
+
+Use braces for every control-flow statement, even when its body contains only
+one line. Put a blank line after a completed control-flow block when another
+statement follows it; do not add one when the block is the last thing in the
+function. Keep continuation clauses such as `else`, `catch`, and `finally`
+on the next line without an intervening blank line.
+
+```ts
+if (ready) {
+    start();
+} else {
+    wait();
+}
+
+continueWork();
+
+try {
+    save();
+} catch (error) {
+    report(error);
+}
+```
+
+Put each attribute on its own line when an element has multiple attributes,
+and put each field of a multiline object on its own line. Use a dangling comma
+in multiline objects and other multiline comma-separated lists.
+
+```vue
+<img
+    src="/logo.svg"
+    alt="CDPHWIC"
+    width="32"
+    height="32"
+/>
+```
+
+```ts
+return {
+    foo: 'bar',
+    baz: 'buz',
+};
+```
+
 ## Dashboard demo
 
 The home page is sign-in only. People without an account can use `Request an

@@ -5,6 +5,7 @@ export default defineEventHandler(async (event) => {
     if (!body?.name || !body.email) {
         throw createError({ statusCode: 400, statusMessage: 'Name and email are required.' });
     }
+
     return {
         message: 'Signup recorded in development mode.',
         user: {

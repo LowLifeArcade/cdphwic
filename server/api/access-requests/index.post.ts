@@ -11,10 +11,14 @@ export default defineEventHandler(async (event) => {
         requestedMemberType?: 'agency' | 'internal';
     }>(event);
     const fieldErrors = validateAccessRequest(body ?? {});
-    if (!body?.localAgencyName?.trim() && !body?.staffId?.trim())
+    if (!body?.localAgencyName?.trim() && !body?.staffId?.trim()) {
         fieldErrors.identifier = 'Enter a local agency name or staff ID.';
-    if (Object.keys(fieldErrors).length)
+    }
+
+    if (Object.keys(fieldErrors).length) {
         throw createError({ statusCode: 400, statusMessage: JSON.stringify(fieldErrors) });
+    }
+
     return {
         request: createAccessRequest({
             name: body.name!.trim(),
