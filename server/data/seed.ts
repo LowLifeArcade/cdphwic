@@ -1,0 +1,177 @@
+import type {
+    AgencyMemberRecord,
+    AgencyRecord,
+    InternalMemberRecord,
+    ParticipantRecord,
+    ProductRecord,
+    RequestRecord,
+    SessionUser,
+} from '../../shared/domain';
+
+export const SEED_USERS: SessionUser[] = [
+    {
+        id: 1,
+        name: 'Sonny Brown',
+        email: 'sonny@cdphwic.org',
+        role: 'admin',
+        memberType: 'internal',
+        internalMemberId: 200,
+    },
+    {
+        id: 2,
+        name: 'Maria Lopez',
+        email: 'maria@mendocino.example',
+        role: 'member',
+        memberType: 'agency',
+        agencyId: 10,
+        agencyMemberId: 100,
+        preferredInternalMemberId: 200,
+    },
+    {
+        id: 3,
+        name: 'James Kim',
+        email: 'james@cdphwic.org',
+        role: 'member',
+        memberType: 'internal',
+        internalMemberId: 200,
+        handledAgencyIds: [10, 11],
+        handledRepIds: [100, 101],
+    },
+];
+
+export const SEED_AGENCIES: AgencyRecord[] = [
+    {
+        id: 10,
+        name: 'Mendocino County',
+        shippingAddress: '123 Main Street',
+        city: 'Ukiah',
+        state: 'CA',
+        postalCode: '95482',
+        preferredInternalMemberId: 200,
+    },
+    {
+        id: 11,
+        name: 'Lake County',
+        shippingAddress: '45 Lakeview Drive',
+        city: 'Lakeport',
+        state: 'CA',
+        postalCode: '95453',
+        preferredInternalMemberId: 200,
+    },
+    {
+        id: 12,
+        name: 'Sonoma County',
+        shippingAddress: '88 County Center',
+        city: 'Santa Rosa',
+        state: 'CA',
+        postalCode: '95403',
+    },
+];
+
+export const SEED_MEMBERS: AgencyMemberRecord[] = [
+    { id: 100, agencyId: 10, name: 'Maria Lopez', email: 'maria@mendocino.example', preferredInternalMemberId: 200 },
+    { id: 101, agencyId: 10, name: 'David Chen', email: 'david@mendocino.example', preferredInternalMemberId: 200 },
+    { id: 102, agencyId: 11, name: 'Alicia Rivera', email: 'alicia@lake.example' },
+];
+
+export const SEED_INTERNAL_MEMBERS: InternalMemberRecord[] = [
+    { id: 200, name: 'James Kim', email: 'james@cdphwic.org', handledAgencyIds: [10, 11], handledRepIds: [100, 101] },
+];
+
+export const SEED_PRODUCTS: ProductRecord[] = [
+    { id: 301, name: 'Nutramigen', form: 'Powder', category: 'nutritional', unitsPerCase: 6 },
+    { id: 302, name: 'EleCare', form: 'Powder', category: 'exempt', unitsPerCase: 6 },
+    { id: 303, name: 'Enfamil Infant', form: 'Powder', category: 'standard', unitsPerCase: 12 },
+    { id: 304, name: 'Neocate Splash', form: 'Ready-to-feed', category: 'nutritional', unitsPerCase: 24 },
+];
+
+export const SEED_PARTICIPANTS: ParticipantRecord[] = [
+    { familyId: 41001, name: 'Ana Garcia', dob: '2024-02-14', benefitsCycleDate: '2026-10-01', medicalStatus: 'yes' },
+    {
+        familyId: 41002,
+        name: 'Ben Thomas',
+        dob: '2023-09-09',
+        benefitsCycleDate: '2026-10-01',
+        medicalStatus: 'pending',
+    },
+    {
+        familyId: 41003,
+        name: 'Cara Williams',
+        dob: '2024-04-25',
+        benefitsCycleDate: '2026-10-15',
+        medicalStatus: 'yes',
+    },
+];
+
+export const SEED_REQUESTS: RequestRecord[] = [
+    {
+        id: 5001,
+        agencyId: 10,
+        agencyMemberId: 100,
+        assignedInternalMemberId: 200,
+        participantFamilyId: 41001,
+        participantName: 'Ana Garcia',
+        productId: 301,
+        productName: 'Nutramigen',
+        category: 'nutritional',
+        status: 'pending',
+        submissionDate: '2026-10-03',
+        eta: '2026-10-14',
+        unitsRequested: 12,
+        medicalStatus: 'yes',
+        diagnosis: 'Cow milk protein allergy',
+        comments: 'Prescription attached for review.',
+    },
+    {
+        id: 5002,
+        agencyId: 10,
+        agencyMemberId: 101,
+        assignedInternalMemberId: 200,
+        participantFamilyId: 41002,
+        participantName: 'Ben Thomas',
+        productId: 302,
+        productName: 'EleCare',
+        category: 'exempt',
+        status: 'approved',
+        submissionDate: '2026-09-22',
+        approvalDate: '2026-09-26',
+        eta: '2026-10-05',
+        unitsRequested: 6,
+        medicalStatus: 'pending',
+        trackingNumber: 'MCX-48291',
+        deliveryStatus: 'Delivered',
+    },
+    {
+        id: 5003,
+        agencyId: 11,
+        agencyMemberId: 102,
+        assignedInternalMemberId: 200,
+        participantFamilyId: 41003,
+        participantName: 'Cara Williams',
+        productId: 304,
+        productName: 'Neocate Splash',
+        category: 'nutritional',
+        status: 'in_progress',
+        submissionDate: '2026-10-05',
+        eta: '2026-10-16',
+        unitsRequested: 24,
+        medicalStatus: 'yes',
+        diagnosis: 'GI disorder',
+    },
+    {
+        id: 5004,
+        agencyId: 12,
+        agencyMemberId: 102,
+        participantName: 'Diego Morris',
+        productId: 303,
+        productName: 'Enfamil Infant',
+        category: 'standard',
+        status: 'denied',
+        submissionDate: '2026-09-11',
+        denialDate: '2026-09-14',
+        unitsRequested: 12,
+        medicalStatus: 'no',
+        diagnosis: 'Constipation',
+        comments: 'Needs qualifying diagnosis.',
+    },
+];

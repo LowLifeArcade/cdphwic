@@ -5,18 +5,16 @@
     "compatibility_date": "2026-10-07",
     "assets": {
         "binding": "ASSETS",
-        "directory": "./.output/public/"
+        "directory": "./.output/public/",
     },
     "workers_dev": true,
     "preview_urls": true,
     "observability": {
-        "enabled": true
+        "enabled": true,
     },
-    "compatibility_flags": [
-        "nodejs_compat"
-    ],
+    "compatibility_flags": ["nodejs_compat"],
     "vars": {
-        "ENV": "prod"
+        "ENV": "prod",
     },
     "d1_databases": [
         {
@@ -24,22 +22,22 @@
             "database_name": "cdphwic",
             "database_id": "ec695ffd-80be-493b-8853-cabe4d5425d0",
             "migrations_dir": "db/migrations",
-            "remote": true
-        }
+            "remote": true,
+        },
     ],
     "env": {
         "dev": {
             "vars": {
-                "ENV": "dev"
+                "ENV": "dev",
             },
             "d1_databases": [
                 {
                     "binding": "CDPHWIC",
                     "database_name": "cdphwic-dev",
                     "database_id": "4432fd65-8ef3-4f9c-a904-2fe593d923ef",
-                    "migrations_dir": "db/migrations"
-                }
-            ]
-        }
-    }
+                    "migrations_dir": "db/migrations",
+                },
+            ],
+        },
+    },
 }

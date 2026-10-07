@@ -1,2 +1,12 @@
--- The scaffold has no product tables yet.
--- Add DROP TABLE statements here as migrations are introduced.
+DROP TABLE IF EXISTS mckesson_logs;
+DROP TABLE IF EXISTS request_attachments;
+DROP TABLE IF EXISTS requests;
+DROP TABLE IF EXISTS products;
+DROP TABLE IF EXISTS participants;
+DROP TABLE IF EXISTS signup_tokens;
+DROP TABLE IF EXISTS staff_rep_assignments;
+DROP TABLE IF EXISTS staff_agency_assignments;
+DROP TABLE IF EXISTS internal_members;
+DROP TABLE IF EXISTS agency_members;
+DROP TABLE IF EXISTS agencies;
+DROP TABLE IF EXISTS users;

@@ -70,3 +70,18 @@ Product features should keep client code in `app/`, server-only code in
 `server/`, shared contracts in `shared/`, and database changes in numbered D1
 migrations. Authentication, R2, queues, and other Cloudflare resources should
 be added only when a product requirement needs them.
+
+## Dashboard demo
+
+The current dashboard uses a local demo session so the role and navigation
+flows can be explored before production authentication is connected. Use the
+`View as` selector in the top bar to switch between:
+
+- Admin: all agencies, reports, McKesson Log, and invitations.
+- Agency member: all requests for the agency plus rep-specific My Requests.
+- FPU analyst: all agencies with filters plus handled-agency/rep My Requests.
+
+The role is `admin` or `member`; member type is `agency` or `internal`. Agency
+members can set a preferred FPU analyst, and internal staff can set the agencies
+and reps they handle from Profile & assignments. These are development stubs
+backed by typed seed data and can be replaced with real sessions and D1 queries.

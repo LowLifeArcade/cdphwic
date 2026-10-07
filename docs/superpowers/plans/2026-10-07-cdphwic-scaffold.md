@@ -34,6 +34,7 @@
 ### Task 1: Create the Nuxt application foundation
 
 **Files:**
+
 - Create: `package.json`
 - Create: `nuxt.config.ts`
 - Create: `tsconfig.json`
@@ -43,6 +44,7 @@
 - Create: `public/robots.txt`
 
 **Interfaces:**
+
 - Produces a Nuxt 4 application with a minimal index page, default layout, global stylesheet, and Cloudflare Nitro configuration.
 
 - [ ] **Step 1: Add the package manifest and scripts**
@@ -75,6 +77,7 @@ git commit -m "chore: scaffold Nuxt application"
 ### Task 2: Add Cloudflare and D1 configuration
 
 **Files:**
+
 - Create: `wrangler.jsonc`
 - Create: `.env.example`
 - Create: `db/migrations/.gitkeep`
@@ -82,6 +85,7 @@ git commit -m "chore: scaffold Nuxt application"
 - Create: `db/dev/seed.sql`
 
 **Interfaces:**
+
 - Produces Wrangler configuration with production and `dev` environments, both exposing `CDPHWIC`; produces stable local D1 fixture paths used by package scripts.
 
 - [ ] **Step 1: Write the Wrangler configuration**
@@ -106,6 +110,7 @@ git commit -m "chore: configure Cloudflare Worker and D1"
 ### Task 3: Add tests and project documentation
 
 **Files:**
+
 - Create: `vitest.config.ts`
 - Create: `test/smoke.test.ts`
 - Create: `README.md`
@@ -113,6 +118,7 @@ git commit -m "chore: configure Cloudflare Worker and D1"
 - Create: `env.d.ts`
 
 **Interfaces:**
+
 - Produces a Vitest command that passes for the initial project and documentation covering local development, D1 setup, preview, and deployment.
 
 - [ ] **Step 1: Write the failing smoke test**
@@ -149,9 +155,11 @@ git commit -m "docs: add scaffold validation and setup guide"
 ### Task 4: Run full verification
 
 **Files:**
+
 - Modify: any scaffold files required by verification output
 
 **Interfaces:**
+
 - Produces a locally installable, tested, and Cloudflare-buildable project.
 
 - [ ] **Step 1: Run the full test suite**
