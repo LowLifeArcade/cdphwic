@@ -35,8 +35,8 @@
             "d1_databases": [
                 {
                     "binding": "CDPHWIC",
-                    "database_name": "cdphwic-db-dev",
-                    "database_id": "00000000-0000-0000-0000-000000000000",
+                    "database_name": "cdphwic-dev",
+                    "database_id": "4432fd65-8ef3-4f9c-a904-2fe593d923ef",
                     "migrations_dir": "db/migrations"
                 }
             ]
