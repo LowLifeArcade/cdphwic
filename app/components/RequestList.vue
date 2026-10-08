@@ -1,7 +1,19 @@
 <script setup lang="ts">
 import type { RequestRecord } from '~/../shared/domain';
 defineProps<{ requests: RequestRecord[] }>();
+const identity = useState<'admin' | 'agency' | 'internal'>('demo-identity', () => 'admin');
 const selected = ref<RequestRecord | null>(null);
+
+async function openRequest(request: RequestRecord) {
+    selected.value = request;
+    if ((identity.value === 'admin' || identity.value === 'internal') && request.status === 'unopened') {
+        const result = await $fetch<{ request: RequestRecord }>(`/api/requests/${request.id}`, {
+            method: 'PUT',
+            body: { status: 'opened' },
+        });
+        Object.assign(request, result.request);
+    }
+}
 </script>
 
 <template>
@@ -13,7 +25,7 @@ const selected = ref<RequestRecord | null>(null);
             v-for="request in requests"
             :key="request.id"
             class="request-row"
-            @click="selected = request"
+            @click="openRequest(request)"
         >
             <span
                 ><strong>#{{ request.id }}</strong
@@ -31,6 +43,10 @@ const selected = ref<RequestRecord | null>(null);
             >
             <span
                 ><strong>{{ request.productName }}</strong
+                ><small
+                    v-if="request.specialOrder"
+                    class="request-tag"
+                    >Special order</small
                 ><small>{{ request.unitsRequested ?? '—' }} units</small></span
             >
             <span
@@ -38,7 +54,11 @@ const selected = ref<RequestRecord | null>(null);
             >
             <span
                 ><strong>{{ request.eta ?? '—' }}</strong
-                ><small>{{ request.trackingNumber ?? 'No tracking' }}</small></span
+                ><small>{{
+                    request.trackingNumbers?.length
+                        ? request.trackingNumbers.map((item) => item.number).join(', ')
+                        : 'N/A'
+                }}</small></span
             >
             <span class="row-arrow">›</span>
         </button>
@@ -49,8 +69,16 @@ const selected = ref<RequestRecord | null>(null);
             No requests match this view.
         </div>
         <RequestDetailDrawer
+            v-if="selected"
             :request="selected"
             @close="selected = null"
+        />
+        <button
+            v-if="selected"
+            class="request-drawer-backdrop"
+            type="button"
+            aria-label="Close request details"
+            @click="selected = null"
         />
     </div>
 </template>

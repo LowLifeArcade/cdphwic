@@ -1,6 +1,15 @@
 export type UserRole = 'admin' | 'member';
 export type MemberType = 'internal' | 'agency';
-export type RequestStatus = 'pending' | 'in_progress' | 'approved' | 'denied';
+export type RequestStatus =
+    | 'unopened'
+    | 'opened'
+    | 'pending'
+    | 'in_progress'
+    | 'needs_info'
+    | 'approved'
+    | 'shipped'
+    | 'complete'
+    | 'denied';
 export type RequestScope = 'all' | 'mine';
 export type ProductCoverage = 'wic' | 'medical';
 export type ProductForm = 'powder' | 'concentrate' | 'ready-to-feed';
@@ -28,8 +37,12 @@ export interface RequestRecord {
     assignedInternalMemberId?: number;
     participantFamilyId?: number;
     participantName: string;
+    participantFirstName?: string;
+    participantLastName?: string;
+    participantDob?: string;
     productId?: number;
     productName: string;
+    productForm?: ProductForm;
     category?: 'standard' | 'exempt' | 'nutritional';
     status: RequestStatus;
     submissionDate?: string;
@@ -37,12 +50,31 @@ export interface RequestRecord {
     denialDate?: string;
     eta?: string;
     unitsRequested?: number;
+    ouncesPrescribed?: number;
+    durationMonths?: number;
+    wicIndividualId?: string;
+    benefitsStartDate?: string;
+    doctorPrintedName?: string;
+    doctorSignature?: string;
+    doctorOfficeName?: string;
+    doctorOfficeAddress?: string;
+    doctorOfficePhone?: string;
+    prescriptionSignedDate?: string;
     medicalStatus?: 'yes' | 'no' | 'pending';
     diagnosis?: string;
     comments?: string;
     internalComments?: string;
     trackingNumber?: string;
+    trackingNumbers?: Array<{ number: string; carrier: 'fedex' | 'dhl' | 'ups' }>;
     deliveryStatus?: string;
+    specialOrder?: boolean;
+    unitsIssued?: number;
+    benefitIssuanceStartMonth?: string;
+    benefitIssuanceEndMonth?: string;
+    staffNotes?: string;
+    repNotes?: string;
+    receivedStatus?: 'shipped' | 'received' | 'damaged' | 'missing';
+    receivedPhotos?: string[];
     replacementRequested?: boolean;
     requestKind?: 'new' | 'extension';
     dateGivenToReview?: string;

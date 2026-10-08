@@ -102,29 +102,17 @@ onBeforeUnmount(() => document.removeEventListener('click', closeProductMenu));
             <option value="wic">WIC</option>
             <option value="medical">Medical</option>
         </select>
-        <div
-            class="view-toggle"
-            aria-label="Product view"
-        >
-            <button
-                class="icon-button"
-                :class="{ active: viewMode === 'grid' }"
-                type="button"
-                aria-label="Grid view"
-                @click="viewMode = 'grid'"
+        <label class="view-select">
+            <span>View as</span>
+            <select
+                v-model="viewMode"
+                class="filter-select"
+                aria-label="View as"
             >
-                ▦
-            </button>
-            <button
-                class="icon-button"
-                :class="{ active: viewMode === 'list' }"
-                type="button"
-                aria-label="List view"
-                @click="viewMode = 'list'"
-            >
-                ☷
-            </button>
-        </div>
+                <option value="grid">Grid</option>
+                <option value="list">List</option>
+            </select>
+        </label>
     </div>
     <div
         v-if="viewMode === 'grid'"
