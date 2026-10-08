@@ -401,6 +401,7 @@ a {
     border: 1px solid #2b3a54;
     border-radius: 8px;
     outline: 0;
+    margin-bottom: 14px;
 }
 select.filter-select,
 select.form-input {
