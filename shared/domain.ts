@@ -55,6 +55,7 @@ export interface RequestRecord {
     wicIndividualId?: string;
     benefitsStartDate?: string;
     doctorPrintedName?: string;
+    doctorHasSignedOff?: boolean;
     doctorSignature?: string;
     doctorOfficeName?: string;
     doctorOfficeAddress?: string;

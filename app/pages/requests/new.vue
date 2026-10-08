@@ -27,6 +27,7 @@ const form = reactive({
     ouncesPrescribed: '',
     durationMonths: '1',
     doctorPrintedName: '',
+    doctorHasSignedOff: false,
     doctorOfficeName: '',
     doctorOfficeAddress: '',
     doctorOfficePhone: '',
@@ -104,6 +105,7 @@ async function submitRequest() {
             ouncesPrescribed: Number(form.ouncesPrescribed),
             durationMonths: Number(form.durationMonths),
             doctorPrintedName: form.doctorPrintedName,
+            doctorHasSignedOff: form.doctorHasSignedOff,
             doctorOfficeName: form.doctorOfficeName,
             doctorOfficeAddress: form.doctorOfficeAddress,
             doctorOfficePhone: form.doctorOfficePhone,
@@ -140,7 +142,17 @@ async function submitRequest() {
             <div class="panel-heading">
                 <div>
                     <h2>Prescription</h2>
-                    <span>Upload a PDF or image for required-field review.</span>
+                    <span
+                        >Upload a PDF or image for required-field review.
+                        <a
+                            href="https://www.cdph.ca.gov/CDPH%20Document%20Library/ControlledForms/cdph247.pdf"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            class="highlight"
+                        >
+                            Download the CDPH prescription form here.
+                        </a></span
+                    >
                 </div>
                 <span class="status-badge status-needs_info">AI review</span>
             </div>
@@ -231,6 +243,19 @@ async function submitRequest() {
                         class="form-input"
                         type="tel"
                     />
+                </div>
+                <div class="form-field full checkbox-confirmation">
+                    <label
+                        class="checkbox-control"
+                        for="doctor-signed-off"
+                    >
+                        <input
+                            id="doctor-signed-off"
+                            v-model="form.doctorHasSignedOff"
+                            type="checkbox"
+                        />
+                        <span>Doctor has signed off</span>
+                    </label>
                 </div>
             </div>
         </section>

@@ -48,6 +48,10 @@ a {
 a {
     color: inherit;
     text-decoration: none;
+
+    &.highlight {
+        color: var(--purple-light);
+    }
 }
 .app-shell {
     display: flex;
@@ -761,6 +765,7 @@ select.form-input {
 }
 .drawer-header h2 {
     margin: 0;
+    margin-bottom: 4px;
     font-size: 1.35rem;
 }
 .drawer-status {
@@ -910,6 +915,28 @@ select.form-input {
     color: #b4bfd2;
     font-size: 0.72rem;
     font-weight: 700;
+}
+.checkbox-confirmation {
+    margin-top: 2px;
+    padding: 12px 14px;
+    background: rgb(16 26 44 / 58%);
+    border: 1px solid #2b3a54;
+    border-radius: 8px;
+}
+.checkbox-control {
+    display: inline-flex;
+    align-items: center;
+    gap: 9px;
+    min-height: 42px;
+    color: var(--text) !important;
+    font-size: 0.82rem !important;
+    cursor: pointer;
+}
+.checkbox-control input[type='checkbox'] {
+    width: 17px;
+    height: 17px;
+    margin: 0;
+    accent-color: var(--purple);
 }
 .form-textarea {
     min-height: 100px;

@@ -4,6 +4,13 @@ import { describe, expect, it } from 'vitest';
 const requestForm = readFileSync(new URL('../app/pages/requests/new.vue', import.meta.url), 'utf8');
 
 describe('new request doctor fields', () => {
+    it('links to the required CDPH prescription document near the required-fields note', () => {
+        expect(requestForm).toContain('https://www.cdph.ca.gov/CDPH%20Document%20Library/ControlledForms/cdph247.pdf');
+        expect(requestForm).toContain('target="_blank"');
+        expect(requestForm).toContain('rel="noopener noreferrer"');
+        expect(requestForm.indexOf('cdph247.pdf')).toBeGreaterThan(requestForm.indexOf('Fields marked with * are required.'));
+    });
+
     it('renders and submits doctor details without a signature field', () => {
         expect(requestForm).toContain('doctorPrintedName:');
         expect(requestForm).toContain('doctorOfficeName:');
@@ -13,6 +20,13 @@ describe('new request doctor fields', () => {
         expect(requestForm).toContain('v-model="form.doctorOfficeName"');
         expect(requestForm).toContain('v-model="form.doctorOfficeAddress"');
         expect(requestForm).toContain('v-model="form.doctorOfficePhone"');
+        expect(requestForm).toContain('doctorHasSignedOff: false');
+        expect(requestForm).toContain('v-model="form.doctorHasSignedOff"');
+        expect(requestForm).toContain('doctorHasSignedOff: form.doctorHasSignedOff');
+        expect(requestForm).toContain('class="checkbox-control"');
+        expect(requestForm).toContain('id="doctor-signed-off"');
+        expect(requestForm.indexOf('id="doctor-signed-off"')).toBeGreaterThan(requestForm.indexOf('id="doctor-phone"'));
+        expect(requestForm).toContain('checkbox-confirmation');
         expect(requestForm).toContain('doctorPrintedName: form.doctorPrintedName');
         expect(requestForm).toContain('doctorOfficeName: form.doctorOfficeName');
         expect(requestForm).toContain('doctorOfficeAddress: form.doctorOfficeAddress');
