@@ -9,6 +9,7 @@ const summary = computed(
             monthlyCases: 0,
             monthlyCapacity: 100,
             averageUnitsPerMonth: 0,
+            masterLogByMonth: [],
         },
 );
 const filters = reactive({ range: 'YTD', category: 'All categories', product: 'All products' });
@@ -98,6 +99,11 @@ const capacityPercent = computed(() => Math.round((summary.value.monthlyCases / 
             title="Requests by agency"
             :items="summary.requestsByAgency"
             accent="#e6bc6b"
+        />
+        <SummaryChartCard
+            title="Master Log units by month"
+            :items="summary.masterLogByMonth ?? []"
+            accent="#5ca9d6"
         />
         <article class="panel">
             <div class="panel-heading">

@@ -69,9 +69,23 @@ export const SEED_AGENCIES: AgencyRecord[] = [
 ];
 
 export const SEED_MEMBERS: AgencyMemberRecord[] = [
-    { id: 100, agencyId: 10, name: 'Maria Lopez', email: 'maria@mendocino.example', preferredInternalMemberId: 200 },
-    { id: 101, agencyId: 10, name: 'David Chen', email: 'david@mendocino.example', preferredInternalMemberId: 200 },
-    { id: 102, agencyId: 11, name: 'Alicia Rivera', email: 'alicia@lake.example' },
+    {
+        id: 100,
+        agencyId: 10,
+        name: 'Maria Lopez',
+        email: 'maria@mendocino.example',
+        phone: '(707) 555-0100',
+        preferredInternalMemberId: 200,
+    },
+    {
+        id: 101,
+        agencyId: 10,
+        name: 'David Chen',
+        email: 'david@mendocino.example',
+        phone: '(707) 555-0101',
+        preferredInternalMemberId: 200,
+    },
+    { id: 102, agencyId: 11, name: 'Alicia Rivera', email: 'alicia@lake.example', phone: '(707) 555-0102' },
 ];
 
 export const SEED_INTERNAL_MEMBERS: InternalMemberRecord[] = [

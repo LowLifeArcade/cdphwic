@@ -44,6 +44,10 @@ export interface RequestRecord {
     trackingNumber?: string;
     deliveryStatus?: string;
     replacementRequested?: boolean;
+    requestKind?: 'new' | 'extension';
+    dateGivenToReview?: string;
+    dateOrdered?: string;
+    company?: string;
     genericFields?: Record<string, string>;
 }
 
@@ -62,6 +66,7 @@ export interface AgencyMemberRecord {
     agencyId: number;
     name: string;
     email: string;
+    phone?: string;
     preferredInternalMemberId?: number;
 }
 
@@ -109,4 +114,43 @@ export interface SummaryRecord {
     monthlyCases: number;
     monthlyCapacity: number;
     averageUnitsPerMonth: number;
+    masterLogByMonth?: Array<{ label: string; value: number }>;
+}
+
+export interface MasterLogRow {
+    dateSentToState: string;
+    processedBy: string;
+    localAgency: string;
+    contact: string;
+    phoneNumber: string;
+    requestKind: string;
+    participant: string;
+    familyId: string;
+    dob: string;
+    participantAgeOnDateSent: string;
+    formulaRequested: string;
+    diagnosis: string;
+    mediCalStatus: string;
+    company: string;
+    dateGivenToReview: string;
+    dateOrdered: string;
+    status: string;
+    monthlyUnits: Record<string, number>;
+}
+
+export interface McKessonLogRecord {
+    orderDate: string;
+    line: string;
+    formula: string;
+    poPrice: number;
+    cases: number;
+    amount: number;
+    creditNotes: string;
+    orderNumber: string;
+    invoiceDate: string;
+    invoiceNumber: string;
+    participant: string;
+    localAgency: string;
+    address: string;
+    analyst: string;
 }

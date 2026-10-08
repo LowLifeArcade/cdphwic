@@ -51,7 +51,7 @@ function toggleMobileNav() {
                 ⍾
             </button>
             <NuxtLink
-                class="button button-primary"
+                class="button button-main"
                 to="/requests/new"
                 >＋ New Request</NuxtLink
             >

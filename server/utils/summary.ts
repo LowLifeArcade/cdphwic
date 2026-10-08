@@ -1,5 +1,6 @@
 import { SEED_PRODUCTS, SEED_REQUESTS } from '../data/seed';
 import type { SummaryRecord } from '../../shared/domain';
+import { getMasterLogMonthlyTotals } from './reportStore';
 
 export function buildSummary(): SummaryRecord {
     const unitsByProduct = SEED_PRODUCTS.map((product) => ({
@@ -23,5 +24,6 @@ export function buildSummary(): SummaryRecord {
         monthlyCases: 84,
         monthlyCapacity: 100,
         averageUnitsPerMonth: 18,
+        masterLogByMonth: getMasterLogMonthlyTotals(),
     };
 }
