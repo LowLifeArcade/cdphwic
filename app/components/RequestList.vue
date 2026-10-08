@@ -3,6 +3,23 @@ import type { RequestRecord } from '~/../shared/domain';
 defineProps<{ requests: RequestRecord[] }>();
 const identity = useState<'admin' | 'agency' | 'internal'>('demo-identity', () => 'admin');
 const selected = ref<RequestRecord | null>(null);
+const { data: agencyData } = await useFetch('/api/agencies');
+const agencies = computed(() => agencyData.value?.agencies ?? []);
+const members = computed(() => agencyData.value?.members ?? []);
+
+function formatDate(value?: string) {
+    if (!value) {
+        return '—';
+    }
+    const [year, month, day] = value.split('-');
+    return year && month && day ? `${month}/${day}/${year}` : value;
+}
+
+const selectedAgency = computed(() => agencies.value.find((agency) => agency.id === selected.value?.agencyId));
+const selectedRep = computed(() => members.value.find((member) => member.id === selected.value?.agencyMemberId));
+function agencyFor(request: RequestRecord) {
+    return agencies.value.find((agency) => agency.id === request.agencyId);
+}
 
 async function openRequest(request: RequestRecord) {
     selected.value = request;
@@ -19,7 +36,7 @@ async function openRequest(request: RequestRecord) {
 <template>
     <div class="request-table-wrap">
         <div class="request-table-head">
-            <span>Request</span><span>Agency</span><span>Product</span><span>Status</span><span>ETA</span><span />
+            <span>Participant</span><span>Agency</span><span>Product</span><span>Status</span><span>ETA</span><span />
         </div>
         <button
             v-for="request in requests"
@@ -28,8 +45,11 @@ async function openRequest(request: RequestRecord) {
             @click="openRequest(request)"
         >
             <span
-                ><strong>#{{ request.id }}</strong
-                ><small>{{ request.participantName }} · family {{ request.participantFamilyId ?? '—' }}</small></span
+                ><strong>{{ request.participantName }}</strong
+                ><small
+                    >{{ request.requestKind === 'extension' ? 'Extension' : 'New' }} · family
+                    {{ request.participantFamilyId ?? '—' }}</small
+                ></span
             >
             <span
                 ><strong>{{
@@ -39,7 +59,7 @@ async function openRequest(request: RequestRecord) {
                           ? 'Lake County'
                           : 'Sonoma County'
                 }}</strong
-                ><small>Rep #{{ request.agencyMemberId }}</small></span
+                ><small>{{ agencyFor(request)?.shippingAddress ?? 'Local agency' }}</small></span
             >
             <span
                 ><strong>{{ request.productName }}</strong
@@ -50,7 +70,7 @@ async function openRequest(request: RequestRecord) {
                 ><small>{{ request.unitsRequested ?? '—' }} units</small></span
             >
             <span
-                ><StatusBadge :status="request.status" /><small>{{ request.submissionDate ?? 'No date' }}</small></span
+                ><StatusBadge :status="request.status" /><small>Submitted {{ formatDate(request.submissionDate) }}</small></span
             >
             <span
                 ><strong>{{ request.eta ?? '—' }}</strong
@@ -71,6 +91,8 @@ async function openRequest(request: RequestRecord) {
         <RequestDetailDrawer
             v-if="selected"
             :request="selected"
+            :agency="selectedAgency"
+            :rep="selectedRep"
             @close="selected = null"
         />
         <button

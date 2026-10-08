@@ -71,6 +71,7 @@ export interface RequestRecord {
     unitsIssued?: number;
     benefitIssuanceStartMonth?: string;
     benefitIssuanceEndMonth?: string;
+    benefitIssuances?: Array<{ month: string; quantity: number }>;
     staffNotes?: string;
     repNotes?: string;
     receivedStatus?: 'shipped' | 'received' | 'damaged' | 'missing';
