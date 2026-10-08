@@ -53,6 +53,11 @@ describe('CDPH prescription field parser', () => {
     it('normalizes supported date formats and leaves unknown values blank', () => {
         expect(normalizePrescriptionDate('2024-02-14')).toBe('2024-02-14');
         expect(normalizePrescriptionDate('2/14/2024')).toBe('2024-02-14');
+        expect(normalizePrescriptionDate('Aug 1st 2026')).toBe('2026-08-01');
+        expect(normalizePrescriptionDate('July 1 26')).toBe('2026-07-01');
+        expect(normalizePrescriptionDate('August 1, 2026')).toBe('2026-08-01');
+        expect(normalizePrescriptionDate('08012026')).toBe('2026-08-01');
+        expect(normalizePrescriptionDate('07-01-26')).toBe('2026-07-01');
         expect(normalizePrescriptionDate('not a date')).toBe('');
     });
 

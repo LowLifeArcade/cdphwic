@@ -11,6 +11,8 @@ describe('new request doctor fields', () => {
         expect(requestForm).toContain('Photos are accepted for reference but must be entered manually.');
         expect(requestForm).toContain('@change="handleFileSelection"');
         expect(requestForm).toContain('@drop.prevent="handleDrop"');
+        expect(requestForm).toContain('v-if="!selectedPrescription"');
+        expect(requestForm).toMatch(/class="upload-drop"[\s\S]*v-if="!selectedPrescription"/);
         expect(requestForm).toContain('Processing {{ selectedPrescription.name }}');
         expect(requestForm).toContain('class="uploaded-file"');
         expect(requestForm).toContain('Remove uploaded prescription');

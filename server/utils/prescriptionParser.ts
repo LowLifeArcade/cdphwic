@@ -12,6 +12,33 @@ export interface ParsedPrescriptionFields {
 
 type AcroFormField = { value?: string; defaultValue?: string };
 
+const MONTHS = new Map([
+    ['jan', 1],
+    ['january', 1],
+    ['feb', 2],
+    ['february', 2],
+    ['mar', 3],
+    ['march', 3],
+    ['apr', 4],
+    ['april', 4],
+    ['may', 5],
+    ['jun', 6],
+    ['june', 6],
+    ['jul', 7],
+    ['july', 7],
+    ['aug', 8],
+    ['august', 8],
+    ['sep', 9],
+    ['sept', 9],
+    ['september', 9],
+    ['oct', 10],
+    ['october', 10],
+    ['nov', 11],
+    ['november', 11],
+    ['dec', 12],
+    ['december', 12],
+]);
+
 function fieldValue(fields: Record<string, AcroFormField[]>, name: string) {
     const field = fields[name]?.find((entry) => {
         const value = typeof entry.value === 'string' ? entry.value : entry.defaultValue;
@@ -22,19 +49,53 @@ function fieldValue(fields: Record<string, AcroFormField[]>, name: string) {
 }
 
 export function normalizePrescriptionDate(value: string) {
-    const trimmed = value.trim();
-    if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
-        return trimmed;
+    const trimmed = value
+        .trim()
+        .replace(/(\d{1,2})(st|nd|rd|th)\b/gi, '$1')
+        .replace(/[.'’]/g, '')
+        .replace(/,/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+    let month: number;
+    let day: number;
+    let yearText: string;
+
+    let match = /^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(trimmed);
+    if (match) {
+        yearText = match[1];
+        month = Number(match[2]);
+        day = Number(match[3]);
+    } else {
+        match = /^(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})$/.exec(trimmed);
+        if (match) {
+            month = Number(match[1]);
+            day = Number(match[2]);
+            yearText = match[3];
+        } else {
+            match = /^(\d{1,2})(?:\s+)([a-z]+)\s+(\d{2,4})$/i.exec(trimmed)
+                ?? /^([a-z]+)\s+(\d{1,2})\s+(\d{2,4})$/i.exec(trimmed);
+            if (match) {
+                const firstIsMonth = Boolean(MONTHS.get(match[1].toLowerCase()));
+                month = firstIsMonth ? MONTHS.get(match[1].toLowerCase())! : MONTHS.get(match[2].toLowerCase())!;
+                day = Number(firstIsMonth ? match[2] : match[1]);
+                yearText = match[3];
+            } else {
+                match = /^(\d{2})(\d{2})(\d{2}|\d{4})$/.exec(trimmed);
+                if (!match) {
+                    return '';
+                }
+                month = Number(match[1]);
+                day = Number(match[2]);
+                yearText = match[3];
+            }
+        }
     }
 
-    const match = /^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$/.exec(trimmed);
-    if (!match) {
+    const numericYear = Number(yearText);
+    const year = yearText.length === 2 ? (numericYear < 30 ? 2000 + numericYear : 1900 + numericYear) : numericYear;
+    if (year < 1000 || year > 9999 || month < 1 || month > 12 || day < 1 || day > 31) {
         return '';
     }
-
-    const month = Number(match[1]);
-    const day = Number(match[2]);
-    const year = Number(match[3]);
     const date = new Date(Date.UTC(year, month - 1, day));
     if (date.getUTCFullYear() !== year || date.getUTCMonth() !== month - 1 || date.getUTCDate() !== day) {
         return '';

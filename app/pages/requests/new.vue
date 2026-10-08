@@ -239,37 +239,41 @@ async function submitRequest() {
                 @dragover.prevent
                 @drop.prevent="handleDrop"
             >
-                <strong>Drop a prescription here</strong>
-                <span>Choose a PDF or photo. PDFs populate matching form fields; photos require manual entry.</span>
-                <input
-                    ref="fileInput"
-                    type="file"
-                    accept="application/pdf,image/jpeg,image/png,image/webp"
-                    @change="handleFileSelection"
-                />
-                <div
-                    v-if="parsing && selectedPrescription"
-                    class="upload-processing"
-                >
-                    <span
-                        class="loading-spinner"
-                        aria-hidden="true"
+                <template v-if="!selectedPrescription">
+                    <strong>Drop a prescription here</strong>
+                    <span>Choose a PDF or photo. PDFs populate matching form fields; photos require manual entry.</span>
+                    <input
+                        ref="fileInput"
+                        type="file"
+                        accept="application/pdf,image/jpeg,image/png,image/webp"
+                        @change="handleFileSelection"
                     />
-                    Processing {{ selectedPrescription.name }}…
-                </div>
-                <div
-                    v-if="selectedPrescription && !parsing"
-                    class="uploaded-file"
-                >
-                    <span>{{ selectedPrescription.name }}</span>
-                    <button
-                        type="button"
-                        aria-label="Remove uploaded prescription"
-                        @click="removePrescription()"
+                </template>
+                <template v-else>
+                    <div
+                        v-if="parsing"
+                        class="upload-processing"
                     >
-                        ×
-                    </button>
-                </div>
+                        <span
+                            class="loading-spinner"
+                            aria-hidden="true"
+                        />
+                        Processing {{ selectedPrescription.name }}…
+                    </div>
+                    <div
+                        v-else
+                        class="uploaded-file"
+                    >
+                        <span>{{ selectedPrescription.name }}</span>
+                        <button
+                            type="button"
+                            aria-label="Remove uploaded prescription"
+                            @click="removePrescription()"
+                        >
+                            ×
+                        </button>
+                    </div>
+                </template>
             </div>
             <p
                 v-if="parserMessage"
