@@ -212,36 +212,40 @@ async function submitRequest() {
             </div>
             <div class="form-grid">
                 <div class="form-field">
-                    <label for="doctor-name">Doctor printed name</label>
+                    <label for="doctor-name">{{ requiredLabel('Doctor printed name') }}</label>
                     <input
                         id="doctor-name"
                         v-model="form.doctorPrintedName"
                         class="form-input"
+                        required
                     />
                 </div>
                 <div class="form-field">
-                    <label for="doctor-office">Doctor office name</label>
+                    <label for="doctor-office">{{ requiredLabel('Doctor office name') }}</label>
                     <input
                         id="doctor-office"
                         v-model="form.doctorOfficeName"
                         class="form-input"
+                        required
                     />
                 </div>
                 <div class="form-field full">
-                    <label for="doctor-address">Doctor office address</label>
+                    <label for="doctor-address">{{ requiredLabel('Doctor office address') }}</label>
                     <input
                         id="doctor-address"
                         v-model="form.doctorOfficeAddress"
                         class="form-input"
+                        required
                     />
                 </div>
                 <div class="form-field">
-                    <label for="doctor-phone">Doctor office phone</label>
+                    <label for="doctor-phone">{{ requiredLabel('Doctor office phone') }}</label>
                     <input
                         id="doctor-phone"
                         v-model="form.doctorOfficePhone"
                         class="form-input"
                         type="tel"
+                        required
                     />
                 </div>
                 <div class="form-field full checkbox-confirmation">
@@ -253,8 +257,9 @@ async function submitRequest() {
                             id="doctor-signed-off"
                             v-model="form.doctorHasSignedOff"
                             type="checkbox"
+                            required
                         />
-                        <span>Doctor has signed off</span>
+                        <span>{{ requiredLabel('Doctor has signed off') }}</span>
                     </label>
                 </div>
             </div>
