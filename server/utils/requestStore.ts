@@ -32,6 +32,16 @@ export function updateRequestRecord(id: number, updates: Partial<RequestRecord>)
     return requestStore[index];
 }
 
+export function deleteRequestRecord(id: number): boolean {
+    const index = requestStore.findIndex((request) => request.id === id);
+    if (index < 0) {
+        return false;
+    }
+
+    requestStore.splice(index, 1);
+    return true;
+}
+
 export function getAllRequests(): RequestRecord[] {
     return requestStore;
 }

@@ -8,6 +8,10 @@ const parsing = ref(false);
 const parserMessage = ref('');
 const parserError = ref('');
 const parserMissing = ref<string[]>([]);
+const selectedPrescription = ref<File | null>(null);
+const uploadedStorageKey = ref('');
+const removeConfirmationOpen = ref(false);
+let removeConfirmationResolver: ((confirmed: boolean) => void) | undefined;
 const { data: productData } = await useFetch('/api/products');
 const products = computed(() => productData.value?.products ?? []);
 const form = reactive({
@@ -43,15 +47,10 @@ function requiredLabel(label: string) {
     return `${label} *`;
 }
 
-async function parsePrescription() {
-    const file = fileInput.value?.files?.[0];
-    if (!file) {
-        parserError.value = 'Choose a prescription file first.';
-        return;
-    }
-
+async function processPrescription(file: File) {
     parserError.value = '';
     parserMessage.value = '';
+    parserMissing.value = [];
     parsing.value = true;
     const body = new FormData();
     body.append('prescription', file);
@@ -59,6 +58,7 @@ async function parsePrescription() {
         const result = await $fetch<{
             message: string;
             missing: string[];
+            storageKey: string;
             extracted: {
                 patientFirstName: string;
                 patientLastName: string;
@@ -73,20 +73,87 @@ async function parsePrescription() {
         Object.assign(form, result.extracted);
         parserMessage.value = result.message;
         parserMissing.value = result.missing;
+        uploadedStorageKey.value = result.storageKey;
     } catch (requestError) {
         parserError.value =
-            (requestError as { statusMessage?: string }).statusMessage ?? 'Prescription could not be analyzed.';
+            (requestError as { statusMessage?: string }).statusMessage ?? 'Prescription could not be read.';
     } finally {
         parsing.value = false;
     }
 }
 
+function requestRemoveConfirmation() {
+    if (!selectedPrescription.value) {
+        return Promise.resolve(true);
+    }
+
+    removeConfirmationOpen.value = true;
+    return new Promise<boolean>((resolve) => {
+        removeConfirmationResolver = resolve;
+    });
+}
+
+function resolveRemoveConfirmation(confirmed: boolean) {
+    removeConfirmationOpen.value = false;
+    const resolve = removeConfirmationResolver;
+    removeConfirmationResolver = undefined;
+    resolve?.(confirmed);
+}
+
+async function removePrescription() {
+    if (!(await requestRemoveConfirmation())) {
+        return false;
+    }
+
+    try {
+        if (uploadedStorageKey.value) {
+            await $fetch('/api/requests/prescription-upload', {
+                method: 'DELETE',
+                body: { key: uploadedStorageKey.value },
+            });
+        }
+        selectedPrescription.value = null;
+        uploadedStorageKey.value = '';
+        parserMessage.value = '';
+        parserMissing.value = [];
+        if (fileInput.value) {
+            fileInput.value.value = '';
+        }
+        return true;
+    } catch (requestError) {
+        parserError.value =
+            (requestError as { statusMessage?: string }).statusMessage ?? 'The prescription could not be removed.';
+        return false;
+    }
+}
+
+async function selectPrescription(file: File | undefined) {
+    if (!file) {
+        return;
+    }
+    if (selectedPrescription.value && !(await removePrescription())) {
+        return;
+    }
+    selectedPrescription.value = file;
+    await processPrescription(file);
+}
+
+async function handleFileSelection(event: Event) {
+    const input = event.target as HTMLInputElement;
+    await selectPrescription(input.files?.[0]);
+}
+
+async function handleDrop(event: DragEvent) {
+    await selectPrescription(event.dataTransfer?.files?.[0]);
+}
+
 async function submitRequest() {
     submitted.value = false;
     const participantName = `${form.patientFirstName} ${form.patientLastName}`.trim();
-    await $fetch('/api/requests', {
-        method: 'POST',
-        body: {
+    const body = new FormData();
+    body.append(
+        'request',
+        JSON.stringify({
             agencyId: 10,
             agencyMemberId: 100,
             participantName,
@@ -109,13 +176,15 @@ async function submitRequest() {
             doctorOfficeName: form.doctorOfficeName,
             doctorOfficeAddress: form.doctorOfficeAddress,
             doctorOfficePhone: form.doctorOfficePhone,
+            prescriptionKey: uploadedStorageKey.value || undefined,
             status: 'unopened',
             genericFields: {
                 readyToFeedJustification: form.readyToFeedJustification,
                 additionalNotes: form.additionalNotes,
             },
-        },
-    });
+        }),
+    );
+    await $fetch('/api/requests', { method: 'POST', body });
     submitted.value = true;
     await router.push('/requests');
 }
@@ -143,7 +212,7 @@ async function submitRequest() {
                 <div>
                     <h2>Prescription</h2>
                     <span
-                        >Upload a PDF or image for required-field review.
+                        >Upload a PDF or photo. Photos are accepted for reference but must be entered manually.
                         <a
                             href="https://www.cdph.ca.gov/CDPH%20Document%20Library/ControlledForms/cdph247.pdf"
                             target="_blank"
@@ -154,7 +223,6 @@ async function submitRequest() {
                         </a></span
                     >
                 </div>
-                <span class="status-badge status-needs_info">AI review</span>
             </div>
             <div class="prescription-requirements">
                 <strong>Before uploading, check that the prescription includes:</strong>
@@ -166,22 +234,42 @@ async function submitRequest() {
                     <li>Date the prescription form was signed</li>
                 </ul>
             </div>
-            <div class="upload-drop">
+            <div
+                class="upload-drop"
+                @dragover.prevent
+                @drop.prevent="handleDrop"
+            >
                 <strong>Drop a prescription here</strong>
-                <span>Required fields are checked after upload and extracted values will prepopulate the form.</span>
+                <span>Choose a PDF or photo. PDFs populate matching form fields; photos require manual entry.</span>
                 <input
                     ref="fileInput"
                     type="file"
                     accept="application/pdf,image/jpeg,image/png,image/webp"
+                    @change="handleFileSelection"
                 />
-                <button
-                    class="button button-secondary"
-                    type="button"
-                    :disabled="parsing"
-                    @click="parsePrescription"
+                <div
+                    v-if="parsing && selectedPrescription"
+                    class="upload-processing"
                 >
-                    {{ parsing ? 'Checking…' : 'Check prescription' }}
-                </button>
+                    <span
+                        class="loading-spinner"
+                        aria-hidden="true"
+                    />
+                    Processing {{ selectedPrescription.name }}…
+                </div>
+                <div
+                    v-if="selectedPrescription && !parsing"
+                    class="uploaded-file"
+                >
+                    <span>{{ selectedPrescription.name }}</span>
+                    <button
+                        type="button"
+                        aria-label="Remove uploaded prescription"
+                        @click="removePrescription()"
+                    >
+                        ×
+                    </button>
+                </div>
             </div>
             <p
                 v-if="parserMessage"
@@ -202,6 +290,42 @@ async function submitRequest() {
                 {{ parserError }}
             </p>
         </section>
+
+        <div
+            v-if="removeConfirmationOpen && selectedPrescription"
+            class="confirmation-backdrop"
+            role="presentation"
+            @click.self="resolveRemoveConfirmation(false)"
+        >
+            <section
+                class="confirmation-modal"
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="remove-prescription-title"
+            >
+                <h2 id="remove-prescription-title">Remove uploaded prescription?</h2>
+                <p>
+                    Remove <strong>{{ selectedPrescription.name }}</strong>? The temporary upload will also be removed
+                    from storage.
+                </p>
+                <div class="form-actions">
+                    <button
+                        class="button button-ghost"
+                        type="button"
+                        @click="resolveRemoveConfirmation(false)"
+                    >
+                        Keep file
+                    </button>
+                    <button
+                        class="button button-danger"
+                        type="button"
+                        @click="resolveRemoveConfirmation(true)"
+                    >
+                        Remove file
+                    </button>
+                </div>
+            </section>
+        </div>
 
         <section class="form-section">
             <div class="panel-heading">

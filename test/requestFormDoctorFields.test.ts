@@ -4,6 +4,21 @@ import { describe, expect, it } from 'vitest';
 const requestForm = readFileSync(new URL('../app/pages/requests/new.vue', import.meta.url), 'utf8');
 
 describe('new request doctor fields', () => {
+    it('does not present uploads as AI review and explains photo manual entry', () => {
+        expect(requestForm).not.toContain('AI review');
+        expect(requestForm).not.toContain('AI extraction');
+        expect(requestForm).toContain('Upload a PDF or photo.');
+        expect(requestForm).toContain('Photos are accepted for reference but must be entered manually.');
+        expect(requestForm).toContain('@change="handleFileSelection"');
+        expect(requestForm).toContain('@drop.prevent="handleDrop"');
+        expect(requestForm).toContain('Processing {{ selectedPrescription.name }}');
+        expect(requestForm).toContain('class="uploaded-file"');
+        expect(requestForm).toContain('Remove uploaded prescription');
+        expect(requestForm).toContain('class="confirmation-modal"');
+        expect(requestForm).toContain('Remove file');
+        expect(requestForm).not.toContain('window.confirm');
+    });
+
     it('links to the required CDPH prescription document near the required-fields note', () => {
         expect(requestForm).toContain('https://www.cdph.ca.gov/CDPH%20Document%20Library/ControlledForms/cdph247.pdf');
         expect(requestForm).toContain('target="_blank"');

@@ -60,6 +60,12 @@ export interface RequestRecord {
     doctorOfficeName?: string;
     doctorOfficeAddress?: string;
     doctorOfficePhone?: string;
+    prescriptionAttachment?: {
+        storageKey: string;
+        fileName: string;
+        contentType: string;
+        size: number;
+    };
     prescriptionSignedDate?: string;
     medicalStatus?: 'yes' | 'no' | 'pending';
     diagnosis?: string;

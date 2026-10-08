@@ -25,6 +25,12 @@
             "remote": true,
         },
     ],
+    "r2_buckets": [
+        {
+            "binding": "PRESCRIPTIONS",
+            "bucket_name": "cdphwic-prescriptions",
+        },
+    ],
     "env": {
         "dev": {
             "vars": {
@@ -36,6 +42,12 @@
                     "database_name": "cdphwic-dev",
                     "database_id": "4432fd65-8ef3-4f9c-a904-2fe593d923ef",
                     "migrations_dir": "db/migrations",
+                },
+            ],
+            "r2_buckets": [
+                {
+                    "binding": "PRESCRIPTIONS",
+                    "bucket_name": "cdphwic-prescriptions-dev",
                 },
             ],
         },
