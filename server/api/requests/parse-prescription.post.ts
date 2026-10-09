@@ -38,6 +38,12 @@ export default defineEventHandler(async (event) => {
         doctorPrintedName: '',
         doctorOfficeName: '',
         doctorOfficeAddress: '',
+        medicalStatus: 'pending' as const,
+        readyToFeedJustification: '',
+        diagnosis: '',
+        doctorOfficePhone: '',
+        prescriptionSignedDate: '',
+        additionalNotes: '',
     };
     if (isPdf) {
         try {
@@ -75,11 +81,7 @@ export default defineEventHandler(async (event) => {
             ...parsed,
             formulaName: '',
             formulaForm: undefined as ProductForm | undefined,
-            ouncesPrescribed: undefined as number | undefined,
-            durationMonths: undefined as number | undefined,
             doctorSignature: '',
-            doctorOfficePhone: '',
-            prescriptionSignedDate: '',
         },
         missing,
     };

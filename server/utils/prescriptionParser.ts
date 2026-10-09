@@ -1,5 +1,6 @@
 import * as pdfjs from 'pdfjs-dist/legacy/build/pdf.mjs';
 import { WorkerMessageHandler } from 'pdfjs-dist/legacy/build/pdf.worker.mjs';
+import type { ProductForm } from '../../shared/domain';
 
 export interface ParsedPrescriptionFields {
     patientFirstName: string;
@@ -8,6 +9,15 @@ export interface ParsedPrescriptionFields {
     doctorPrintedName: string;
     doctorOfficeName: string;
     doctorOfficeAddress: string;
+    medicalStatus: 'yes' | 'no' | 'pending';
+    productForm?: ProductForm;
+    readyToFeedJustification: string;
+    ouncesPrescribed?: number;
+    durationMonths?: number;
+    diagnosis: string;
+    doctorOfficePhone: string;
+    prescriptionSignedDate: string;
+    additionalNotes: string;
 }
 
 type AcroFormField = { value?: string; defaultValue?: string };
@@ -46,6 +56,16 @@ function fieldValue(fields: Record<string, AcroFormField[]>, name: string) {
     });
     const value = field?.value ?? field?.defaultValue;
     return typeof value === 'string' ? value.trim() : '';
+}
+
+function isChecked(fields: Record<string, AcroFormField[]>, name: string) {
+    const value = fieldValue(fields, name).toLowerCase();
+    return Boolean(value) && !['off', 'false', 'no', '0'].includes(value);
+}
+
+function numericFieldValue(fields: Record<string, AcroFormField[]>, name: string) {
+    const value = Number(fieldValue(fields, name).replace(/,/g, ''));
+    return Number.isFinite(value) && value > 0 ? value : undefined;
 }
 
 export function normalizePrescriptionDate(value: string) {
@@ -106,6 +126,32 @@ export function normalizePrescriptionDate(value: string) {
 export function mapPrescriptionFields(fields: Record<string, AcroFormField[]>): ParsedPrescriptionFields {
     const office = fieldValue(fields, 'Medical Office or Clinic Name and Address');
     const officeLines = office.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+    const diagnosisFields: Array<[string, string, string]> = [
+        ['Prematurity', 'adjusted age months', 'Prematurity'],
+        ['Failure to thrive', '', 'Failure to thrive'],
+        ['Low birthweight', '', 'Low birthweight'],
+        ['Dysphagia', '', 'Dysphagia'],
+        ['Food allergy', 'specify allergy', 'Food allergy'],
+        ['Immune system disorder', 'specify immune disorder', 'Immune system disorder'],
+        ['Gastrointestinal disorder', 'specify gastrointestinal disorder', 'Gastrointestinal disorder'],
+        ['Lifethreatening disorder', 'specify disorder', 'Life-threatening disorder'],
+        ['GeneticMetabolic disorder', 'specify  Genetic/Metabolic disorder', 'Genetic/metabolic disorder'],
+        ['Malabsorption', 'malabsorption nutrient', 'Malabsorption'],
+        ['Other medical conditions', 'specify condition(s)', 'Other medical condition'],
+    ];
+    const diagnosis = diagnosisFields
+        .filter(([checkbox]) => isChecked(fields, checkbox))
+        .map(([, detailField, label]) => {
+            const detail = detailField ? fieldValue(fields, detailField) : '';
+            return detail ? `${label}: ${detail}` : label;
+        })
+        .join('; ');
+    const productForm = [
+        ['Powder', 'powder'],
+        ['Concentrate', 'concentrate'],
+        ['Ready to Feed', 'ready-to-feed'],
+    ].find(([field]) => isChecked(fields, field))?.[1] as ProductForm | undefined;
+    const durationMonths = [1, 2, 3, 4, 5, 6].find((months) => isChecked(fields, `${months} month${months === 1 ? '' : 's'}`));
     return {
         patientFirstName: fieldValue(fields, 'Patient First Name'),
         patientLastName: fieldValue(fields, 'Patient Last Name'),
@@ -113,6 +159,15 @@ export function mapPrescriptionFields(fields: Record<string, AcroFormField[]>): 
         doctorPrintedName: fieldValue(fields, 'Provider Name'),
         doctorOfficeName: officeLines[0] ?? '',
         doctorOfficeAddress: officeLines.slice(1).join('\n') || office,
+        medicalStatus: isChecked(fields, 'medi-cal') ? 'yes' : isChecked(fields, 'private') ? 'no' : 'pending',
+        ...(productForm ? { productForm } : {}),
+        readyToFeedJustification: fieldValue(fields, 'rtf justification'),
+        ...(numericFieldValue(fields, 'Amount') ? { ouncesPrescribed: numericFieldValue(fields, 'Amount') } : {}),
+        ...(durationMonths ? { durationMonths } : {}),
+        diagnosis,
+        doctorOfficePhone: fieldValue(fields, 'Provider phone'),
+        prescriptionSignedDate: normalizePrescriptionDate(fieldValue(fields, 'Signature date')),
+        additionalNotes: fieldValue(fields, 'Comments'),
     };
 }
 

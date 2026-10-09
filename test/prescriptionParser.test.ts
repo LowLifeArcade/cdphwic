@@ -15,6 +15,17 @@ describe('CDPH prescription field parser', () => {
             'Date of birth': [{ value: '02/14/2024' }],
             'Provider Name': [{ value: 'Dr. Rivera' }],
             'Medical Office or Clinic Name and Address': [{ value: 'Sunrise Clinic\n123 Main St\nSacramento, CA 95814' }],
+            'medi-cal': [{ value: 'On' }],
+            private: [{ value: 'Off' }],
+            'Ready to Feed': [{ value: 'Ready to Feed' }],
+            'rtf justification': [{ value: 'Only available form' }],
+            Amount: [{ value: '24' }],
+            '3 months': [{ value: '3 months' }],
+            'Food allergy': [{ value: 'On' }],
+            'specify allergy': [{ value: 'Peanut allergy' }],
+            'Provider phone': [{ value: '916-555-0123' }],
+            'Signature date': [{ value: 'Aug 1st 2026' }],
+            Comments: [{ value: 'Needs follow-up.' }],
         });
 
         expect(result).toEqual({
@@ -24,6 +35,15 @@ describe('CDPH prescription field parser', () => {
             doctorPrintedName: 'Dr. Rivera',
             doctorOfficeName: 'Sunrise Clinic',
             doctorOfficeAddress: '123 Main St\nSacramento, CA 95814',
+            medicalStatus: 'yes',
+            productForm: 'ready-to-feed',
+            readyToFeedJustification: 'Only available form',
+            ouncesPrescribed: 24,
+            durationMonths: 3,
+            diagnosis: 'Food allergy: Peanut allergy',
+            doctorOfficePhone: '916-555-0123',
+            prescriptionSignedDate: '2026-08-01',
+            additionalNotes: 'Needs follow-up.',
         });
     });
 
@@ -71,6 +91,15 @@ describe('CDPH prescription field parser', () => {
             doctorPrintedName: 'Dr. Taylor Morgan',
             doctorOfficeName: 'Example Pediatrics',
             doctorOfficeAddress: '123 Test Avenue\nSacramento, CA 95814',
+            medicalStatus: 'yes',
+            productForm: 'ready-to-feed',
+            readyToFeedJustification: 'Only available form',
+            ouncesPrescribed: 24,
+            durationMonths: 3,
+            diagnosis: 'Food allergy: Peanut allergy',
+            doctorOfficePhone: '916-555-0123',
+            prescriptionSignedDate: '2026-08-01',
+            additionalNotes: 'Needs follow-up.',
         });
         expect(data.byteLength).toBeGreaterThan(0);
     });

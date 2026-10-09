@@ -35,6 +35,7 @@ const form = reactive({
     doctorOfficeName: '',
     doctorOfficeAddress: '',
     doctorOfficePhone: '',
+    prescriptionSignedDate: '',
     additionalNotes: '',
 });
 
@@ -66,8 +67,15 @@ async function processPrescription(file: File) {
                 doctorPrintedName: string;
                 doctorOfficeName: string;
                 doctorOfficeAddress: string;
+                medicalStatus: 'yes' | 'no' | 'pending';
+                productForm?: ProductForm;
+                readyToFeedJustification: string;
+                ouncesPrescribed?: number;
+                durationMonths?: number;
+                diagnosis: string;
                 doctorOfficePhone: string;
                 prescriptionSignedDate: string;
+                additionalNotes: string;
             };
         }>('/api/requests/parse-prescription', { method: 'POST', body });
         Object.assign(form, result.extracted);
@@ -176,6 +184,7 @@ async function submitRequest() {
             doctorOfficeName: form.doctorOfficeName,
             doctorOfficeAddress: form.doctorOfficeAddress,
             doctorOfficePhone: form.doctorOfficePhone,
+            prescriptionSignedDate: form.prescriptionSignedDate,
             prescriptionKey: uploadedStorageKey.value || undefined,
             status: 'unopened',
             genericFields: {
@@ -374,6 +383,15 @@ async function submitRequest() {
                         class="form-input"
                         type="tel"
                         required
+                    />
+                </div>
+                <div class="form-field">
+                    <label for="prescription-signed-date">Prescription signed date</label>
+                    <input
+                        id="prescription-signed-date"
+                        v-model="form.prescriptionSignedDate"
+                        class="form-input"
+                        type="date"
                     />
                 </div>
                 <div class="form-field full checkbox-confirmation">

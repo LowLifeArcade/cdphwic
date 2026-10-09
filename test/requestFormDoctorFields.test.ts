@@ -33,6 +33,8 @@ describe('new request doctor fields', () => {
         expect(requestForm).toContain('doctorOfficeName:');
         expect(requestForm).toContain('doctorOfficeAddress:');
         expect(requestForm).toContain('doctorOfficePhone:');
+        expect(requestForm).toContain('prescriptionSignedDate:');
+        expect(requestForm).toContain('v-model="form.prescriptionSignedDate"');
         expect(requestForm).toContain('v-model="form.doctorPrintedName"');
         expect(requestForm).toContain('v-model="form.doctorOfficeName"');
         expect(requestForm).toContain('v-model="form.doctorOfficeAddress"');
