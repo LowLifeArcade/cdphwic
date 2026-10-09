@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { ProductForm } from '~/../shared/domain';
+import { formatPhoneNumber, normalizePhoneNumber } from '~/../shared/phone';
 
 const router = useRouter();
 const fileInput = ref<HTMLInputElement>();
@@ -78,7 +79,10 @@ async function processPrescription(file: File) {
                 additionalNotes: string;
             };
         }>('/api/requests/parse-prescription', { method: 'POST', body });
-        Object.assign(form, result.extracted);
+        Object.assign(form, {
+            ...result.extracted,
+            doctorOfficePhone: formatPhoneNumber(result.extracted.doctorOfficePhone),
+        });
         parserMessage.value = result.message;
         parserMissing.value = result.missing;
         uploadedStorageKey.value = result.storageKey;
@@ -88,6 +92,12 @@ async function processPrescription(file: File) {
     } finally {
         parsing.value = false;
     }
+}
+
+function formatDoctorPhone(event: Event) {
+    const input = event.target as HTMLInputElement;
+    form.doctorOfficePhone = formatPhoneNumber(input.value);
+    input.value = form.doctorOfficePhone;
 }
 
 function requestRemoveConfirmation() {
@@ -183,7 +193,7 @@ async function submitRequest() {
             doctorHasSignedOff: form.doctorHasSignedOff,
             doctorOfficeName: form.doctorOfficeName,
             doctorOfficeAddress: form.doctorOfficeAddress,
-            doctorOfficePhone: form.doctorOfficePhone,
+            doctorOfficePhone: normalizePhoneNumber(form.doctorOfficePhone),
             prescriptionSignedDate: form.prescriptionSignedDate,
             prescriptionKey: uploadedStorageKey.value || undefined,
             status: 'unopened',
@@ -382,6 +392,12 @@ async function submitRequest() {
                         v-model="form.doctorOfficePhone"
                         class="form-input"
                         type="tel"
+                        inputmode="tel"
+                        autocomplete="tel"
+                        pattern="\(\d{3}\) \d{3}-\d{4}"
+                        minlength="14"
+                        maxlength="14"
+                        @input="formatDoctorPhone"
                         required
                     />
                 </div>

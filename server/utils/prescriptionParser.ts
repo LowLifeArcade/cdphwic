@@ -1,6 +1,7 @@
 import * as pdfjs from 'pdfjs-dist/legacy/build/pdf.mjs';
 import { WorkerMessageHandler } from 'pdfjs-dist/legacy/build/pdf.worker.mjs';
 import type { ProductForm } from '../../shared/domain';
+import { normalizePhoneNumber } from '../../shared/phone';
 
 export interface ParsedPrescriptionFields {
     patientFirstName: string;
@@ -165,7 +166,7 @@ export function mapPrescriptionFields(fields: Record<string, AcroFormField[]>): 
         ...(numericFieldValue(fields, 'Amount') ? { ouncesPrescribed: numericFieldValue(fields, 'Amount') } : {}),
         ...(durationMonths ? { durationMonths } : {}),
         diagnosis,
-        doctorOfficePhone: fieldValue(fields, 'Provider phone'),
+        doctorOfficePhone: normalizePhoneNumber(fieldValue(fields, 'Provider phone')),
         prescriptionSignedDate: normalizePrescriptionDate(fieldValue(fields, 'Signature date')),
         additionalNotes: fieldValue(fields, 'Comments'),
     };

@@ -39,6 +39,9 @@ describe('new request doctor fields', () => {
         expect(requestForm).toContain('v-model="form.doctorOfficeName"');
         expect(requestForm).toContain('v-model="form.doctorOfficeAddress"');
         expect(requestForm).toContain('v-model="form.doctorOfficePhone"');
+        expect(requestForm).toContain('@input="formatDoctorPhone"');
+        expect(requestForm).toContain('pattern="\\(\\d{3}\\) \\d{3}-\\d{4}"');
+        expect(requestForm).toContain('doctorOfficePhone: normalizePhoneNumber(form.doctorOfficePhone)');
         expect(requestForm).toContain("requiredLabel('Doctor printed name')");
         expect(requestForm).toContain("requiredLabel('Doctor office name')");
         expect(requestForm).toContain("requiredLabel('Doctor office address')");
@@ -55,7 +58,7 @@ describe('new request doctor fields', () => {
         expect(requestForm).toContain('doctorPrintedName: form.doctorPrintedName');
         expect(requestForm).toContain('doctorOfficeName: form.doctorOfficeName');
         expect(requestForm).toContain('doctorOfficeAddress: form.doctorOfficeAddress');
-        expect(requestForm).toContain('doctorOfficePhone: form.doctorOfficePhone');
+        expect(requestForm).toContain('doctorOfficePhone: normalizePhoneNumber(form.doctorOfficePhone)');
         expect(requestForm).not.toContain('doctorSignature:');
         expect(requestForm).not.toContain('v-model="form.doctorSignature"');
     });

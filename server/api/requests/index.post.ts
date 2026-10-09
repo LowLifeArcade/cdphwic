@@ -1,4 +1,5 @@
 import type { RequestRecord } from '../../../shared/domain';
+import { normalizePhoneNumber } from '../../../shared/phone';
 import { createRequestRecord, deleteRequestRecord, updateRequestRecord } from '../../utils/requestStore';
 import {
     promoteTemporaryPrescriptionAttachment,
@@ -17,7 +18,15 @@ export default defineEventHandler(async (event) => {
     }
 
     const { prescriptionKey, ...requestBody } = body as Omit<RequestRecord, 'id'> & { prescriptionKey?: string };
-    const request = createRequestRecord({ ...requestBody, status: requestBody.status ?? 'pending' });
+    const doctorOfficePhone = normalizePhoneNumber(requestBody.doctorOfficePhone ?? '');
+    if (!doctorOfficePhone) {
+        throw createError({ statusCode: 400, statusMessage: 'Enter a valid 10-digit doctor office phone number.' });
+    }
+    const request = createRequestRecord({
+        ...requestBody,
+        doctorOfficePhone,
+        status: requestBody.status ?? 'pending',
+    });
     if (!prescription?.data && !prescriptionKey) {
         return { request, demo: true };
     }

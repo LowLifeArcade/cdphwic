@@ -41,7 +41,7 @@ describe('CDPH prescription field parser', () => {
             ouncesPrescribed: 24,
             durationMonths: 3,
             diagnosis: 'Food allergy: Peanut allergy',
-            doctorOfficePhone: '916-555-0123',
+            doctorOfficePhone: '9165550123',
             prescriptionSignedDate: '2026-08-01',
             additionalNotes: 'Needs follow-up.',
         });
@@ -97,7 +97,7 @@ describe('CDPH prescription field parser', () => {
             ouncesPrescribed: 24,
             durationMonths: 3,
             diagnosis: 'Food allergy: Peanut allergy',
-            doctorOfficePhone: '916-555-0123',
+            doctorOfficePhone: '9165550123',
             prescriptionSignedDate: '2026-08-01',
             additionalNotes: 'Needs follow-up.',
         });
