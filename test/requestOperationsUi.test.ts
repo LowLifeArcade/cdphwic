@@ -17,10 +17,66 @@ describe('request operations UI', () => {
     it('supports staff editing, monthly allocations, and denial-only reasons', () => {
         expect(drawer).toContain('v-model.number="draft.ouncesPrescribed"');
         expect(drawer).toContain('v-model="issuance.month"');
-        expect(drawer).toContain('Add benefit month');
+        expect(drawer).toContain('Add issuance month');
         expect(drawer).toContain('v-if="draft.status === \'denied\'"');
         expect(drawer).toContain('authorization-form.pdf');
         expect(drawer).toContain('agency.shippingAddress');
         expect(drawer).toContain('rep?.email');
+    });
+
+    it('keeps request-form fields read-only until section editing and isolates issuance months to staff processing', () => {
+        expect(drawer).toContain('Edit fields');
+        expect(drawer).toContain('Prescription');
+        expect(drawer).toContain('+ Add issuance month');
+        expect(drawer).not.toContain('+ Add benefit month');
+        expect(drawer).toContain('month-select');
+    });
+
+    it('shows the submitted prescription and uses the requested section order', () => {
+        expect(drawer).toContain('Submitted prescription form');
+        expect(drawer).toContain('/api/requests/${request.id}/prescription');
+        expect(drawer).toContain('<h3>Prescription</h3>');
+        expect(drawer).toContain('<h3>Local Agency</h3>');
+        expect(drawer).toContain('<h3>Health Care Provider</h3>');
+        expect(drawer.indexOf('<h3>Participant</h3>')).toBeLessThan(drawer.indexOf('<h3>Prescription</h3>'));
+        expect(drawer.indexOf('<h3>Prescription</h3>')).toBeLessThan(drawer.indexOf('<h3>Local Agency</h3>'));
+        expect(drawer.indexOf('<h3>Local Agency</h3>')).toBeLessThan(drawer.indexOf('<h3>Health Care Provider</h3>'));
+    });
+
+    it('keeps CDPH decisions and shipment together', () => {
+        expect(drawer).not.toContain('Staff-only fields');
+        expect(drawer).toContain('Are you sure you want to deny this request?');
+        expect(drawer).toContain('v-if="pendingDecision"');
+        expect(drawer).toContain('Confirm denial');
+        expect(drawer).not.toContain('window.confirm');
+        expect(drawer).toContain('decision-selected');
+        expect(drawer).toContain('Undo approval or denial');
+        expect(drawer).toContain('previousDecision');
+        expect(drawer).toContain('approved: false');
+        expect(drawer).toContain('approved: true');
+        expect(drawer).toContain("status: 'in_progress'");
+        expect(drawer).toContain("status: draft.status === 'denied' ? 'opened' : draft.status");
+        expect(drawer).toContain('const restoredDecision = previousDecision.value ??');
+        expect(drawer).toContain('v-else class="decision-buttons"');
+        expect(drawer).toContain('Next Steps');
+        expect(drawer).toContain('class="cdph-fields" :disabled="draft.status === \'denied\'"');
+        expect(drawer.indexOf('CDPH/WIC Use Only')).toBeLessThan(drawer.indexOf('<h3>Shipping Info</h3>'));
+    });
+
+    it('shows product metadata and combined approval quantities in CDPH processing', () => {
+        expect(drawer).toContain('Formula Requested');
+        expect(drawer).toContain('Product Number');
+        expect(drawer).toContain('Units Per Case');
+        expect(drawer).toContain('Yield');
+        expect(drawer).toContain('Agency Units On Hand');
+        expect(drawer).toContain('cases for');
+        expect(drawer).not.toContain('Amount Approved');
+        expect(drawer).toContain('Expected Surplus Unit');
+        expect(drawer).toContain('Agency Units On Hand Unit');
+        expect(drawer).toContain('Agency Units On Hand');
+        expect(drawer).not.toContain('Cases Ordered');
+        expect(drawer).toContain('>Issuance</h4>');
+        expect(drawer.indexOf('Issuance')).toBeLessThan(drawer.indexOf('Approved Cases for Approved Months'));
+        expect(drawer.indexOf('Issuance')).toBeLessThan(drawer.indexOf('Next Steps'));
     });
 });

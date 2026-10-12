@@ -33,6 +33,6 @@ export function getNextBenefitMonth(issuances: BenefitIssuance[]): string {
     return `${next.getUTCFullYear()}-${String(next.getUTCMonth() + 1).padStart(2, '0')}`;
 }
 
-export function canGenerateAuthorizationForm(request: Pick<RequestRecord, 'status' | 'dateOrdered'>): boolean {
-    return request.status === 'approved' && Boolean(request.dateOrdered);
+export function canGenerateAuthorizationForm(request: Pick<RequestRecord, 'status' | 'approved' | 'dateOrdered'>): boolean {
+    return (request.approved === true || request.status === 'approved') && Boolean(request.dateOrdered);
 }

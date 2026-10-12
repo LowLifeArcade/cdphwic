@@ -720,6 +720,11 @@ select.form-input {
     color: #b7f1c9;
     background: #245c42;
 }
+.status-damaged,
+.status-missing {
+    color: #ffcf9d;
+    background: #70452d;
+}
 .status-approved {
     color: #b7f1c9;
     background: #245c42;
@@ -782,7 +787,126 @@ select.form-input {
 }
 .detail-section h3 {
     margin: 0 0 14px;
+    color: var(--green);
     font-size: 0.83rem;
+}
+.section-heading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 14px;
+}
+.section-heading h3 {
+    margin: 0;
+}
+.cdph-fields {
+    min-width: 0;
+    margin: 0;
+    padding: 0;
+    border: 0;
+}
+.case-month-input {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.case-month-input .form-input {
+    width: 58px;
+    padding-right: 6px;
+    padding-left: 6px;
+    color: var(--text);
+    font-size: 0.95rem;
+    font-weight: 700;
+    text-align: center;
+}
+.case-month-input span {
+    color: var(--muted);
+    white-space: nowrap;
+    font-size: 0.72rem;
+}
+.surplus-input {
+    display: flex;
+    gap: 8px;
+}
+.surplus-input .form-input:first-child {
+    width: 58px;
+    padding-right: 6px;
+    padding-left: 6px;
+    font-size: 0.95rem;
+    font-weight: 700;
+    text-align: center;
+}
+.surplus-input select {
+    width: 82px;
+    min-width: 82px;
+}
+.decision-actions {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    margin: 14px 0 18px;
+    padding: 12px 14px;
+    background: #101a2b;
+    border: 1px solid #2c3a53;
+    border-radius: 9px;
+}
+.decision-label {
+    color: var(--muted);
+    font-size: 0.7rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+}
+.decision-buttons {
+    display: flex;
+    gap: 8px;
+}
+.decision-buttons .button {
+    min-width: 86px;
+}
+.decision-selected {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 38px;
+    padding: 4px 4px 4px 12px;
+    border: 1px solid;
+    border-radius: 9px;
+    font-size: 0.8rem;
+    font-weight: 700;
+}
+.decision-selected-approved {
+    color: #b7f2d0;
+    background: rgb(28 116 76 / 24%);
+    border-color: rgb(86 212 145 / 44%);
+}
+.decision-selected-denied {
+    color: #ffc5c5;
+    background: rgb(150 44 44 / 24%);
+    border-color: rgb(238 112 112 / 44%);
+}
+.decision-selected .icon-button {
+    width: 28px;
+    height: 28px;
+}
+.issuance-heading {
+    margin: 18px 0 4px;
+}
+.issuance-heading h4 {
+    margin: 0;
+    color: var(--green);
+    font-size: 1rem;
+}
+.issuance-row-heading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 10px;
+    color: var(--muted);
+    font-size: 0.7rem;
 }
 .detail-grid {
     display: grid;
@@ -862,10 +986,164 @@ select.form-input {
     gap: 8px;
     align-items: center;
 }
+.surplus-entry-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 100px 140px 32px;
+    gap: 8px;
+    align-items: end;
+}
+.month-list {
+    display: grid;
+    gap: 8px;
+}
+.month-row {
+    display: grid;
+    grid-template-columns: minmax(0, 220px) 92px 32px;
+    gap: 8px;
+    align-items: center;
+}
+.requested-months-field .month-row {
+    grid-template-columns: minmax(0, 260px) 32px;
+    max-width: 320px;
+}
+.requested-months-field {
+    margin-top: 16px;
+}
+.month-row > span {
+    min-height: 36px;
+    padding: 9px 11px;
+    color: var(--text);
+    background: #111a2b;
+    border: 1px solid #2c3a53;
+    border-radius: 7px;
+    font-size: 0.78rem;
+}
+.month-select,
+.month-quantity {
+    min-width: 0;
+}
+.quantity-input {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+.quantity-input span {
+    color: var(--muted);
+    font-size: 0.7rem;
+}
+.submitted-prescription {
+    display: grid;
+    gap: 10px;
+    margin-top: 18px;
+    padding-top: 16px;
+    border-top: 1px solid #26354c;
+}
+.submitted-prescription .panel-heading {
+    align-items: center;
+    margin-bottom: 0;
+}
+.submitted-prescription h4 {
+    margin: 0 0 4px;
+    color: var(--text);
+    font-size: 0.75rem;
+}
+.prescription-preview {
+    width: 100%;
+    min-height: 360px;
+    border: 1px solid #2c3a53;
+    border-radius: 8px;
+    background: #0d1524;
+}
+.prescription-image-preview {
+    height: auto;
+    object-fit: contain;
+}
 .drawer-actions {
     flex-wrap: wrap;
     margin-top: 14px;
     padding-top: 14px;
+}
+.staff-save-action {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-top: 10px;
+}
+.save-feedback {
+    font-size: 0.82rem;
+}
+.save-feedback-saving {
+    color: var(--muted);
+}
+.save-feedback-saved {
+    color: var(--green);
+}
+.save-feedback-failed {
+    color: var(--danger);
+}
+.confirmation-alert-action {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin: 12px 0 16px;
+}
+.confirmation-alert-notice {
+    margin: 0 0 16px;
+    padding: 10px 12px;
+    color: #ffe6a3;
+    background: #4f4024;
+    border: 1px solid #80652f;
+    border-radius: 8px;
+}
+.confirmation-response-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin: 12px 0 16px;
+}
+.shipping-save-action {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-top: 10px;
+}
+.agency-save-action {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+.report-surplus-button {
+    min-width: 140px;
+}
+.surplus-add-row-action {
+    margin-top: 12px;
+    margin-bottom: 16px;
+}
+.receipt-status {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin: 12px 0 16px;
+    padding: 10px 12px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: #101a2c;
+}
+.receipt-status span {
+    color: var(--muted);
+    font-size: 0.78rem;
+}
+.receipt-status strong {
+    color: var(--text);
+    font-size: 0.82rem;
+}
+.receipt-status-received strong {
+    color: var(--green);
+}
+.receipt-status-damaged strong,
+.receipt-status-missing strong {
+    color: var(--danger);
 }
 .attachment-row {
     display: flex;

@@ -13,4 +13,24 @@ describe('dashboard seed data', () => {
         expect(SEED_PRODUCTS.length).toBeGreaterThan(2);
         expect(new Set(SEED_REQUESTS.map((request) => request.status)).size).toBeGreaterThan(1);
     });
+
+    it('includes request-detail workflow examples for requested months, processing, shipment, and surplus', () => {
+        expect(SEED_REQUESTS.some((request) => request.benefitMonthsRequested?.length)).toBe(true);
+        expect(SEED_REQUESTS.some((request) => request.approvedCases !== undefined && request.casesOrdered !== undefined)).toBe(true);
+        expect(SEED_REQUESTS.some((request) => request.trackingNumbers?.length && request.receivedStatus === 'received')).toBe(true);
+        expect(SEED_REQUESTS.some((request) => request.surplusItems?.length)).toBe(true);
+        expect(SEED_REQUESTS.some((request) => request.receivedStatus === 'damaged' || request.receivedStatus === 'missing')).toBe(true);
+    });
+
+    it('keeps lifecycle fields consistent with request status', () => {
+        const unopened = SEED_REQUESTS.find((request) => request.status === 'unopened');
+        expect(unopened).toBeDefined();
+        expect(unopened?.assignedInternalMemberId).toBeUndefined();
+        expect(unopened?.approvedCases).toBeUndefined();
+        expect(unopened?.eta).toBeUndefined();
+
+        expect(SEED_REQUESTS.filter((request) => request.status !== 'shipped').every((request) => request.eta === undefined)).toBe(true);
+        expect(SEED_REQUESTS.filter((request) => request.status === 'shipped').every((request) => request.eta && request.trackingNumbers?.length)).toBe(true);
+        expect(SEED_REQUESTS.filter((request) => request.status === 'denied').every((request) => request.staffNotes || request.comments)).toBe(true);
+    });
 });

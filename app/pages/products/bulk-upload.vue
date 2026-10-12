@@ -61,12 +61,13 @@ async function uploadProducts() {
             <code>name</code>, <code>form</code>, <code>category</code>, and <code>unitsPerCase</code>. Optional columns
             are <code>unitPrice</code>, <code>poPrice</code>, <code>casesApproved</code>, <code>casesUsed</code>,
             <code>supplierReference</code>, and <code>coverage</code>. Use <code>powder</code>,
-            <code>concentrate</code>, or <code>ready-to-feed</code> for form.
+            <code>concentrate</code>, or <code>ready-to-feed</code> for form. Optional <code>yield</code> populates the
+            request processing details.
         </p>
         <div class="upload-example">
             <strong>Example headers</strong>
             <code
-                >productId,productCode,name,form,category,unitsPerCase,unitPrice,poPrice,casesApproved,casesUsed,supplierReference,coverage</code
+                >productId,productCode,name,form,category,unitsPerCase,yield,unitPrice,poPrice,casesApproved,casesUsed,supplierReference,coverage</code
             >
             <code>PROD-305,166806,Example Formula,powder,standard,12,31.25,31.25,100,0,EXAMPLE-305,wic</code>
         </div>

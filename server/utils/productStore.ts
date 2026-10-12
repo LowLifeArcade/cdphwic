@@ -53,6 +53,9 @@ export function validateProductInput(input: Partial<ProductInput>): string[] {
     if (!Number.isFinite(Number(input.unitsPerCase)) || Number(input.unitsPerCase) <= 0) {
         errors.push('Units per case must be a positive number.');
     }
+    if (input.yield !== undefined && input.yield !== null && (!Number.isFinite(Number(input.yield)) || Number(input.yield) < 0)) {
+        errors.push('Yield cannot be negative.');
+    }
     if (input.coverage && input.coverage.some((coverage) => !['wic', 'medical'].includes(coverage))) {
         errors.push('Coverage must contain only wic or medical.');
     }
@@ -72,6 +75,7 @@ function normalizeProductInput(input: ProductInput): ProductInput {
         form: input.form.trim().toLowerCase().replace(/\s+/g, '-') as ProductForm,
         category: input.category,
         unitsPerCase: Number(input.unitsPerCase),
+        yield: input.yield === undefined || input.yield === null || String(input.yield).trim() === '' ? undefined : Number(input.yield),
         coverage: input.coverage?.length ? input.coverage : ['wic'],
         productId: input.productId.trim(),
         productCode: input.productCode.trim(),

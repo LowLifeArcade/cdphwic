@@ -9,6 +9,8 @@ export type RequestStatus =
     | 'approved'
     | 'shipped'
     | 'complete'
+    | 'damaged'
+    | 'missing'
     | 'denied';
 export type RequestScope = 'all' | 'mine';
 export type ProductCoverage = 'wic' | 'medical';
@@ -75,13 +77,25 @@ export interface RequestRecord {
     trackingNumbers?: Array<{ number: string; carrier: 'fedex' | 'dhl' | 'ups' }>;
     deliveryStatus?: string;
     specialOrder?: boolean;
+    approved?: boolean;
     unitsIssued?: number;
     benefitIssuanceStartMonth?: string;
     benefitIssuanceEndMonth?: string;
     benefitIssuances?: Array<{ month: string; quantity: number }>;
+    benefitMonthsRequested?: string[];
+    approvedCases?: number;
+    approvedMonths?: number;
+    casesOrdered?: number;
+    expectedSurplus?: number;
+    expectedSurplusUnit?: 'units' | 'cases';
+    agencyUnitsOnHand?: number;
+    agencyUnitsOnHandUnit?: 'units' | 'cases';
+    surplusItems?: Array<{ productName: string; units: number; expirationDate: string }>;
     staffNotes?: string;
+    nextSteps?: string;
     repNotes?: string;
-    receivedStatus?: 'shipped' | 'received' | 'damaged' | 'missing';
+    agencyConfirmationAlertedAt?: string;
+    receivedStatus?: 'shipped' | 'received' | 'damaged' | 'missing' | 'incomplete';
     receivedPhotos?: string[];
     replacementRequested?: boolean;
     requestKind?: 'new' | 'extension';
@@ -126,6 +140,7 @@ export interface ProductRecord {
     form: ProductForm;
     category: 'standard' | 'exempt' | 'nutritional';
     unitsPerCase: number;
+    yield?: number;
     coverage: ProductCoverage[];
     poPrice?: number;
     casesApproved?: number;

@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import type { RequestRecord } from '~/../shared/domain';
-defineProps<{ requests: RequestRecord[] }>();
+import type { ProductRecord, RequestRecord } from '~/../shared/domain';
+const props = defineProps<{ requests: RequestRecord[]; products: ProductRecord[] }>();
 const identity = useState<'admin' | 'agency' | 'internal'>('demo-identity', () => 'admin');
 const selected = ref<RequestRecord | null>(null);
 const { data: agencyData } = await useFetch('/api/agencies');
@@ -67,6 +67,10 @@ async function openRequest(request: RequestRecord) {
                     v-if="request.specialOrder"
                     class="request-tag"
                     >Special order</small
+                ><small
+                    v-if="request.approved"
+                    class="request-tag"
+                    >Approved</small
                 ><small>{{ request.unitsRequested ?? '—' }} units</small></span
             >
             <span
@@ -91,6 +95,7 @@ async function openRequest(request: RequestRecord) {
         <RequestDetailDrawer
             v-if="selected"
             :request="selected"
+            :products="props.products"
             :agency="selectedAgency"
             :rep="selectedRep"
             @close="selected = null"

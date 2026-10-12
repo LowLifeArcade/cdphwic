@@ -1,10 +1,12 @@
 <script setup lang="ts">
+import type { ProductRecord } from '~/../shared/domain';
 const route = useRoute();
 const identity = useState<'admin' | 'agency' | 'internal'>('demo-identity', () => 'admin');
 const scope = computed(() => (route.query.scope === 'mine' ? 'mine' : 'all'));
 const agencyId = ref('');
 const repId = ref('');
 const { data: agencyData } = await useFetch('/api/agencies');
+const { data: productData } = await useFetch('/api/products');
 const { data, refresh } = await useFetch('/api/requests', {
     headers: computed(() => ({ 'x-demo-user': identity.value })),
     query: computed(() => ({
@@ -14,6 +16,7 @@ const { data, refresh } = await useFetch('/api/requests', {
     })),
 });
 const requests = computed(() => data.value?.requests ?? []);
+const products = computed<ProductRecord[]>(() => productData.value?.products ?? []);
 const currentUser = computed(() => data.value?.user);
 const availableAgencies = computed(() => {
     const all = agencyData.value?.agencies ?? [];
@@ -84,5 +87,5 @@ watch([agencyId, repId, identity], () => refresh());
             </option></select
         ><span class="muted-copy">{{ requests.length }} requests</span>
     </div>
-    <RequestList :requests="requests" />
+    <RequestList :requests="requests" :products="products" />
 </template>
