@@ -8,8 +8,9 @@ describe('new request entries', () => {
         expect(addDiagnosis([], '  ')).toEqual([]);
     });
     it('requires agency details, insurance, and a Medi-Cal status only for Medi-Cal', () => {
-        const valid = { familyId: '123', individualId: '456', benefitsStartDate: '2026-10-22', requestKind: 'new', medicalStatus: 'no', mediCalStatus: '', doctorHasSignedOff: true, productForm: 'powder', readyToFeedJustification: '' };
+        const valid = { prescriptionSignedDate: '2026-10-22', familyId: '123', individualId: '456', benefitsStartDate: '2026-10-22', requestKind: 'new', medicalStatus: 'no', mediCalStatus: '', doctorHasSignedOff: true, productForm: 'powder', readyToFeedJustification: '' };
         expect(validateAgencyFields(valid)).toBe('');
+        expect(validateAgencyFields({ ...valid, prescriptionSignedDate: '' })).toBe('Enter Date Signed.');
         for (const key of ['familyId', 'individualId', 'benefitsStartDate', 'requestKind', 'medicalStatus']) {
             expect(validateAgencyFields({ ...valid, [key]: '' })).not.toBe('');
         }

@@ -38,6 +38,7 @@ describe('new request doctor fields', () => {
             'Medical Documentation',
             'Participant',
             'Medical Formula/Nutritionals and Qualifying Diagnosis',
+            'WIC Food Restrictions',
             'Health Care Provider',
             'Additional Information',
         ]);

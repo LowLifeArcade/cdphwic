@@ -5,7 +5,7 @@ import {
     hasValidPrescriptionSignature,
     storeTemporaryPrescriptionAttachment,
 } from '../../utils/prescriptionStorage';
-import { extractPrescriptionFields } from '../../utils/prescriptionParser';
+import { extractPrescriptionFields, type ParsedPrescriptionFields } from '../../utils/prescriptionParser';
 
 export default defineEventHandler(async (event) => {
     const parts = await readMultipartFormData(event);
@@ -31,7 +31,10 @@ export default defineEventHandler(async (event) => {
         throw createError({ statusCode: 503, statusMessage: 'Prescription storage is unavailable.' });
     }
 
-    let parsed = {
+    let parsed: ParsedPrescriptionFields = {
+        formulaName: '',
+        wicFoodRestrictions: '',
+        wicFoodRestrictionDetails: '',
         patientFirstName: '',
         patientLastName: '',
         participantDob: '',
@@ -79,7 +82,6 @@ export default defineEventHandler(async (event) => {
         storageKey: attachment.key,
         extracted: {
             ...parsed,
-            formulaName: '',
             formulaForm: undefined as ProductForm | undefined,
             doctorSignature: '',
         },

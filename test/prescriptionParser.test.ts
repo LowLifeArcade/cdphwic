@@ -1,3 +1,4 @@
+import { PDFDocument } from 'pdf-lib';
 import { readFile } from 'node:fs/promises';
 import { describe, expect, it } from 'vitest';
 import {
@@ -29,6 +30,9 @@ describe('CDPH prescription field parser', () => {
         });
 
         expect(result).toEqual({
+            formulaName: '',
+            wicFoodRestrictions: 'not-indicated',
+            wicFoodRestrictionDetails: '',
             patientFirstName: 'Ana',
             patientLastName: 'Lopez',
             participantDob: '2024-02-14',
@@ -68,6 +72,33 @@ describe('CDPH prescription field parser', () => {
         configurePrescriptionPdfJs();
 
         expect(runtime.pdfjsWorker).toBeDefined();
+    });
+
+    it('extracts food restriction choices, details, and selected formula from PDF fields', () => {
+        expect(mapPrescriptionFields({ 'No food restrictions': [{ value: 'Yes' }] })).toMatchObject({ wicFoodRestrictions: 'none', wicFoodRestrictionDetails: '' });
+        expect(mapPrescriptionFields({
+            'Food restrictions': [{ value: 'Yes' }],
+            'No milk': [{ value: 'Yes' }],
+            'No whole grains Specify types': [{ value: 'Yes' }],
+            'specify whole grains': [{ value: 'Wheat' }],
+            'PediaSure-1': [{ value: 'Yes' }],
+        })).toMatchObject({ wicFoodRestrictions: 'restricted', wicFoodRestrictionDetails: 'No milk; No whole grains: Wheat', formulaName: 'PediaSure' });
+        expect(mapPrescriptionFields({})).toMatchObject({ wicFoodRestrictions: 'not-indicated' });
+        expect(mapPrescriptionFields({ 'No food restrictions': [{ value: 'Yes' }], 'Food restrictions': [{ value: 'Yes' }] })).toMatchObject({ wicFoodRestrictions: '' });
+    });
+
+    it('reads food restrictions and formula from an uploaded filled PDF', async () => {
+        const pdf = await PDFDocument.load(await readFile(new URL('./fixtures/cdph247-filled.pdf', import.meta.url)));
+        const form = pdf.getForm();
+        form.getCheckBox('No food restrictions').uncheck();
+        form.getCheckBox('Food restrictions').check();
+        form.getCheckBox('No milk').check();
+        form.getCheckBox('Fortini').check();
+        await expect(extractPrescriptionFields(await pdf.save())).resolves.toMatchObject({
+            wicFoodRestrictions: 'restricted',
+            wicFoodRestrictionDetails: 'No milk',
+            formulaName: 'Fortini',
+        });
     });
 
     it('normalizes supported date formats and leaves unknown values blank', () => {

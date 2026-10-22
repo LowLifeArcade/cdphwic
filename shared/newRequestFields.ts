@@ -8,10 +8,10 @@ export function addDiagnosis(diagnoses: string[], value: string): string[] {
 export function validateAgencyFields(fields: {
     familyId: string; individualId: string; benefitsStartDate: string; requestKind: string;
     medicalStatus: string; mediCalStatus: string; doctorHasSignedOff: boolean;
-    productForm: string; readyToFeedJustification: string;
+    productForm: string; readyToFeedJustification: string; prescriptionSignedDate: string;
 }): string {
     if (![fields.familyId, fields.individualId, fields.benefitsStartDate, fields.requestKind].every((value) => value.trim())) {
-        return 'Complete all required Local Agency Information fields.';
+        return 'Complete all required Additional Participant Details fields.';
     }
     if (!['yes', 'no'].includes(fields.medicalStatus)) return 'Select Health Insurance.';
     if (fields.medicalStatus === 'yes' && !['Denied', 'Pending PA', 'Product Not Covered'].includes(fields.mediCalStatus)) {
@@ -20,6 +20,7 @@ export function validateAgencyFields(fields: {
     if (fields.productForm === 'ready-to-feed' && !fields.readyToFeedJustification.trim()) {
         return 'List reasons why ready-to-feed is needed.';
     }
+    if (!fields.prescriptionSignedDate) return 'Enter Date Signed.';
     if (!fields.doctorHasSignedOff) return 'Confirm that the medical documentation includes the provider’s signature.';
     return '';
 }

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { formulaCatalog, findFormula, availableFormulaForms } from '~/../shared/formulaCatalog';
 import type { ProductForm } from '~/../shared/domain';
 import { addDiagnosis, validateAgencyFields } from '~/../shared/newRequestFields';
 import { formatPhoneNumber, normalizePhoneNumber } from '~/../shared/phone';
@@ -36,8 +37,12 @@ const form = reactive({
     individualId: '',
     benefitsStartDate: '',
     requestKind: 'new' as 'new' | 'extension',
-    productId: '',
-    otherFormulaName: '',
+    formulaName: '',
+    formulaFlavor: '',
+    wicFoodRestrictions: '' as '' | 'none' | 'restricted' | 'not-indicated',
+    wicFoodRestrictionDetails: '',
+    wicNutritionStaffNotes: '',
+    wicNutritionStaffName: '',
     productForm: 'powder' as ProductForm,
     readyToFeedJustification: '',
     medicalStatus: '',
@@ -54,10 +59,17 @@ const form = reactive({
     additionalNotes: '',
 });
 
-const selectedProduct = computed(() => products.value.find((product) => product.id === Number(form.productId)));
-const productName = computed(() =>
-    form.productId === 'other' ? form.otherFormulaName : (selectedProduct.value?.name ?? 'Formula to be selected'),
-);
+const selectedFormula = computed(() => findFormula(form.formulaName));
+const availableForms = computed(() => availableFormulaForms(form.formulaName));
+const selectedProduct = computed(() => products.value.find((product) =>
+    product.name.toLowerCase() === selectedFormula.value?.name.toLowerCase() && product.form === form.productForm,
+));
+const productName = computed(() => selectedFormula.value?.name ?? form.formulaName.trim());
+watch(availableForms, (forms) => {
+    if (!forms.includes(form.productForm)) {
+        form.productForm = forms[0] ?? 'powder';
+    }
+}, { flush: 'sync' });
 
 function requiredLabel(label: string) {
     return `${label} *`;
@@ -76,6 +88,9 @@ async function processPrescription(file: File) {
             missing: string[];
             storageKey: string;
             extracted: {
+                formulaName: string;
+                wicFoodRestrictions: '' | 'none' | 'restricted' | 'not-indicated';
+                wicFoodRestrictionDetails: string;
                 patientFirstName: string;
                 patientLastName: string;
                 participantDob: string;
@@ -95,9 +110,13 @@ async function processPrescription(file: File) {
         }>('/api/requests/parse-prescription', { method: 'POST', body });
         Object.assign(form, {
             ...result.extracted,
+            formulaName: result.extracted.formulaName || form.formulaName,
             doctorOfficePhone: formatPhoneNumber(result.extracted.doctorOfficePhone),
             medicalStatus: result.extracted.medicalStatus === 'pending' ? '' : result.extracted.medicalStatus,
         });
+        if (!availableForms.value.includes(form.productForm)) {
+            form.productForm = availableForms.value[0] ?? 'powder';
+        }
         parserMessage.value = result.message;
         parserMissing.value = result.missing;
         uploadedStorageKey.value = result.storageKey;
@@ -184,6 +203,9 @@ async function submitRequest() {
     submitted.value = false;
     commitDiagnosis();
     submissionError.value = validateAgencyFields(form);
+    if (!submissionError.value && (!selectedFormula.value || !availableForms.value.includes(form.productForm))) {
+        submissionError.value = 'Select a matching formula name and an available form.';
+    }
     if (submissionError.value) return;
     const participantName = `${form.patientFirstName} ${form.patientLastName}`.trim();
     const body = new FormData();
@@ -200,9 +222,14 @@ async function submitRequest() {
             wicIndividualId: form.individualId || undefined,
             benefitsStartDate: form.benefitsStartDate,
             requestKind: form.requestKind,
-            productId: form.productId === 'other' ? -1 : selectedProduct.value?.id,
+            productId: selectedProduct.value?.id ?? -1,
             productName: productName.value,
             productForm: form.productForm,
+            formulaFlavor: selectedFormula.value?.hasFlavor ? form.formulaFlavor.trim() : undefined,
+            wicFoodRestrictions: form.wicFoodRestrictions || undefined,
+            wicFoodRestrictionDetails: form.wicFoodRestrictions === 'restricted' ? form.wicFoodRestrictionDetails : '',
+            wicNutritionStaffNotes: form.wicNutritionStaffNotes,
+            wicNutritionStaffName: form.wicNutritionStaffName,
             medicalStatus: form.medicalStatus,
             mediCalStatus: form.medicalStatus === 'yes' ? form.mediCalStatus : undefined,
             diagnosis: form.diagnosis,
@@ -403,7 +430,6 @@ async function submitRequest() {
                         <option value="yes">Medi-Cal</option>
                         <option value="no">Private Insurance</option>
                     </select>
-                    <small>Required to submit the request; not required for complete medical documentation.</small>
                 </div>
                 <div v-if="form.medicalStatus === 'yes'" class="form-field">
                     <label for="medi-cal-status">{{ requiredLabel('Medi-Cal Status') }}</label>
@@ -416,8 +442,8 @@ async function submitRequest() {
                 </div>
             </div>
             <fieldset class="form-field full local-agency-fields">
-                <legend>Local Agency Information</legend>
-                <p>To be completed by the local agency. These fields are required to submit the request and are not part of the medical documentation.</p>
+                <legend>Additional Participant Details</legend>
+                <p>To be completed by the local agency. These fields are required to submit the request but are not part of complete medical documentation.</p>
                 <div class="form-grid">
                     <div class="form-field">
                         <label for="family">{{ requiredLabel('WIC Family ID') }}</label>
@@ -455,7 +481,7 @@ async function submitRequest() {
                             class="form-input"
                             required
                         >
-                            <option value="new">New request</option>
+                            <option value="new">New</option>
                             <option value="extension">Extension</option>
                         </select>
                     </div>
@@ -472,34 +498,22 @@ async function submitRequest() {
             <div class="form-grid">
                 <div class="form-field">
                     <label for="formula">{{ requiredLabel('Formula Name') }}</label>
-                    <select
-                        id="formula"
-                        v-model="form.productId"
-                        class="form-input"
-                        required
-                    >
-                        <option value="">Select formula</option>
-                        <option
-                            v-for="product in products"
-                            :key="product.id"
-                            :value="String(product.id)"
-                        >
-                            {{ product.name }}
-                        </option>
-                        <option value="other">Other</option>
-                    </select>
-                </div>
-                <div
-                    v-if="form.productId === 'other'"
-                    class="form-field"
-                >
-                    <label for="other-formula">{{ requiredLabel('Formula Name') }}</label>
                     <input
-                        id="other-formula"
-                        v-model="form.otherFormulaName"
+                        id="formula"
+                        v-model="form.formulaName"
+                        list="formula-matches"
                         class="form-input"
+                        placeholder="Start typing a formula name"
+                        autocomplete="off"
                         required
                     />
+                    <datalist id="formula-matches">
+                        <option v-for="formula in formulaCatalog" :key="formula.name" :value="formula.name" />
+                    </datalist>
+                </div>
+                <div v-if="selectedFormula?.hasFlavor" class="form-field">
+                    <label for="formula-flavor">Flavor</label>
+                    <input id="formula-flavor" v-model="form.formulaFlavor" class="form-input" />
                 </div>
                 <div class="form-field">
                     <label for="formula-form">{{ requiredLabel('Form') }}</label>
@@ -509,9 +523,9 @@ async function submitRequest() {
                         class="form-input"
                         required
                     >
-                        <option value="powder">Powder</option>
-                        <option value="concentrate">Concentrate</option>
-                        <option value="ready-to-feed">Ready-to-Feed</option>
+                        <option v-for="availableForm in availableForms" :key="availableForm" :value="availableForm">
+                            {{ { powder: 'Powder', concentrate: 'Liquid Concentrate', 'ready-to-feed': 'Ready-to-Feed' }[availableForm] }}
+                        </option>
                     </select>
                 </div>
                 <div
@@ -570,13 +584,42 @@ async function submitRequest() {
         </section>
 
         <section class="form-section">
+            <div class="panel-heading"><h2>WIC Food Restrictions</h2></div>
+            <fieldset class="food-restriction-options">
+                <legend class="food-restriction-legend">Food restrictions indicated by the health care provider</legend>
+                <label v-for="option in [
+                    { value: 'none', label: 'No food restrictions (all WIC foods allowed)' },
+                    { value: 'restricted', label: 'Food restrictions (specified below)' },
+                    { value: 'not-indicated', label: 'Neither box checked by HCP' },
+                ]" :key="option.value" class="checkbox-control checkbox-confirmation">
+                    <input v-model="form.wicFoodRestrictions" type="radio" name="wic-food-restrictions" :value="option.value" />
+                    {{ option.label }}
+                </label>
+            </fieldset>
+            <div class="form-grid">
+                <div v-if="form.wicFoodRestrictions === 'restricted'" class="form-field full">
+                    <label for="food-restriction-details">Food Restrictions</label>
+                    <textarea id="food-restriction-details" v-model="form.wicFoodRestrictionDetails" class="form-textarea" />
+                </div>
+                <div class="form-field">
+                    <label for="wic-staff-notes">WIC Nutrition Staff Notes</label>
+                    <textarea id="wic-staff-notes" v-model="form.wicNutritionStaffNotes" class="form-textarea" />
+                </div>
+                <div class="form-field">
+                    <label for="wic-staff-name">Staff Member Name</label>
+                    <input id="wic-staff-name" v-model="form.wicNutritionStaffName" class="form-input" />
+                </div>
+            </div>
+        </section>
+
+        <section class="form-section">
             <div class="panel-heading">
                 <div>
                     <h2>Health Care Provider</h2>
                 </div>
             </div>
             <div class="form-grid">
-                <div class="form-field">
+                <div class="form-field full">
                     <label for="doctor-name">{{ requiredLabel('Provider Name (printed)') }}</label>
                     <input
                         id="doctor-name"
@@ -585,7 +628,7 @@ async function submitRequest() {
                         required
                     />
                 </div>
-                <div class="form-field full checkbox-confirmation">
+                <div class="form-field checkbox-confirmation">
                     <label
                         class="checkbox-control"
                         for="doctor-signed-off"
@@ -595,22 +638,21 @@ async function submitRequest() {
                             v-model="form.doctorHasSignedOff"
                             type="checkbox"
                             aria-required="true"
-                            aria-describedby="signature-confirmation"
                         />
                         <span>{{ requiredLabel('Provider Signature') }}</span>
                     </label>
                 </div>
-                <p id="signature-confirmation" class="form-field full">I confirm the medical documentation includes the provider’s signature.</p>
                 <div class="form-field">
-                    <label for="prescription-signed-date">Date Signed</label>
+                    <label for="prescription-signed-date">{{ requiredLabel('Date Signed') }}</label>
                     <input
                         id="prescription-signed-date"
                         v-model="form.prescriptionSignedDate"
+                        required
                         class="form-input"
                         type="date"
                     />
                 </div>
-                <div class="form-field full">
+                <div class="form-field">
                     <label for="doctor-office">{{ requiredLabel('Medical Office/Clinic Name and Address') }}</label>
                     <input
                         id="doctor-office"

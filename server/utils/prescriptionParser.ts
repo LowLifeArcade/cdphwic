@@ -1,9 +1,13 @@
 import * as pdfjs from 'pdfjs-dist/legacy/build/pdf.mjs';
 import { WorkerMessageHandler } from 'pdfjs-dist/legacy/build/pdf.worker.mjs';
+import { formulaCatalog } from '../../shared/formulaCatalog';
 import type { ProductForm } from '../../shared/domain';
 import { normalizePhoneNumber } from '../../shared/phone';
 
 export interface ParsedPrescriptionFields {
+    formulaName: string;
+    wicFoodRestrictions: '' | 'none' | 'restricted' | 'not-indicated';
+    wicFoodRestrictionDetails: string;
     patientFirstName: string;
     patientLastName: string;
     participantDob: string;
@@ -153,7 +157,27 @@ export function mapPrescriptionFields(fields: Record<string, AcroFormField[]>): 
         ['Ready to Feed', 'ready-to-feed'],
     ].find(([field]) => isChecked(fields, field))?.[1] as ProductForm | undefined;
     const durationMonths = [1, 2, 3, 4, 5, 6].find((months) => isChecked(fields, `${months} month${months === 1 ? '' : 's'}`));
+    const noRestrictions = isChecked(fields, 'No food restrictions');
+    const restricted = isChecked(fields, 'Food restrictions');
+    const restrictionFields = [
+        'No infant cereal', 'No infant fruits/vegetables', 'No infant foods increased formula',
+        'No infant fruits/vegetables fresh frozen canned', 'No milk', 'No cheese', 'No eggs',
+        'No yogurt', 'No plant-based milk alternatives', 'No tofu', 'No peanut butter', 'No beans',
+        'No cereal', 'No fruits/vegetables', 'No juice', 'No foods formula only',
+        'Needs canned fish light tuna salmon sardines', 'Needs purees provide infant fruits vegetables',
+    ];
+    const restrictionDetails = restrictionFields.filter((name) => isChecked(fields, name));
+    if (isChecked(fields, 'No whole grains Specify types')) {
+        const types = fieldValue(fields, 'specify whole grains');
+        restrictionDetails.push(types ? `No whole grains: ${types}` : 'No whole grains');
+    }
+    if (isChecked(fields, 'If premature Provide infant foods after')) {
+        restrictionDetails.push(`Provide infant foods after: ${fieldValue(fields, 'premature months')} months`);
+    }
     return {
+        formulaName: formulaCatalog.find((formula) => isChecked(fields, formula.pdfField))?.name ?? '',
+        wicFoodRestrictions: noRestrictions && restricted ? '' : noRestrictions ? 'none' : restricted ? 'restricted' : 'not-indicated',
+        wicFoodRestrictionDetails: restricted ? restrictionDetails.join('; ') : '',
         patientFirstName: fieldValue(fields, 'Patient First Name'),
         patientLastName: fieldValue(fields, 'Patient Last Name'),
         participantDob: normalizePrescriptionDate(fieldValue(fields, 'Date of birth')),
