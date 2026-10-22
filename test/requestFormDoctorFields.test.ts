@@ -25,9 +25,9 @@ describe('new request doctor fields', () => {
         expect(requestForm).not.toContain('cdph247.pdf');
         expect(requestForm).not.toContain('Download the CDPH prescription form here.');
         expect(requestForm).not.toContain('(usually 1–6)');
-        expect(requestForm).toContain('Provider printed name and signature');
+        expect(requestForm).toContain('Provider printed name, signature, and date signed');
         expect(requestForm).toContain('Provider office name, address, and phone number');
-        expect(requestForm).toContain('<li>Date signed</li>');
+        expect(requestForm).not.toContain('<li>Date signed</li>');
         expect(requestForm).toContain('Drag and drop medical documentation here.');
         expect(requestForm).not.toContain('Fields marked with * are required.');
     });
@@ -67,7 +67,10 @@ describe('new request doctor fields', () => {
         expect(requestForm).toContain('aria-label="Medical office/clinic address"');
         expect(requestForm).toContain("requiredLabel('Phone Number')");
         expect(requestForm).toContain("requiredLabel('Provider Signature')");
-        expect(requestForm.match(/id="doctor-(?:name|office|address|phone|signed-off)"[\s\S]*?required/g)?.length).toBe(5);
+        const signatureInput = requestForm.match(/<input\s+id="doctor-signed-off"[\s\S]*?\/>/)?.[0];
+        expect(signatureInput).toContain('aria-required="true"');
+        expect(signatureInput).not.toMatch(/\srequired(?:\s|=)/);
+        expect(signatureInput).not.toContain('title=');
         expect(requestForm).toContain('doctorHasSignedOff: false');
         expect(requestForm).toContain('v-model="form.doctorHasSignedOff"');
         expect(requestForm).toContain('doctorHasSignedOff: form.doctorHasSignedOff');

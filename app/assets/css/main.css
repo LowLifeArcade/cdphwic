@@ -1873,3 +1873,16 @@ select.form-input {
         min-width: 0;
     }
 }
+
+.local-agency-fields {
+    margin: 1.5rem 0 0;
+    padding: 1rem;
+    border: 1px solid var(--border, #dce3e9);
+    border-radius: 0.75rem;
+    min-width: 0;
+}
+
+.local-agency-fields legend {
+    padding: 0 0.5rem;
+    font-weight: 600;
+}

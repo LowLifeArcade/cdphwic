@@ -1,0 +1,22 @@
+import { describe, expect, it } from 'vitest';
+import { addDiagnosis, validateAgencyFields } from '../shared/newRequestFields';
+
+describe('new request entries', () => {
+    it('adds trimmed diagnoses individually without duplicates or blanks', () => {
+        expect(addDiagnosis(['Food allergy'], '  GI disorder  ')).toEqual(['Food allergy', 'GI disorder']);
+        expect(addDiagnosis(['Food allergy'], 'food allergy')).toEqual(['Food allergy']);
+        expect(addDiagnosis([], '  ')).toEqual([]);
+    });
+    it('requires agency details, insurance, and a Medi-Cal status only for Medi-Cal', () => {
+        const valid = { familyId: '123', individualId: '456', benefitsStartDate: '2026-10-22', requestKind: 'new', medicalStatus: 'no', mediCalStatus: '', doctorHasSignedOff: true, productForm: 'powder', readyToFeedJustification: '' };
+        expect(validateAgencyFields(valid)).toBe('');
+        for (const key of ['familyId', 'individualId', 'benefitsStartDate', 'requestKind', 'medicalStatus']) {
+            expect(validateAgencyFields({ ...valid, [key]: '' })).not.toBe('');
+        }
+        expect(validateAgencyFields({ ...valid, medicalStatus: 'yes' })).toContain('Medi-Cal Status');
+        expect(validateAgencyFields({ ...valid, medicalStatus: 'yes', mediCalStatus: 'Denied' })).toBe('');
+        expect(validateAgencyFields({ ...valid, doctorHasSignedOff: false })).toContain('signature');
+        expect(validateAgencyFields({ ...valid, productForm: 'ready-to-feed' })).toContain('ready-to-feed');
+        expect(validateAgencyFields({ ...valid, productForm: 'ready-to-feed', readyToFeedJustification: 'Unable to mix powder' })).toBe('');
+    });
+});

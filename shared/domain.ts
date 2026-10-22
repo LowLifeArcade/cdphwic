@@ -71,6 +71,7 @@ export interface RequestRecord {
     };
     prescriptionSignedDate?: string;
     medicalStatus?: 'yes' | 'no' | 'pending';
+    mediCalStatus?: 'Denied' | 'Pending PA' | 'Product Not Covered';
     diagnosis?: string;
     comments?: string;
     internalComments?: string;

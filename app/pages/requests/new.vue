@@ -1,10 +1,23 @@
 <script setup lang="ts">
 import type { ProductForm } from '~/../shared/domain';
+import { addDiagnosis, validateAgencyFields } from '~/../shared/newRequestFields';
 import { formatPhoneNumber, normalizePhoneNumber } from '~/../shared/phone';
 
 const router = useRouter();
 const fileInput = ref<HTMLInputElement>();
 const submitted = ref(false);
+const submissionError = ref('');
+const diagnosisInput = ref('');
+const diagnoses = computed(() => form.diagnosis.split('\n').map((value) => value.trim()).filter(Boolean));
+
+function commitDiagnosis() {
+    form.diagnosis = addDiagnosis(diagnoses.value, diagnosisInput.value).join('\n');
+    diagnosisInput.value = '';
+}
+
+function removeDiagnosis(index: number) {
+    form.diagnosis = diagnoses.value.filter((_, itemIndex) => itemIndex !== index).join('\n');
+}
 const parsing = ref(false);
 const parserMessage = ref('');
 const parserError = ref('');
@@ -27,7 +40,8 @@ const form = reactive({
     otherFormulaName: '',
     productForm: 'powder' as ProductForm,
     readyToFeedJustification: '',
-    medicalStatus: 'pending',
+    medicalStatus: '',
+    mediCalStatus: '',
     diagnosis: '',
     ouncesPrescribed: '',
     durationMonths: '1',
@@ -82,6 +96,7 @@ async function processPrescription(file: File) {
         Object.assign(form, {
             ...result.extracted,
             doctorOfficePhone: formatPhoneNumber(result.extracted.doctorOfficePhone),
+            medicalStatus: result.extracted.medicalStatus === 'pending' ? '' : result.extracted.medicalStatus,
         });
         parserMessage.value = result.message;
         parserMissing.value = result.missing;
@@ -167,6 +182,9 @@ async function handleDrop(event: DragEvent) {
 
 async function submitRequest() {
     submitted.value = false;
+    commitDiagnosis();
+    submissionError.value = validateAgencyFields(form);
+    if (submissionError.value) return;
     const participantName = `${form.patientFirstName} ${form.patientLastName}`.trim();
     const body = new FormData();
     body.append(
@@ -186,6 +204,7 @@ async function submitRequest() {
             productName: productName.value,
             productForm: form.productForm,
             medicalStatus: form.medicalStatus,
+            mediCalStatus: form.medicalStatus === 'yes' ? form.mediCalStatus : undefined,
             diagnosis: form.diagnosis,
             ouncesPrescribed: Number(form.ouncesPrescribed),
             durationMonths: Number(form.durationMonths),
@@ -235,10 +254,9 @@ async function submitRequest() {
                 <strong>Before uploading, check that the medical documentation includes:</strong>
                 <ul>
                     <li>Patient first name, last name, and date of birth</li>
-                    <li>Formula name, formula form, ounces prescribed, and duration in months</li>
-                    <li>Provider printed name and signature</li>
+                    <li>Formula name, form, amount in ounces per day, and duration in months</li>
+                    <li>Provider printed name, signature, and date signed</li>
                     <li>Provider office name, address, and phone number</li>
-                    <li>Date signed</li>
                 </ul>
             </div>
             <div
@@ -374,56 +392,75 @@ async function submitRequest() {
                     />
                 </div>
                 <div class="form-field">
-                    <label for="family">WIC family ID</label>
-                    <input
-                        id="family"
-                        v-model="form.familyId"
-                        class="form-input"
-                    />
-                </div>
-                <div class="form-field">
-                    <label for="individual">WIC individual ID</label>
-                    <input
-                        id="individual"
-                        v-model="form.individualId"
-                        class="form-input"
-                    />
-                </div>
-                <div class="form-field">
-                    <label for="benefits-start">{{ requiredLabel('Benefits start date') }}</label>
-                    <input
-                        id="benefits-start"
-                        v-model="form.benefitsStartDate"
-                        class="form-input"
-                        type="date"
-                        required
-                    />
-                </div>
-                <div class="form-field">
-                    <label for="request-type">{{ requiredLabel('Request type') }}</label>
-                    <select
-                        id="request-type"
-                        v-model="form.requestKind"
-                        class="form-input"
-                        required
-                    >
-                        <option value="new">New request</option>
-                        <option value="extension">Extension</option>
-                    </select>
-                </div>
-                <div class="form-field">
-                    <label for="medical">Health Insurance</label>
+                    <label for="medical">{{ requiredLabel('Health Insurance') }}</label>
                     <select
                         id="medical"
                         v-model="form.medicalStatus"
+                        required
                         class="form-input"
                     >
-                        <option value="pending">Pending</option>
-                        <option value="yes">Yes</option>
-                        <option value="no">No</option>
+                        <option disabled value="">Select health insurance</option>
+                        <option value="yes">Medi-Cal</option>
+                        <option value="no">Private Insurance</option>
+                    </select>
+                    <small>Required to submit the request; not required for complete medical documentation.</small>
+                </div>
+                <div v-if="form.medicalStatus === 'yes'" class="form-field">
+                    <label for="medi-cal-status">{{ requiredLabel('Medi-Cal Status') }}</label>
+                    <select id="medi-cal-status" v-model="form.mediCalStatus" class="form-input" required>
+                        <option disabled value="">Select Medi-Cal status</option>
+                        <option value="Denied">Denied</option>
+                        <option value="Pending PA">Pending PA</option>
+                        <option value="Product Not Covered">Product Not Covered</option>
                     </select>
                 </div>
             </div>
+            <fieldset class="form-field full local-agency-fields">
+                <legend>Local Agency Information</legend>
+                <p>To be completed by the local agency. These fields are required to submit the request and are not part of the medical documentation.</p>
+                <div class="form-grid">
+                    <div class="form-field">
+                        <label for="family">{{ requiredLabel('WIC Family ID') }}</label>
+                        <input
+                            id="family"
+                            v-model="form.familyId"
+                            required
+                            class="form-input"
+                        />
+                    </div>
+                    <div class="form-field">
+                        <label for="individual">{{ requiredLabel('WIC Individual ID') }}</label>
+                        <input
+                            id="individual"
+                            v-model="form.individualId"
+                            required
+                            class="form-input"
+                        />
+                    </div>
+                    <div class="form-field">
+                        <label for="benefits-start">{{ requiredLabel('Benefits Start Date') }}</label>
+                        <input
+                            id="benefits-start"
+                            v-model="form.benefitsStartDate"
+                            class="form-input"
+                            type="date"
+                            required
+                        />
+                    </div>
+                    <div class="form-field">
+                        <label for="request-type">{{ requiredLabel('Request Type') }}</label>
+                        <select
+                            id="request-type"
+                            v-model="form.requestKind"
+                            class="form-input"
+                            required
+                        >
+                            <option value="new">New request</option>
+                            <option value="extension">Extension</option>
+                        </select>
+                    </div>
+                </div>
+            </fieldset>
         </section>
 
         <section class="form-section">
@@ -474,17 +511,18 @@ async function submitRequest() {
                     >
                         <option value="powder">Powder</option>
                         <option value="concentrate">Concentrate</option>
-                        <option value="ready-to-feed">Ready to feed</option>
+                        <option value="ready-to-feed">Ready-to-Feed</option>
                     </select>
                 </div>
                 <div
                     v-if="form.productForm === 'ready-to-feed'"
                     class="form-field full"
                 >
-                    <label for="rtf-justification">Why is ready to feed required?</label>
+                    <label for="rtf-justification">{{ requiredLabel('List reasons why ready-to-feed is needed.') }}</label>
                     <textarea
                         id="rtf-justification"
                         v-model="form.readyToFeedJustification"
+                        required
                         class="form-textarea"
                     />
                 </div>
@@ -494,8 +532,9 @@ async function submitRequest() {
                         id="ounces"
                         v-model="form.ouncesPrescribed"
                         class="form-input"
-                        type="number"
-                        min="1"
+                        type="text"
+                        inputmode="decimal"
+                        pattern="(?:[0-9]+(?:\.[0-9]+)?|\.[0-9]+)"
                     />
                 </div>
                 <div class="form-field">
@@ -510,12 +549,22 @@ async function submitRequest() {
                     />
                 </div>
                 <div class="form-field full">
-                    <label for="diagnosis">Qualifying Diagnosis</label>
+                    <label for="diagnosis">Qualifying Diagnosis(es)</label>
                     <input
                         id="diagnosis"
-                        v-model="form.diagnosis"
+                        v-model="diagnosisInput"
+                        @keydown.enter.prevent="commitDiagnosis"
+                        aria-describedby="diagnosis-help"
                         class="form-input"
                     />
+                    <small id="diagnosis-help">Press Enter to add each diagnosis.</small>
+                    <button type="button" class="text-button" :disabled="!diagnosisInput.trim()" @click="commitDiagnosis">Add diagnosis</button>
+                    <ul v-if="diagnoses.length" aria-label="Added diagnoses" aria-live="polite">
+                        <li v-for="(diagnosis, index) in diagnoses" :key="diagnosis">
+                            {{ diagnosis }}
+                            <button type="button" class="text-button" :aria-label="`Remove diagnosis: ${diagnosis}`" @click="removeDiagnosis(index)">Remove</button>
+                        </li>
+                    </ul>
                 </div>
             </div>
         </section>
@@ -545,11 +594,13 @@ async function submitRequest() {
                             id="doctor-signed-off"
                             v-model="form.doctorHasSignedOff"
                             type="checkbox"
-                            required
+                            aria-required="true"
+                            aria-describedby="signature-confirmation"
                         />
                         <span>{{ requiredLabel('Provider Signature') }}</span>
                     </label>
                 </div>
+                <p id="signature-confirmation" class="form-field full">I confirm the medical documentation includes the provider’s signature.</p>
                 <div class="form-field">
                     <label for="prescription-signed-date">Date Signed</label>
                     <input
@@ -601,6 +652,7 @@ async function submitRequest() {
             <div class="panel-heading">
                 <div>
                     <h2>Additional Information</h2>
+                    <span>Provide any additional details relevant to this request.</span>
                 </div>
             </div>
             <textarea
@@ -610,6 +662,7 @@ async function submitRequest() {
             />
         </section>
 
+        <p v-if="submissionError" role="alert">{{ submissionError }}</p>
         <div class="form-actions">
             <NuxtLink
                 class="button button-ghost"
@@ -620,7 +673,7 @@ async function submitRequest() {
                 class="button button-primary"
                 type="submit"
             >
-                Submit request
+                Submit
             </button>
         </div>
         <p
