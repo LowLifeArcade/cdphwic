@@ -54,7 +54,7 @@ describe('request operations UI', () => {
         expect(drawer).toContain('previousDecision');
         expect(drawer).toContain('approved: false');
         expect(drawer).toContain('approved: true');
-        expect(drawer).toContain("status: 'in_progress'");
+        expect(drawer).toContain('status: getApprovalStatus(draft.status ?? props.request!.status)');
         expect(drawer).toContain("status: draft.status === 'denied' ? 'opened' : draft.status");
         expect(drawer).toContain('const restoredDecision = previousDecision.value ??');
         expect(drawer).toContain('v-else class="decision-buttons"');

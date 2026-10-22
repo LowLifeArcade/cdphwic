@@ -17,7 +17,8 @@ describe('product catalog actions', () => {
     it('supports catalog views, filters, and coverage tags', () => {
         const catalog = readFileSync(new URL('../app/pages/products/index.vue', import.meta.url), 'utf8');
 
-        expect(catalog).toContain("ref<'grid' | 'list'>('grid')");
+        expect(catalog).toContain("useCookie<string>('products-view-mode'");
+        expect(catalog).toContain("savedViewMode.value === 'list' ? 'list' : 'grid'");
         expect(catalog).toContain('categoryFilter');
         expect(catalog).toContain('coverageFilter');
         expect(catalog).toContain('class="coverage-tag"');

@@ -2,7 +2,18 @@
 import type { ProductRecord } from '~/../shared/domain';
 
 const { data } = await useFetch('/api/products');
-const viewMode = ref<'grid' | 'list'>('grid');
+const savedViewMode = useCookie<string>('products-view-mode', {
+    default: () => 'grid',
+    maxAge: 60 * 60 * 24 * 365,
+    sameSite: 'lax',
+    path: '/',
+});
+const viewMode = computed<'grid' | 'list'>({
+    get: () => savedViewMode.value === 'list' ? 'list' : 'grid',
+    set: (value) => {
+        savedViewMode.value = value;
+    },
+});
 const search = ref('');
 const categoryFilter = ref('');
 const formFilter = ref('');
@@ -102,17 +113,52 @@ onBeforeUnmount(() => document.removeEventListener('click', closeProductMenu));
             <option value="wic">WIC</option>
             <option value="medical">Medical</option>
         </select>
-        <label class="view-select">
-            <span>View as</span>
-            <select
-                v-model="viewMode"
-                class="filter-select"
-                aria-label="View as"
+        <div
+            class="product-view-toggle"
+            role="group"
+            aria-label="Product view"
+        >
+            <button
+                class="product-view-button"
+                type="button"
+                :aria-pressed="viewMode === 'grid'"
+                @click="viewMode = 'grid'"
             >
-                <option value="grid">Grid</option>
-                <option value="list">List</option>
-            </select>
-        </label>
+                <svg
+                    width="16"
+                    height="16"
+                    viewBox="0 0 16 16"
+                    fill="none"
+                    stroke="currentColor"
+                    aria-hidden="true"
+                >
+                    <rect x="2" y="2" width="4" height="4" rx="0.5" />
+                    <rect x="10" y="2" width="4" height="4" rx="0.5" />
+                    <rect x="2" y="10" width="4" height="4" rx="0.5" />
+                    <rect x="10" y="10" width="4" height="4" rx="0.5" />
+                </svg>
+                Grid
+            </button>
+            <button
+                class="product-view-button"
+                type="button"
+                :aria-pressed="viewMode === 'list'"
+                @click="viewMode = 'list'"
+            >
+                <svg
+                    width="16"
+                    height="16"
+                    viewBox="0 0 16 16"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-linecap="round"
+                    aria-hidden="true"
+                >
+                    <path d="M2 3h1m3 0h8M2 8h1m3 0h8M2 13h1m3 0h8" />
+                </svg>
+                List
+            </button>
+        </div>
     </div>
     <div
         v-if="viewMode === 'grid'"

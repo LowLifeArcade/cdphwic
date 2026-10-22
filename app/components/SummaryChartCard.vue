@@ -4,7 +4,7 @@ const maxValue = (items: Array<{ value: number }>) => Math.max(...items.map((ite
 </script>
 
 <template>
-    <article class="panel chart-card">
+    <SummaryTile>
         <div class="panel-heading">
             <div>
                 <h2>{{ title }}</h2>
@@ -33,5 +33,5 @@ const maxValue = (items: Array<{ value: number }>) => Math.max(...items.map((ite
                 </div>
             </div>
         </div>
-    </article>
+    </SummaryTile>
 </template>

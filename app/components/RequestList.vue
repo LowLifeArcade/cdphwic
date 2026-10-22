@@ -3,6 +3,9 @@ import type { ProductRecord, RequestRecord } from '~/../shared/domain';
 const props = defineProps<{ requests: RequestRecord[]; products: ProductRecord[] }>();
 const identity = useState<'admin' | 'agency' | 'internal'>('demo-identity', () => 'admin');
 const selected = ref<RequestRecord | null>(null);
+const selectedIndex = computed(() => props.requests.findIndex((request) => request.id === selected.value?.id));
+const previousRequest = computed(() => props.requests[selectedIndex.value - 1]);
+const nextRequest = computed(() => selectedIndex.value < 0 ? undefined : props.requests[selectedIndex.value + 1]);
 const { data: agencyData } = await useFetch('/api/agencies');
 const agencies = computed(() => agencyData.value?.agencies ?? []);
 const members = computed(() => agencyData.value?.members ?? []);
@@ -63,18 +66,20 @@ async function openRequest(request: RequestRecord) {
             >
             <span
                 ><strong>{{ request.productName }}</strong
-                ><small
-                    v-if="request.specialOrder"
-                    class="request-tag"
-                    >Special order</small
-                ><small
-                    v-if="request.approved"
-                    class="request-tag"
-                    >Approved</small
                 ><small>{{ request.unitsRequested ?? '—' }} units</small></span
             >
             <span
-                ><StatusBadge :status="request.status" /><small>Submitted {{ formatDate(request.submissionDate) }}</small></span
+                ><span class="request-status-tags">
+                    <StatusBadge :status="request.status" />
+                    <span
+                        v-if="request.specialOrder"
+                        class="request-tag"
+                    >Special order</span>
+                    <span
+                        v-if="request.approved"
+                        class="request-tag"
+                    >Approved</span>
+                </span><small>Submitted {{ formatDate(request.submissionDate) }}</small></span
             >
             <span
                 ><strong>{{ request.eta ?? '—' }}</strong
@@ -94,10 +99,15 @@ async function openRequest(request: RequestRecord) {
         </div>
         <RequestDetailDrawer
             v-if="selected"
+            :key="selected.id"
             :request="selected"
             :products="props.products"
             :agency="selectedAgency"
             :rep="selectedRep"
+            :has-previous="!!previousRequest"
+            :has-next="!!nextRequest"
+            @previous="previousRequest && openRequest(previousRequest)"
+            @next="nextRequest && openRequest(nextRequest)"
             @close="selected = null"
         />
         <button

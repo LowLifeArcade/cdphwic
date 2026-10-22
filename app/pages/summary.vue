@@ -105,7 +105,7 @@ const capacityPercent = computed(() => Math.round((summary.value.monthlyCases / 
             :items="summary.masterLogByMonth ?? []"
             accent="#5ca9d6"
         />
-        <article class="panel">
+        <SummaryTile>
             <div class="panel-heading">
                 <div>
                     <h2>Cases vs monthly maximum</h2>
@@ -130,6 +130,6 @@ const capacityPercent = computed(() => Math.round((summary.value.monthlyCases / 
             <p class="muted-copy">
                 Average units per month YTD: <strong>{{ summary.averageUnitsPerMonth }}</strong>
             </p>
-        </article>
+        </SummaryTile>
     </div>
 </template>

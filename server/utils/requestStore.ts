@@ -28,7 +28,11 @@ export function updateRequestRecord(id: number, updates: Partial<RequestRecord>)
     if (index < 0) {
         return undefined;
     }
-    requestStore[index] = { ...requestStore[index], ...updates, id };
+    const previous = requestStore[index];
+    const shippedAt = previous.shippedAt ?? (
+        previous.status === 'shipped' || updates.status === 'shipped' ? new Date().toISOString() : undefined
+    );
+    requestStore[index] = { ...previous, ...updates, shippedAt, id };
     return requestStore[index];
 }
 

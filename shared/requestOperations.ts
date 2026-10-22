@@ -1,4 +1,20 @@
-import type { RequestRecord } from './domain';
+import type { RequestRecord, RequestStatus } from './domain';
+
+export function canSelectShippedStatus(request: Partial<RequestRecord>): boolean {
+    return Boolean(
+        (request.shippedAt || request.status === 'shipped') &&
+        request.eta?.trim() &&
+        request.trackingNumbers?.some((tracking) => tracking.number.trim()),
+    );
+}
+
+export function getApprovalStatus(status: RequestStatus): RequestStatus {
+    if (['opened', 'needs_info', 'unopened', 'denied'].includes(status)) {
+        return 'in_progress';
+    }
+
+    return status;
+}
 
 type BenefitIssuance = NonNullable<RequestRecord['benefitIssuances']>[number];
 

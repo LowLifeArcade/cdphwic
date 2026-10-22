@@ -51,6 +51,7 @@ export interface RequestRecord {
     approvalDate?: string;
     denialDate?: string;
     eta?: string;
+    shippedAt?: string;
     unitsRequested?: number;
     ouncesPrescribed?: number;
     durationMonths?: number;

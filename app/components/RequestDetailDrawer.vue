@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import type { ProductRecord, RequestRecord } from '~/../shared/domain';
-import { getNextBenefitMonth, validateBenefitIssuances, canGenerateAuthorizationForm } from '~/../shared/requestOperations';
+import type { ProductRecord, RequestRecord, RequestStatus } from '~/../shared/domain';
+import { getNextBenefitMonth, validateBenefitIssuances, canGenerateAuthorizationForm, getApprovalStatus, canSelectShippedStatus } from '~/../shared/requestOperations';
 import { normalizeRequestedMonths, validateRequestDetailNumbers, validateSurplusItems } from '~/../shared/requestDetailFields';
 import { formatPhoneNumber, normalizePhoneNumber } from '~/../shared/phone';
 
@@ -12,8 +12,10 @@ const props = defineProps<{
     products?: ProductRecord[];
     agency?: Agency;
     rep?: Representative;
+    hasPrevious?: boolean;
+    hasNext?: boolean;
 }>();
-const emit = defineEmits<{ close: [] }>();
+const emit = defineEmits<{ close: []; previous: []; next: [] }>();
 const identity = useState<'admin' | 'agency' | 'internal'>('demo-identity', () => 'admin');
 const draft = reactive<Partial<RequestRecord>>({});
 const saving = ref(false);
@@ -293,6 +295,19 @@ function rememberPreviousDecision() {
     };
 }
 
+function changeStatus(event: Event) {
+    const select = event.target as HTMLSelectElement;
+    const status = select.value as RequestStatus;
+    if (status === 'denied') {
+        select.value = draft.status ?? '';
+        setStaffDecision('denied');
+        return;
+    }
+
+    draft.status = status;
+    save({ status });
+}
+
 function setStaffDecision(status: 'approved' | 'denied') {
     if (status === 'denied') {
         pendingDecision.value = 'denied';
@@ -305,7 +320,7 @@ function applyStaffDecision(status: 'approved' | 'denied') {
     rememberPreviousDecision();
     save(
         status === 'approved'
-            ? { approved: true, status: 'in_progress', nextSteps: draft.nextSteps, staffNotes: draft.staffNotes }
+            ? { approved: true, status: getApprovalStatus(draft.status ?? props.request!.status), nextSteps: draft.nextSteps, staffNotes: draft.staffNotes }
             : { approved: false, status: 'denied', nextSteps: draft.nextSteps, staffNotes: draft.staffNotes },
     );
 }
@@ -438,24 +453,50 @@ function handlePhotos(event: Event) {
             <div>
                 <span class="eyebrow">Request #{{ request.id }}</span>
                 <h2>{{ request.participantName }}</h2>
-                <span class="request-tag">{{ request.requestKind === 'extension' ? 'Extension' : 'New' }}</span>
             </div>
-            <button
-                class="icon-button"
-                aria-label="Close details"
-                @click="emit('close')"
-            >
-                ×
-            </button>
+            <div class="drawer-header-actions">
+                <button
+                    class="button button-ghost"
+                    type="button"
+                    aria-label="Previous request"
+                    :disabled="!hasPrevious || saving"
+                    @click="emit('previous')"
+                >
+                    ‹ Prev
+                </button>
+                <button
+                    class="button button-ghost"
+                    type="button"
+                    aria-label="Next request"
+                    :disabled="!hasNext || saving"
+                    @click="emit('next')"
+                >
+                    Next ›
+                </button>
+                <button
+                    class="icon-button"
+                    type="button"
+                    aria-label="Close details"
+                    @click="emit('close')"
+                >
+                    ×
+                </button>
+            </div>
         </div>
         <div class="drawer-status">
-            <StatusBadge :status="draft.status ?? request.status" />
+            <div class="request-status-tags">
+                <StatusBadge :status="draft.status ?? request.status" />
+                <span class="request-tag">{{ request.requestKind === 'extension' ? 'Extension' : 'New' }}</span>
+                <span
+                    v-if="request.specialOrder"
+                    class="request-tag"
+                >Special order</span>
+                <span
+                    v-if="request.approved"
+                    class="request-tag"
+                >Approved</span>
+            </div>
             <span>Submitted {{ request.submissionDate ?? '—' }}</span>
-            <span
-                v-if="request.specialOrder"
-                class="request-tag"
-                >Special order</span
-            >
         </div>
         <section class="detail-section participant-summary">
             <div class="section-heading">
@@ -619,13 +660,19 @@ function handlePhotos(event: Event) {
             <label class="field-label">
                 Status
                 <select
-                    v-model="draft.status"
+                    :value="draft.status"
                     class="form-input"
-                    @change="save({ status: draft.status })"
+                    :disabled="saving"
+                    @change="changeStatus"
                 >
                     <option value="opened">Opened</option>
                     <option value="in_progress">In progress</option>
                     <option value="needs_info">Need info</option>
+                    <option value="denied">Denied</option>
+                    <option
+                        v-if="canSelectShippedStatus(request ?? {})"
+                        value="shipped"
+                    >Shipped</option>
                 </select>
             </label>
             <div class="decision-actions">
