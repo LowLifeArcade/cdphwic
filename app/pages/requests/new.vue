@@ -214,7 +214,6 @@ async function submitRequest() {
         <div>
             <p class="eyebrow">Requests</p>
             <h1>New request</h1>
-            <p>Upload the prescription first, then complete the request details.</p>
         </div>
         <NuxtLink
             class="button button-ghost"
@@ -229,28 +228,17 @@ async function submitRequest() {
         <section class="form-section prescription-first">
             <div class="panel-heading">
                 <div>
-                    <h2>Prescription</h2>
-                    <span
-                        >Upload a PDF or photo. Photos are accepted for reference but must be entered manually.
-                        <a
-                            href="https://www.cdph.ca.gov/CDPH%20Document%20Library/ControlledForms/cdph247.pdf"
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            class="highlight"
-                        >
-                            Download the CDPH prescription form here.
-                        </a></span
-                    >
+                    <h2>Medical Documentation</h2>
                 </div>
             </div>
             <div class="prescription-requirements">
-                <strong>Before uploading, check that the prescription includes:</strong>
+                <strong>Before uploading, check that the medical documentation includes:</strong>
                 <ul>
                     <li>Patient first name, last name, and date of birth</li>
-                    <li>Formula name, formula form, ounces prescribed, and duration in months (usually 1–6)</li>
-                    <li>Doctor printed name and signature</li>
-                    <li>Doctor office name, address, and phone number</li>
-                    <li>Date the prescription form was signed</li>
+                    <li>Formula name, formula form, ounces prescribed, and duration in months</li>
+                    <li>Provider printed name and signature</li>
+                    <li>Provider office name, address, and phone number</li>
+                    <li>Date signed</li>
                 </ul>
             </div>
             <div
@@ -259,7 +247,7 @@ async function submitRequest() {
                 @drop.prevent="handleDrop"
             >
                 <template v-if="!selectedPrescription">
-                    <strong>Drop a prescription here</strong>
+                    <strong>Drag and drop medical documentation here.</strong>
                     <span>Choose a PDF or photo. PDFs populate matching form fields; photos require manual entry.</span>
                     <input
                         ref="fileInput"
@@ -353,90 +341,12 @@ async function submitRequest() {
         <section class="form-section">
             <div class="panel-heading">
                 <div>
-                    <h2>Doctor and prescription</h2>
-                    <span>Enter the doctor information shown on the prescription.</span>
+                    <h2>Participant</h2>
                 </div>
             </div>
             <div class="form-grid">
                 <div class="form-field">
-                    <label for="doctor-name">{{ requiredLabel('Doctor printed name') }}</label>
-                    <input
-                        id="doctor-name"
-                        v-model="form.doctorPrintedName"
-                        class="form-input"
-                        required
-                    />
-                </div>
-                <div class="form-field">
-                    <label for="doctor-office">{{ requiredLabel('Doctor office name') }}</label>
-                    <input
-                        id="doctor-office"
-                        v-model="form.doctorOfficeName"
-                        class="form-input"
-                        required
-                    />
-                </div>
-                <div class="form-field full">
-                    <label for="doctor-address">{{ requiredLabel('Doctor office address') }}</label>
-                    <input
-                        id="doctor-address"
-                        v-model="form.doctorOfficeAddress"
-                        class="form-input"
-                        required
-                    />
-                </div>
-                <div class="form-field">
-                    <label for="doctor-phone">{{ requiredLabel('Doctor office phone') }}</label>
-                    <input
-                        id="doctor-phone"
-                        v-model="form.doctorOfficePhone"
-                        class="form-input"
-                        type="tel"
-                        inputmode="tel"
-                        autocomplete="tel"
-                        pattern="\(\d{3}\) \d{3}-\d{4}"
-                        minlength="14"
-                        maxlength="14"
-                        @input="formatDoctorPhone"
-                        required
-                    />
-                </div>
-                <div class="form-field">
-                    <label for="prescription-signed-date">Prescription signed date</label>
-                    <input
-                        id="prescription-signed-date"
-                        v-model="form.prescriptionSignedDate"
-                        class="form-input"
-                        type="date"
-                    />
-                </div>
-                <div class="form-field full checkbox-confirmation">
-                    <label
-                        class="checkbox-control"
-                        for="doctor-signed-off"
-                    >
-                        <input
-                            id="doctor-signed-off"
-                            v-model="form.doctorHasSignedOff"
-                            type="checkbox"
-                            required
-                        />
-                        <span>{{ requiredLabel('Doctor has signed off') }}</span>
-                    </label>
-                </div>
-            </div>
-        </section>
-
-        <section class="form-section">
-            <div class="panel-heading">
-                <div>
-                    <h2>Participant and request</h2>
-                    <span>Fields marked with * are required.</span>
-                </div>
-            </div>
-            <div class="form-grid">
-                <div class="form-field">
-                    <label for="patient-first">{{ requiredLabel('Patient first name') }}</label>
+                    <label for="patient-first">{{ requiredLabel('Patient First Name') }}</label>
                     <input
                         id="patient-first"
                         v-model="form.patientFirstName"
@@ -445,7 +355,7 @@ async function submitRequest() {
                     />
                 </div>
                 <div class="form-field">
-                    <label for="patient-last">{{ requiredLabel('Patient last name') }}</label>
+                    <label for="patient-last">{{ requiredLabel('Patient Last Name') }}</label>
                     <input
                         id="patient-last"
                         v-model="form.patientLastName"
@@ -454,7 +364,7 @@ async function submitRequest() {
                     />
                 </div>
                 <div class="form-field">
-                    <label for="dob">{{ requiredLabel('Date of birth') }}</label>
+                    <label for="dob">{{ requiredLabel('Date of Birth') }}</label>
                     <input
                         id="dob"
                         v-model="form.participantDob"
@@ -502,7 +412,7 @@ async function submitRequest() {
                     </select>
                 </div>
                 <div class="form-field">
-                    <label for="medical">Medi-Cal status</label>
+                    <label for="medical">Health Insurance</label>
                     <select
                         id="medical"
                         v-model="form.medicalStatus"
@@ -513,8 +423,18 @@ async function submitRequest() {
                         <option value="no">No</option>
                     </select>
                 </div>
+            </div>
+        </section>
+
+        <section class="form-section">
+            <div class="panel-heading">
+                <div>
+                    <h2>Medical Formula/Nutritionals and Qualifying Diagnosis</h2>
+                </div>
+            </div>
+            <div class="form-grid">
                 <div class="form-field">
-                    <label for="formula">{{ requiredLabel('Formula') }}</label>
+                    <label for="formula">{{ requiredLabel('Formula Name') }}</label>
                     <select
                         id="formula"
                         v-model="form.productId"
@@ -536,7 +456,7 @@ async function submitRequest() {
                     v-if="form.productId === 'other'"
                     class="form-field"
                 >
-                    <label for="other-formula">{{ requiredLabel('Formula name') }}</label>
+                    <label for="other-formula">{{ requiredLabel('Formula Name') }}</label>
                     <input
                         id="other-formula"
                         v-model="form.otherFormulaName"
@@ -545,7 +465,7 @@ async function submitRequest() {
                     />
                 </div>
                 <div class="form-field">
-                    <label for="formula-form">{{ requiredLabel('Formula form') }}</label>
+                    <label for="formula-form">{{ requiredLabel('Form') }}</label>
                     <select
                         id="formula-form"
                         v-model="form.productForm"
@@ -569,7 +489,7 @@ async function submitRequest() {
                     />
                 </div>
                 <div class="form-field">
-                    <label for="ounces">Amount prescribed (ounces)</label>
+                    <label for="ounces">Amount Per Day (in ounces)</label>
                     <input
                         id="ounces"
                         v-model="form.ouncesPrescribed"
@@ -579,7 +499,7 @@ async function submitRequest() {
                     />
                 </div>
                 <div class="form-field">
-                    <label for="duration">Duration (months)</label>
+                    <label for="duration">Duration (in months)</label>
                     <input
                         id="duration"
                         v-model="form.durationMonths"
@@ -590,7 +510,7 @@ async function submitRequest() {
                     />
                 </div>
                 <div class="form-field full">
-                    <label for="diagnosis">Diagnosis</label>
+                    <label for="diagnosis">Qualifying Diagnosis</label>
                     <input
                         id="diagnosis"
                         v-model="form.diagnosis"
@@ -603,8 +523,84 @@ async function submitRequest() {
         <section class="form-section">
             <div class="panel-heading">
                 <div>
-                    <h2>Additional information</h2>
-                    <span>Optional notes for the reviewing staff member.</span>
+                    <h2>Health Care Provider</h2>
+                </div>
+            </div>
+            <div class="form-grid">
+                <div class="form-field">
+                    <label for="doctor-name">{{ requiredLabel('Provider Name (printed)') }}</label>
+                    <input
+                        id="doctor-name"
+                        v-model="form.doctorPrintedName"
+                        class="form-input"
+                        required
+                    />
+                </div>
+                <div class="form-field full checkbox-confirmation">
+                    <label
+                        class="checkbox-control"
+                        for="doctor-signed-off"
+                    >
+                        <input
+                            id="doctor-signed-off"
+                            v-model="form.doctorHasSignedOff"
+                            type="checkbox"
+                            required
+                        />
+                        <span>{{ requiredLabel('Provider Signature') }}</span>
+                    </label>
+                </div>
+                <div class="form-field">
+                    <label for="prescription-signed-date">Date Signed</label>
+                    <input
+                        id="prescription-signed-date"
+                        v-model="form.prescriptionSignedDate"
+                        class="form-input"
+                        type="date"
+                    />
+                </div>
+                <div class="form-field full">
+                    <label for="doctor-office">{{ requiredLabel('Medical Office/Clinic Name and Address') }}</label>
+                    <input
+                        id="doctor-office"
+                        aria-label="Medical office/clinic name"
+                        placeholder="Office/clinic name"
+                        v-model="form.doctorOfficeName"
+                        class="form-input"
+                        required
+                    />
+                    <input
+                        id="doctor-address"
+                        aria-label="Medical office/clinic address"
+                        placeholder="Office/clinic address"
+                        v-model="form.doctorOfficeAddress"
+                        class="form-input"
+                        required
+                    />
+                </div>
+                <div class="form-field">
+                    <label for="doctor-phone">{{ requiredLabel('Phone Number') }}</label>
+                    <input
+                        id="doctor-phone"
+                        v-model="form.doctorOfficePhone"
+                        class="form-input"
+                        type="tel"
+                        inputmode="tel"
+                        autocomplete="tel"
+                        pattern="\(\d{3}\) \d{3}-\d{4}"
+                        minlength="14"
+                        maxlength="14"
+                        @input="formatDoctorPhone"
+                        required
+                    />
+                </div>
+            </div>
+        </section>
+
+        <section class="form-section">
+            <div class="panel-heading">
+                <div>
+                    <h2>Additional Information</h2>
                 </div>
             </div>
             <textarea

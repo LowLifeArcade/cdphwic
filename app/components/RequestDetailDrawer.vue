@@ -7,6 +7,14 @@ import { formatPhoneNumber, normalizePhoneNumber } from '~/../shared/phone';
 type Agency = { name: string; shippingAddress: string; city: string; state: string; postalCode: string };
 type Representative = { name: string; email: string; phone?: string };
 
+function formatSubmittedDate(value?: string) {
+    if (!value) {
+        return '—';
+    }
+    const match = /^(\d{4})-(\d{2})-(\d{2})(?:T.*)?$/.exec(value);
+    return match ? `${match[2]}-${match[3]}-${match[1]}` : value;
+}
+
 const props = defineProps<{
     request: RequestRecord | null;
     products?: ProductRecord[];
@@ -496,7 +504,7 @@ function handlePhotos(event: Event) {
                     class="request-tag"
                 >Approved</span>
             </div>
-            <span>Submitted {{ request.submissionDate ?? '—' }}</span>
+            <span>Submitted {{ formatSubmittedDate(request.submissionDate) }}</span>
         </div>
         <section class="detail-section participant-summary">
             <div class="section-heading">

@@ -7,8 +7,7 @@ describe('new request doctor fields', () => {
     it('does not present uploads as AI review and explains photo manual entry', () => {
         expect(requestForm).not.toContain('AI review');
         expect(requestForm).not.toContain('AI extraction');
-        expect(requestForm).toContain('Upload a PDF or photo.');
-        expect(requestForm).toContain('Photos are accepted for reference but must be entered manually.');
+        expect(requestForm).toContain('Choose a PDF or photo. PDFs populate matching form fields; photos require manual entry.');
         expect(requestForm).toContain('@change="handleFileSelection"');
         expect(requestForm).toContain('@drop.prevent="handleDrop"');
         expect(requestForm).toContain('v-if="!selectedPrescription"');
@@ -21,14 +20,35 @@ describe('new request doctor fields', () => {
         expect(requestForm).not.toContain('window.confirm');
     });
 
-    it('links to the required CDPH prescription document near the required-fields note', () => {
-        expect(requestForm).toContain('https://www.cdph.ca.gov/CDPH%20Document%20Library/ControlledForms/cdph247.pdf');
-        expect(requestForm).toContain('target="_blank"');
-        expect(requestForm).toContain('rel="noopener noreferrer"');
-        expect(requestForm).toContain('Fields marked with * are required.');
+    it('shows medical documentation requirements without the CDPH download link', () => {
+        expect(requestForm).toContain('<h2>Medical Documentation</h2>');
+        expect(requestForm).not.toContain('cdph247.pdf');
+        expect(requestForm).not.toContain('Download the CDPH prescription form here.');
+        expect(requestForm).not.toContain('(usually 1–6)');
+        expect(requestForm).toContain('Provider printed name and signature');
+        expect(requestForm).toContain('Provider office name, address, and phone number');
+        expect(requestForm).toContain('<li>Date signed</li>');
+        expect(requestForm).toContain('Drag and drop medical documentation here.');
+        expect(requestForm).not.toContain('Fields marked with * are required.');
     });
 
-    it('renders and submits doctor details without a signature field', () => {
+    it('orders participant, formula, provider, and additional information sections', () => {
+        const headings = [...requestForm.matchAll(/<h2>(.*?)<\/h2>/g)].map((match) => match[1]);
+        expect(headings).toEqual([
+            'Medical Documentation',
+            'Participant',
+            'Medical Formula/Nutritionals and Qualifying Diagnosis',
+            'Health Care Provider',
+            'Additional Information',
+        ]);
+        const providerFields = ['doctor-name', 'doctor-signed-off', 'prescription-signed-date', 'doctor-office', 'doctor-address', 'doctor-phone'];
+        const positions = providerFields.map((id) => requestForm.indexOf(`id="${id}"`));
+        expect(positions).toEqual([...positions].sort((a, b) => a - b));
+        expect(requestForm.indexOf('id="medical"')).toBeLessThan(requestForm.indexOf('id="formula"'));
+        expect(requestForm.indexOf('id="diagnosis"')).toBeLessThan(requestForm.indexOf('id="doctor-name"'));
+    });
+
+    it('renders and submits provider details with a signature checkbox', () => {
         expect(requestForm).toContain('doctorPrintedName:');
         expect(requestForm).toContain('doctorOfficeName:');
         expect(requestForm).toContain('doctorOfficeAddress:');
@@ -42,18 +62,18 @@ describe('new request doctor fields', () => {
         expect(requestForm).toContain('@input="formatDoctorPhone"');
         expect(requestForm).toContain('pattern="\\(\\d{3}\\) \\d{3}-\\d{4}"');
         expect(requestForm).toContain('doctorOfficePhone: normalizePhoneNumber(form.doctorOfficePhone)');
-        expect(requestForm).toContain("requiredLabel('Doctor printed name')");
-        expect(requestForm).toContain("requiredLabel('Doctor office name')");
-        expect(requestForm).toContain("requiredLabel('Doctor office address')");
-        expect(requestForm).toContain("requiredLabel('Doctor office phone')");
-        expect(requestForm).toContain("requiredLabel('Doctor has signed off')");
+        expect(requestForm).toContain("requiredLabel('Provider Name (printed)')");
+        expect(requestForm).toContain("requiredLabel('Medical Office/Clinic Name and Address')");
+        expect(requestForm).toContain('aria-label="Medical office/clinic address"');
+        expect(requestForm).toContain("requiredLabel('Phone Number')");
+        expect(requestForm).toContain("requiredLabel('Provider Signature')");
         expect(requestForm.match(/id="doctor-(?:name|office|address|phone|signed-off)"[\s\S]*?required/g)?.length).toBe(5);
         expect(requestForm).toContain('doctorHasSignedOff: false');
         expect(requestForm).toContain('v-model="form.doctorHasSignedOff"');
         expect(requestForm).toContain('doctorHasSignedOff: form.doctorHasSignedOff');
         expect(requestForm).toContain('class="checkbox-control"');
         expect(requestForm).toContain('id="doctor-signed-off"');
-        expect(requestForm.indexOf('id="doctor-signed-off"')).toBeGreaterThan(requestForm.indexOf('id="doctor-phone"'));
+        expect(requestForm.indexOf('id="doctor-signed-off"')).toBeLessThan(requestForm.indexOf('id="prescription-signed-date"'));
         expect(requestForm).toContain('checkbox-confirmation');
         expect(requestForm).toContain('doctorPrintedName: form.doctorPrintedName');
         expect(requestForm).toContain('doctorOfficeName: form.doctorOfficeName');
