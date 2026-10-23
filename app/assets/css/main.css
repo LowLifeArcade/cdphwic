@@ -1895,8 +1895,26 @@ select.form-input {
     margin: 0 0 16px;
     min-width: 0;
 }
-.food-restriction-options input[type='radio'] {
-    width: 17px;
-    height: 17px;
-    accent-color: var(--purple);
+
+.food-restriction-options {
+    justify-items: start;
+}
+.food-restriction-options .checkbox-confirmation {
+    width: fit-content;
+    max-width: 100%;
+}
+.compact-staff-name {
+    width: min(100%, 320px);
+}
+.compact-signature {
+    width: fit-content;
+    align-self: start;
+    padding: 5px 10px;
+}
+.compact-signature .checkbox-control {
+    min-height: 30px;
+}
+.compact-provider-phone {
+    width: min(100%, 230px);
+    align-content: start;
 }

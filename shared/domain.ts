@@ -73,7 +73,7 @@ export interface RequestRecord {
     medicalStatus?: 'yes' | 'no' | 'pending';
     mediCalStatus?: 'Denied' | 'Pending PA' | 'Product Not Covered';
     diagnosis?: string;
-    wicFoodRestrictions?: 'none' | 'restricted' | 'not-indicated';
+    wicFoodRestrictions?: 'under-6-months' | 'none' | 'restricted' | 'not-indicated';
     wicFoodRestrictionDetails?: string;
     wicNutritionStaffNotes?: string;
     wicNutritionStaffName?: string;

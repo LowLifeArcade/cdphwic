@@ -44,3 +44,8 @@ export function findFormula(name: string) {
 export function availableFormulaForms(name: string): ProductForm[] {
     return findFormula(name)?.forms ?? [];
 }
+
+export function defaultFormulaForm(name: string): ProductForm | '' {
+    const forms = availableFormulaForms(name);
+    return forms.length === 1 ? forms[0]! : '';
+}

@@ -63,7 +63,7 @@ describe('new request doctor fields', () => {
         expect(requestForm).toContain('@input="formatDoctorPhone"');
         expect(requestForm).toContain('pattern="\\(\\d{3}\\) \\d{3}-\\d{4}"');
         expect(requestForm).toContain('doctorOfficePhone: normalizePhoneNumber(form.doctorOfficePhone)');
-        expect(requestForm).toContain("requiredLabel('Provider Name (printed)')");
+        expect(requestForm).toContain("requiredLabel('Provider Name')");
         expect(requestForm).toContain("requiredLabel('Medical Office/Clinic Name and Address')");
         expect(requestForm).toContain('aria-label="Medical office/clinic address"');
         expect(requestForm).toContain("requiredLabel('Phone Number')");
