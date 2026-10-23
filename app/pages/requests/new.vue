@@ -79,6 +79,7 @@ const form = reactive({
     benefitsStartDate: '',
     requestKind: 'new' as 'new' | 'extension',
     formulaName: '',
+    otherFormulaName: '',
     formulaFlavor: '',
     wicFoodRestrictions: '' as '' | 'under-6-months' | 'none' | 'restricted' | 'not-indicated',
     wicFoodRestrictionDetails: '',
@@ -101,19 +102,21 @@ const form = reactive({
     additionalNotes: '',
 });
 
+const isOtherFormula = computed(() => form.formulaName.trim().toLowerCase() === 'other');
 const selectedFormula = computed(() => findFormula(form.formulaName));
 const availableForms = computed(() => availableFormulaForms(form.formulaName));
 const selectedProduct = computed(() => products.value.find((product) =>
     product.name.toLowerCase() === selectedFormula.value?.name.toLowerCase() && product.form === form.productForm,
 ));
-const productName = computed(() => selectedFormula.value?.name ?? form.formulaName.trim());
-watch(() => selectedFormula.value?.name, () => {
+const productName = computed(() => isOtherFormula.value ? form.otherFormulaName.trim() : selectedFormula.value?.name ?? form.formulaName.trim());
+watch(() => isOtherFormula.value ? 'Other' : selectedFormula.value?.name, () => {
     form.productForm = defaultFormulaForm(form.formulaName);
 }, { flush: 'sync' });
 
 const formulaMatches = computed(() => {
     const query = form.formulaName.trim().toLowerCase();
-    return query && !selectedFormula.value ? formulaCatalog.filter((item) => item.name.toLowerCase().includes(query)) : [];
+    return query.length >= 3 && !selectedFormula.value && !isOtherFormula.value
+        ? [...formulaCatalog.filter((item) => item.name.toLowerCase().includes(query)), { name: 'Other' }] : [];
 });
 function selectFormula(name: string) {
     form.formulaName = name;
@@ -289,7 +292,7 @@ async function submitRequest() {
     submitted.value = false;
     if (saving.value || parsing.value || !commitDiagnosis()) return;
     submissionError.value = validateAgencyFields(form);
-    if (!submissionError.value && (!selectedFormula.value || !availableForms.value.includes(form.productForm as ProductForm))) {
+    if (!submissionError.value && ((!selectedFormula.value && !isOtherFormula.value) || (isOtherFormula.value && (!form.otherFormulaName.trim() || form.otherFormulaName.trim().toLowerCase() === 'other')) || !availableForms.value.includes(form.productForm as ProductForm))) {
         submissionError.value = 'Select a matching formula name and an available form.';
     }
     if (submissionError.value) return;
@@ -334,6 +337,7 @@ async function submitRequest() {
                 prescriptionKey: uploadedStorageKey.value || undefined,
                 status: 'unopened',
                 genericFields: {
+                    otherFormulaName: isOtherFormula.value ? form.otherFormulaName.trim() : '',
                     readyToFeedJustification: form.readyToFeedJustification,
                     additionalNotes: form.additionalNotes,
                 },
@@ -595,26 +599,38 @@ async function submitRequest() {
             <div class="form-grid">
                 <div class="form-field">
                     <label for="formula">{{ requiredLabel('Formula Name') }}</label>
-                    <input
-                        id="formula"
-                        v-model="form.formulaName"
-                        @focus="formulaFocused = true"
-                        @blur="formulaFocused = false"
-                        @keydown.down.prevent="formulaMatchIndex = Math.min(formulaMatchIndex + 1, formulaMatches.length - 1)"
-                        @keydown.up.prevent="formulaMatchIndex = Math.max(formulaMatchIndex - 1, 0)"
-                        @keydown.enter.prevent="formulaMatches[formulaMatchIndex] && selectFormula(formulaMatches[formulaMatchIndex]!.name)"
-                        aria-describedby="formula-match-help"
-                        class="form-input"
-                        placeholder="Start typing a formula name"
-                        autocomplete="off"
-                        required
-                    />
-                    <small id="formula-match-help">Type a formula name, then select a match. Use the arrow keys and Enter or select a suggestion.</small>
-                    <div v-if="formulaFocused && formulaMatches.length" class="form-suggestions" aria-label="Matching formulas">
-                        <button v-for="(formula, index) in formulaMatches" :key="formula.name" type="button"
-                            :class="{ 'suggestion-active': index === formulaMatchIndex }"
-                            @pointerdown.prevent @click="selectFormula(formula.name)">{{ formula.name }}</button>
+                    <div class="formula-autocomplete">
+                        <input
+                            id="formula"
+                            v-model="form.formulaName"
+                            @focus="formulaFocused = true"
+                            @input="formulaFocused = true"
+                            @keydown.esc.prevent="formulaFocused = false"
+                            role="combobox"
+                            aria-autocomplete="list"
+                            aria-controls="formula-matches"
+                            :aria-expanded="formulaFocused && formulaMatches.length > 0"
+                            :aria-activedescendant="formulaFocused && formulaMatches.length ? `formula-match-${formulaMatchIndex}` : undefined"
+                            @blur="formulaFocused = false"
+                            @keydown.down.prevent="formulaMatchIndex = Math.min(formulaMatchIndex + 1, formulaMatches.length - 1)"
+                            @keydown.up.prevent="formulaMatchIndex = Math.max(formulaMatchIndex - 1, 0)"
+                            @keydown.enter.prevent="formulaMatches[formulaMatchIndex] && selectFormula(formulaMatches[formulaMatchIndex]!.name)"
+                            class="form-input"
+                            placeholder="Start typing a formula name or type Other to enter a name not on the list"
+                            autocomplete="off"
+                            required
+                        />
+                        <div v-if="formulaFocused && formulaMatches.length" id="formula-matches" class="form-suggestions formula-dropdown" role="listbox" aria-label="Matching formulas">
+                            <button v-for="(formula, index) in formulaMatches" :key="formula.name" type="button" role="option" tabindex="-1"
+                                :id="`formula-match-${index}`" :aria-selected="index === formulaMatchIndex"
+                                :class="{ 'suggestion-active': index === formulaMatchIndex }"
+                                @pointerdown.prevent @click="selectFormula(formula.name)">{{ formula.name }}</button>
+                        </div>
                     </div>
+                </div>
+                <div v-if="isOtherFormula" class="form-field">
+                    <label for="other-formula-name">{{ requiredLabel('Other Formula Name') }}</label>
+                    <input id="other-formula-name" v-model="form.otherFormulaName" class="form-input" required />
                 </div>
                 <div v-if="selectedFormula?.hasFlavor" class="form-field">
                     <label for="formula-flavor">Flavor</label>

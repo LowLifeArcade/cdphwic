@@ -42,6 +42,7 @@ export function findFormula(name: string) {
 }
 
 export function availableFormulaForms(name: string): ProductForm[] {
+    if (name.trim().toLowerCase() === 'other') return ['powder', 'concentrate', 'ready-to-feed'];
     return findFormula(name)?.forms ?? [];
 }
 

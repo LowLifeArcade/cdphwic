@@ -34,7 +34,7 @@ export async function saveRequestDraft(bucket: R2Bucket, environment: string, us
             agencyId: existing?.request.agencyId ?? user.agencyId ?? 10,
             agencyMemberId: existing?.request.agencyMemberId ?? user.agencyMemberId ?? 100,
             participantName: `${f.patientFirstName || ''} ${f.patientLastName || ''}`.trim() || 'Unnamed participant',
-            productName: String(f.formulaName || 'Formula not selected'),
+            productName: String(String(f.formulaName).trim().toLowerCase() === 'other' ? f.otherFormulaName || 'Other formula' : f.formulaName || 'Formula not selected'),
             requestKind: f.requestKind === 'extension' ? 'extension' : 'new',
         },
         form: f,

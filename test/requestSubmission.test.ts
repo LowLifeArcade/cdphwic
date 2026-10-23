@@ -17,6 +17,14 @@ describe('submission requirements', () => {
             expect(validateRequestSubmission({ ...complete, [key]: undefined }), key).not.toBe('');
         }
     });
+    it('accepts a named Other formula while preserving restrictions for listed formulas', () => {
+        const custom = { ...complete, productName: 'Unlisted Nutrition', productForm: 'powder' as const, genericFields: { otherFormulaName: 'Unlisted Nutrition' } };
+        expect(validateRequestSubmission(custom)).toBe('');
+        expect(validateRequestSubmission({ ...custom, productName: '' })).not.toBe('');
+        expect(validateRequestSubmission({ ...custom, productName: 'Other', genericFields: {} })).not.toBe('');
+        expect(validateRequestSubmission({ ...custom, productName: 'Fortini', productForm: 'powder', genericFields: { otherFormulaName: 'Fortini' } })).not.toBe('');
+    });
+
     it('requires diagnosis details and WIC staff completion when the HCP left both boxes blank', () => {
         expect(validateRequestSubmission({ ...complete, diagnosis: 'Food allergy' })).toContain('details');
         expect(validateRequestSubmission({ ...complete, wicFoodRestrictions: 'not-indicated' })).toContain('select');

@@ -1946,3 +1946,26 @@ select.form-input {
     border-color: var(--yellow);
 }
 .staff-food-review { margin-bottom: 16px; }
+
+.formula-autocomplete {
+    position: relative;
+    min-width: 0;
+}
+.formula-dropdown {
+    position: absolute;
+    top: calc(100% + 4px);
+    left: 0;
+    right: 0;
+    z-index: 20;
+    display: grid;
+    gap: 2px;
+    padding: 5px;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    box-shadow: 0 10px 24px rgb(0 0 0 / 35%);
+}
+.formula-dropdown button {
+    width: 100%;
+    border-color: transparent;
+}
