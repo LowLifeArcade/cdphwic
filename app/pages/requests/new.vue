@@ -69,10 +69,6 @@ watch(() => selectedFormula.value?.name, () => {
     form.productForm = defaultFormulaForm(form.formulaName);
 }, { flush: 'sync' });
 
-function agencyRequiredLabel(label: string) {
-    return `${label} — Local agency required`;
-}
-
 function requiredLabel(label: string) {
     return `${label} *`;
 }
@@ -161,8 +157,8 @@ async function removePrescription() {
 
     try {
         if (uploadedStorageKey.value) {
-            await $fetch('/api/requests/prescription-upload', {
-                method: 'DELETE',
+            await $fetch('/api/requests/prescription-upload/remove', {
+                method: 'POST',
                 body: { key: uploadedStorageKey.value },
             });
         }
@@ -282,8 +278,8 @@ async function submitRequest() {
             <div class="prescription-requirements">
                 <strong>Before uploading, check that the medical documentation includes:</strong>
                 <ul>
-                    <li>Qualifying medical diagnosis/condition(s)</li>
                     <li>Patient first name, last name, and date of birth</li>
+                    <li>Qualifying medical diagnosis/condition(s)</li>
                     <li>Formula name, form, amount in ounces per day, and duration in months</li>
                     <li>Provider printed name, signature, and date signed</li>
                     <li>Provider office name, address, and phone number</li>
@@ -422,7 +418,7 @@ async function submitRequest() {
                     />
                 </div>
                 <div class="form-field">
-                    <label for="medical">{{ agencyRequiredLabel('Health Insurance') }}</label>
+                    <label for="medical">Health Insurance</label>
                     <select
                         id="medical"
                         v-model="form.medicalStatus"
@@ -435,7 +431,7 @@ async function submitRequest() {
                     </select>
                 </div>
                 <div v-if="form.medicalStatus === 'yes'" class="form-field">
-                    <label for="medi-cal-status">{{ agencyRequiredLabel('Medi-Cal Status') }}</label>
+                    <label for="medi-cal-status">Medi-Cal Status</label>
                     <select id="medi-cal-status" v-model="form.mediCalStatus" class="form-input" required>
                         <option disabled value="">Select Medi-Cal status</option>
                         <option value="Denied">Denied</option>
@@ -449,7 +445,7 @@ async function submitRequest() {
                 <p>To be completed by the local agency. These fields are required to submit the request but are not part of complete medical documentation.</p>
                 <div class="form-grid">
                     <div class="form-field">
-                        <label for="family">{{ agencyRequiredLabel('WIC Family ID') }}</label>
+                        <label for="family">WIC Family ID</label>
                         <input
                             id="family"
                             v-model="form.familyId"
@@ -458,7 +454,7 @@ async function submitRequest() {
                         />
                     </div>
                     <div class="form-field">
-                        <label for="individual">{{ agencyRequiredLabel('WIC Individual ID') }}</label>
+                        <label for="individual">WIC Individual ID</label>
                         <input
                             id="individual"
                             v-model="form.individualId"
@@ -467,7 +463,7 @@ async function submitRequest() {
                         />
                     </div>
                     <div class="form-field">
-                        <label for="benefits-start">{{ agencyRequiredLabel('Benefits Start Date') }}</label>
+                        <label for="benefits-start">Benefits Start Date</label>
                         <input
                             id="benefits-start"
                             v-model="form.benefitsStartDate"
@@ -477,7 +473,7 @@ async function submitRequest() {
                         />
                     </div>
                     <div class="form-field">
-                        <label for="request-type">{{ agencyRequiredLabel('Request Type') }}</label>
+                        <label for="request-type">Request Type</label>
                         <select
                             id="request-type"
                             v-model="form.requestKind"
@@ -580,7 +576,6 @@ async function submitRequest() {
                         class="form-input"
                     />
                     <small id="diagnosis-help">Press Enter to add each diagnosis.</small>
-                    <button type="button" class="text-button" :disabled="!diagnosisInput.trim()" @click="commitDiagnosis">Add diagnosis</button>
                     <ul v-if="diagnoses.length" aria-label="Added diagnoses" aria-live="polite">
                         <li v-for="(diagnosis, index) in diagnoses" :key="diagnosis">
                             {{ diagnosis }}
@@ -595,7 +590,7 @@ async function submitRequest() {
             <div class="panel-heading"><h2>WIC Food Restrictions</h2></div>
             <fieldset class="food-restriction-options" aria-label="WIC Food Restrictions">
                 <label v-for="option in [
-                    { value: 'under-6-months', label: 'Under 6 months' },
+                    { value: 'under-6-months', label: 'Participant is under 6 months' },
                     { value: 'none', label: 'No food restrictions (all WIC foods allowed)' },
                     { value: 'restricted', label: 'Food restrictions (see medical documentation)' },
                     { value: 'not-indicated', label: 'Neither box checked by HCP' },
