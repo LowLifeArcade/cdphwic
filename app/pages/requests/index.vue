@@ -51,11 +51,6 @@ watch([agencyId, repId, identity], () => refresh());
                 }}
             </p>
         </div>
-        <NuxtLink
-            class="button button-main"
-            to="/requests/new"
-            >＋ New Request</NuxtLink
-        >
     </div>
     <div
         class="filter-bar"
