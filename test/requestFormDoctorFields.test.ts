@@ -33,7 +33,7 @@ describe('new request doctor fields', () => {
     });
 
     it('orders participant, formula, provider, and additional information sections', () => {
-        const headings = [...requestForm.matchAll(/<h2>(.*?)<\/h2>/g)].map((match) => match[1]);
+        const headings = [...requestForm.matchAll(/<h2>(.*?)<\/h2>/g)].map((match) => match[1]!.includes("requiredLabel('WIC Food Restrictions')") ? 'WIC Food Restrictions' : match[1]);
         expect(headings).toEqual([
             'Medical Documentation',
             'Participant',

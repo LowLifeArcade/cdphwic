@@ -1918,3 +1918,31 @@ select.form-input {
     width: min(100%, 230px);
     align-content: start;
 }
+
+.form-suggestions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    max-height: 220px;
+    overflow-y: auto;
+}
+.form-suggestions button {
+    padding: 7px 10px;
+    color: var(--text);
+    background: var(--surface-raised);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    text-align: left;
+    cursor: pointer;
+}
+.form-suggestions button:hover,
+.form-suggestions button:focus-visible,
+.form-suggestions button.suggestion-active {
+    background: var(--surface-hover);
+    border-color: var(--purple);
+}
+.status-incomplete {
+    color: var(--yellow);
+    border-color: var(--yellow);
+}
+.staff-food-review { margin-bottom: 16px; }

@@ -1,19 +1,60 @@
 <script setup lang="ts">
 import { formulaCatalog, findFormula, availableFormulaForms, defaultFormulaForm } from '~/../shared/formulaCatalog';
-import type { ProductForm } from '~/../shared/domain';
+import type { ProductForm, RequestRecord } from '~/../shared/domain';
+import { diagnosisCatalog, findDiagnosis } from '~/../shared/diagnosisCatalog';
 import { addDiagnosis, validateAgencyFields } from '~/../shared/newRequestFields';
 import { formatPhoneNumber, normalizePhoneNumber } from '~/../shared/phone';
 
 const router = useRouter();
+const route = useRoute();
+const identity = useState<'admin' | 'agency' | 'internal'>('demo-identity', () => 'admin');
+const draftId = ref<number | undefined>(route.query.draft ? Number(route.query.draft) : undefined);
+const saving = ref(false);
+const requestForm = ref<HTMLFormElement | null>(null);
+const diagnosisDetailInput = ref<HTMLInputElement | null>(null);
+const diagnosisDetails = ref('');
+const formulaFocused = ref(false);
+const formulaMatchIndex = ref(0);
+const diagnosisMatchIndex = ref(0);
+const diagnosisFocused = ref(false);
 const fileInput = ref<HTMLInputElement>();
 const submitted = ref(false);
 const submissionError = ref('');
 const diagnosisInput = ref('');
 const diagnoses = computed(() => form.diagnosis.split('\n').map((value) => value.trim()).filter(Boolean));
 
+const pendingDiagnosis = computed(() => findDiagnosis(diagnosisInput.value));
+const diagnosisMatches = computed(() => diagnosisInput.value.trim() && !pendingDiagnosis.value
+    ? diagnosisCatalog.filter((item) => item.name.toLowerCase().includes(diagnosisInput.value.trim().toLowerCase())) : []);
+function selectDiagnosis(name: string) {
+    diagnosisInput.value = name;
+    diagnosisDetails.value = '';
+    diagnosisMatchIndex.value = 0;
+    if (findDiagnosis(name)?.detail) nextTick(() => diagnosisDetailInput.value?.focus());
+}
 function commitDiagnosis() {
-    form.diagnosis = addDiagnosis(diagnoses.value, diagnosisInput.value).join('\n');
+    const input = diagnosisInput.value.trim();
+    if (!input) return true;
+    const choice = findDiagnosis(input);
+    if (choice?.detail && !diagnosisDetails.value.trim()) {
+        submissionError.value = `Provide details for ${choice.name}.`;
+        nextTick(() => diagnosisDetailInput.value?.focus());
+        return false;
+    }
+    const entry = choice?.detail ? `${choice.name}: ${diagnosisDetails.value.trim()}` : choice?.name ?? input;
+    form.diagnosis = addDiagnosis(diagnoses.value, entry).join('\n');
     diagnosisInput.value = '';
+    diagnosisDetails.value = '';
+    submissionError.value = '';
+    return true;
+}
+function handleDiagnosisEnter() {
+    const match = diagnosisMatches.value[diagnosisMatchIndex.value];
+    if (diagnosisFocused.value && match) {
+        selectDiagnosis(match.name);
+        if (!match.detail) commitDiagnosis();
+    }
+    else commitDiagnosis();
 }
 
 function removeDiagnosis(index: number) {
@@ -41,6 +82,7 @@ const form = reactive({
     formulaFlavor: '',
     wicFoodRestrictions: '' as '' | 'under-6-months' | 'none' | 'restricted' | 'not-indicated',
     wicFoodRestrictionDetails: '',
+    wicStaffFoodRestrictions: '' as '' | 'none' | 'restricted',
     wicNutritionStaffNotes: '',
     wicNutritionStaffName: '',
     productForm: '' as ProductForm | '',
@@ -68,6 +110,52 @@ const productName = computed(() => selectedFormula.value?.name ?? form.formulaNa
 watch(() => selectedFormula.value?.name, () => {
     form.productForm = defaultFormulaForm(form.formulaName);
 }, { flush: 'sync' });
+
+const formulaMatches = computed(() => {
+    const query = form.formulaName.trim().toLowerCase();
+    return query && !selectedFormula.value ? formulaCatalog.filter((item) => item.name.toLowerCase().includes(query)) : [];
+});
+function selectFormula(name: string) {
+    form.formulaName = name;
+    formulaMatchIndex.value = 0;
+}
+watch(() => form.formulaName, () => { formulaMatchIndex.value = 0; });
+watch(diagnosisInput, () => { diagnosisMatchIndex.value = 0; });
+
+if (draftId.value) {
+    const draft = await $fetch<{ form: Record<string, string | number | boolean>; prescriptionKey: string; fileName: string }>(`/api/requests/drafts/${draftId.value}`, {
+        headers: { 'x-demo-user': identity.value },
+    });
+    const { _diagnosisInput, _diagnosisDetails, ...values } = draft.form;
+    Object.assign(form, values);
+    diagnosisInput.value = String(_diagnosisInput ?? '');
+    diagnosisDetails.value = String(_diagnosisDetails ?? '');
+    uploadedStorageKey.value = draft.prescriptionKey;
+    if (draft.fileName) selectedPrescription.value = new File([], draft.fileName);
+}
+
+async function saveRequest() {
+    if (saving.value || parsing.value) return;
+    saving.value = true;
+    submissionError.value = '';
+    try {
+        const result = await $fetch<{ request: RequestRecord }>('/api/requests/drafts', {
+            method: 'POST', headers: { 'x-demo-user': identity.value },
+            body: {
+                id: draftId.value,
+                form: { ...form, _diagnosisInput: diagnosisInput.value, _diagnosisDetails: diagnosisDetails.value },
+                prescriptionKey: uploadedStorageKey.value,
+                fileName: selectedPrescription.value?.name ?? '',
+            },
+        });
+        draftId.value = result.request.id;
+        await router.push('/requests');
+    } catch (error) {
+        submissionError.value = (error as { data?: { statusMessage?: string } }).data?.statusMessage ?? 'The incomplete request could not be saved. Please try again.';
+    } finally {
+        saving.value = false;
+    }
+}
 
 function requiredLabel(label: string) {
     return `${label} *`;
@@ -199,57 +287,66 @@ async function handleDrop(event: DragEvent) {
 
 async function submitRequest() {
     submitted.value = false;
-    commitDiagnosis();
+    if (saving.value || parsing.value || !commitDiagnosis()) return;
     submissionError.value = validateAgencyFields(form);
     if (!submissionError.value && (!selectedFormula.value || !availableForms.value.includes(form.productForm as ProductForm))) {
         submissionError.value = 'Select a matching formula name and an available form.';
     }
     if (submissionError.value) return;
-    const participantName = `${form.patientFirstName} ${form.patientLastName}`.trim();
-    const body = new FormData();
-    body.append(
-        'request',
-        JSON.stringify({
-            agencyId: 10,
-            agencyMemberId: 100,
-            participantName,
-            participantFirstName: form.patientFirstName,
-            participantLastName: form.patientLastName,
-            participantDob: form.participantDob,
-            participantFamilyId: Number(form.familyId) || undefined,
-            wicIndividualId: form.individualId || undefined,
-            benefitsStartDate: form.benefitsStartDate,
-            requestKind: form.requestKind,
-            productId: selectedProduct.value?.id ?? -1,
-            productName: productName.value,
-            productForm: form.productForm,
-            formulaFlavor: selectedFormula.value?.hasFlavor ? form.formulaFlavor.trim() : undefined,
-            wicFoodRestrictions: form.wicFoodRestrictions || undefined,
-            wicFoodRestrictionDetails: form.wicFoodRestrictions === 'restricted' ? form.wicFoodRestrictionDetails : '',
-            wicNutritionStaffNotes: form.wicNutritionStaffNotes,
-            wicNutritionStaffName: form.wicNutritionStaffName,
-            medicalStatus: form.medicalStatus,
-            mediCalStatus: form.medicalStatus === 'yes' ? form.mediCalStatus : undefined,
-            diagnosis: form.diagnosis,
-            ouncesPrescribed: Number(form.ouncesPrescribed),
-            durationMonths: Number(form.durationMonths),
-            doctorPrintedName: form.doctorPrintedName,
-            doctorHasSignedOff: form.doctorHasSignedOff,
-            doctorOfficeName: form.doctorOfficeName,
-            doctorOfficeAddress: form.doctorOfficeAddress,
-            doctorOfficePhone: normalizePhoneNumber(form.doctorOfficePhone),
-            prescriptionSignedDate: form.prescriptionSignedDate,
-            prescriptionKey: uploadedStorageKey.value || undefined,
-            status: 'unopened',
-            genericFields: {
-                readyToFeedJustification: form.readyToFeedJustification,
-                additionalNotes: form.additionalNotes,
-            },
-        }),
-    );
-    await $fetch('/api/requests', { method: 'POST', body });
-    submitted.value = true;
-    await router.push('/requests');
+    saving.value = true;
+    try {
+        const participantName = `${form.patientFirstName} ${form.patientLastName}`.trim();
+        const body = new FormData();
+        body.append(
+            'request',
+            JSON.stringify({
+                draftId: draftId.value,
+                agencyId: 10,
+                agencyMemberId: 100,
+                participantName,
+                participantFirstName: form.patientFirstName,
+                participantLastName: form.patientLastName,
+                participantDob: form.participantDob,
+                participantFamilyId: Number(form.familyId) || undefined,
+                wicIndividualId: form.individualId || undefined,
+                benefitsStartDate: form.benefitsStartDate,
+                requestKind: form.requestKind,
+                productId: selectedProduct.value?.id ?? -1,
+                productName: productName.value,
+                productForm: form.productForm,
+                formulaFlavor: selectedFormula.value?.hasFlavor ? form.formulaFlavor.trim() : undefined,
+                wicFoodRestrictions: form.wicFoodRestrictions || undefined,
+                wicFoodRestrictionDetails: form.wicFoodRestrictions === 'restricted' ? form.wicFoodRestrictionDetails : '',
+                wicStaffFoodRestrictions: form.wicFoodRestrictions === 'not-indicated' ? form.wicStaffFoodRestrictions || undefined : undefined,
+                wicNutritionStaffNotes: form.wicFoodRestrictions === 'not-indicated' && form.wicStaffFoodRestrictions === 'restricted' ? form.wicNutritionStaffNotes : '',
+                wicNutritionStaffName: form.wicNutritionStaffName,
+                medicalStatus: form.medicalStatus,
+                mediCalStatus: form.medicalStatus === 'yes' ? form.mediCalStatus : undefined,
+                diagnosis: form.diagnosis,
+                ouncesPrescribed: Number(form.ouncesPrescribed),
+                durationMonths: Number(form.durationMonths),
+                doctorPrintedName: form.doctorPrintedName,
+                doctorHasSignedOff: form.doctorHasSignedOff,
+                doctorOfficeName: form.doctorOfficeName,
+                doctorOfficeAddress: form.doctorOfficeAddress,
+                doctorOfficePhone: normalizePhoneNumber(form.doctorOfficePhone),
+                prescriptionSignedDate: form.prescriptionSignedDate,
+                prescriptionKey: uploadedStorageKey.value || undefined,
+                status: 'unopened',
+                genericFields: {
+                    readyToFeedJustification: form.readyToFeedJustification,
+                    additionalNotes: form.additionalNotes,
+                },
+            }),
+        );
+        await $fetch('/api/requests', { method: 'POST', body, headers: { 'x-demo-user': identity.value } });
+        submitted.value = true;
+        await router.push('/requests');
+    } catch (error) {
+        submissionError.value = (error as { data?: { statusMessage?: string } }).data?.statusMessage ?? 'The request could not be submitted. Your entries are still available to save.';
+    } finally {
+        saving.value = false;
+    }
 }
 </script>
 
@@ -266,6 +363,7 @@ async function submitRequest() {
         >
     </div>
     <form
+        ref="requestForm"
         class="panel form-panel request-form"
         @submit.prevent="submitRequest"
     >
@@ -500,15 +598,23 @@ async function submitRequest() {
                     <input
                         id="formula"
                         v-model="form.formulaName"
-                        list="formula-matches"
+                        @focus="formulaFocused = true"
+                        @blur="formulaFocused = false"
+                        @keydown.down.prevent="formulaMatchIndex = Math.min(formulaMatchIndex + 1, formulaMatches.length - 1)"
+                        @keydown.up.prevent="formulaMatchIndex = Math.max(formulaMatchIndex - 1, 0)"
+                        @keydown.enter.prevent="formulaMatches[formulaMatchIndex] && selectFormula(formulaMatches[formulaMatchIndex]!.name)"
+                        aria-describedby="formula-match-help"
                         class="form-input"
                         placeholder="Start typing a formula name"
                         autocomplete="off"
                         required
                     />
-                    <datalist id="formula-matches">
-                        <option v-for="formula in formulaCatalog" :key="formula.name" :value="formula.name" />
-                    </datalist>
+                    <small id="formula-match-help">Type a formula name, then select a match. Use the arrow keys and Enter or select a suggestion.</small>
+                    <div v-if="formulaFocused && formulaMatches.length" class="form-suggestions" aria-label="Matching formulas">
+                        <button v-for="(formula, index) in formulaMatches" :key="formula.name" type="button"
+                            :class="{ 'suggestion-active': index === formulaMatchIndex }"
+                            @pointerdown.prevent @click="selectFormula(formula.name)">{{ formula.name }}</button>
+                    </div>
                 </div>
                 <div v-if="selectedFormula?.hasFlavor" class="form-field">
                     <label for="formula-flavor">Flavor</label>
@@ -571,11 +677,25 @@ async function submitRequest() {
                         v-model="diagnosisInput"
                         :required="!diagnoses.length"
                         aria-required="true"
-                        @keydown.enter.prevent="commitDiagnosis"
+                        @focus="diagnosisFocused = true"
+                        @blur="diagnosisFocused = false"
+                        @keydown.down.prevent="diagnosisMatchIndex = Math.min(diagnosisMatchIndex + 1, diagnosisMatches.length - 1)"
+                        @keydown.up.prevent="diagnosisMatchIndex = Math.max(diagnosisMatchIndex - 1, 0)"
+                        @keydown.enter.prevent="handleDiagnosisEnter"
                         aria-describedby="diagnosis-help"
                         class="form-input"
                     />
                     <small id="diagnosis-help">Press Enter to add each diagnosis.</small>
+                    <div v-if="diagnosisFocused && diagnosisMatches.length" class="form-suggestions" aria-label="Matching diagnoses">
+                        <button v-for="(choice, index) in diagnosisMatches" :key="choice.name" type="button"
+                            :class="{ 'suggestion-active': index === diagnosisMatchIndex }"
+                            @pointerdown.prevent @click="selectDiagnosis(choice.name)">{{ choice.name }}</button>
+                    </div>
+                    <div v-if="pendingDiagnosis?.detail" class="form-field">
+                        <label for="diagnosis-details">{{ requiredLabel(`Details for ${pendingDiagnosis.name}`) }}</label>
+                        <input id="diagnosis-details" ref="diagnosisDetailInput" v-model="diagnosisDetails" class="form-input" required @keydown.enter.prevent="commitDiagnosis" />
+                        <small>Specify the condition or nutrient, then press Enter to add this diagnosis.</small>
+                    </div>
                     <ul v-if="diagnoses.length" aria-label="Added diagnoses" aria-live="polite">
                         <li v-for="(diagnosis, index) in diagnoses" :key="diagnosis">
                             {{ diagnosis }}
@@ -587,7 +707,7 @@ async function submitRequest() {
         </section>
 
         <section class="form-section">
-            <div class="panel-heading"><h2>WIC Food Restrictions</h2></div>
+            <div class="panel-heading"><h2>{{ requiredLabel('WIC Food Restrictions') }}</h2></div>
             <fieldset class="food-restriction-options" aria-label="WIC Food Restrictions">
                 <label v-for="option in [
                     { value: 'under-6-months', label: 'Participant is under 6 months' },
@@ -603,16 +723,30 @@ async function submitRequest() {
                     {{ option.label }}
                 </label>
             </fieldset>
-            <div class="form-grid">
-                <div class="form-field full">
-                    <label for="wic-staff-notes">WIC Nutrition Staff Notes</label>
-                    <textarea id="wic-staff-notes" v-model="form.wicNutritionStaffNotes" class="form-textarea" />
+            <fieldset v-if="form.wicFoodRestrictions === 'not-indicated'" class="local-agency-fields staff-food-review">
+                <legend>Local Agency WIC Nutrition Staff Review</legend>
+                <p>A WIC Nutrition Staff member must complete this section.</p>
+                <div class="food-restriction-options" role="group" aria-label="WIC Nutrition Staff food restrictions">
+                    <label v-for="option in [
+                        { value: 'none', label: 'No food restrictions (all WIC foods allowed)' },
+                        { value: 'restricted', label: 'Food restrictions (listed below)' },
+                    ]" :key="option.value" class="checkbox-control checkbox-confirmation">
+                        <input type="checkbox" :checked="form.wicStaffFoodRestrictions === option.value"
+                            @change="form.wicStaffFoodRestrictions = form.wicStaffFoodRestrictions === option.value ? '' : option.value as 'none' | 'restricted'" />
+                        {{ option.label }}
+                    </label>
                 </div>
-                <div class="form-field full compact-staff-name">
-                    <label for="wic-staff-name">WIC Nutrition Staff Name</label>
-                    <input id="wic-staff-name" v-model="form.wicNutritionStaffName" class="form-input" />
+                <div class="form-grid">
+                    <div v-if="form.wicStaffFoodRestrictions === 'restricted'" class="form-field full">
+                        <label for="wic-staff-notes">{{ requiredLabel('WIC Nutrition Staff Notes') }}</label>
+                        <textarea id="wic-staff-notes" v-model="form.wicNutritionStaffNotes" class="form-textarea" required />
+                    </div>
+                    <div class="form-field full compact-staff-name">
+                        <label for="wic-staff-name">{{ requiredLabel('WIC Nutrition Staff Name') }}</label>
+                        <input id="wic-staff-name" v-model="form.wicNutritionStaffName" class="form-input" required />
+                    </div>
                 </div>
-            </div>
+            </fieldset>
         </section>
 
         <section class="form-section">
@@ -714,11 +848,13 @@ async function submitRequest() {
                 to="/requests"
                 >Cancel</NuxtLink
             >
+            <button class="button button-ghost" type="button" :disabled="saving || parsing" @click="saveRequest">Save</button>
             <button
                 class="button button-primary"
                 type="submit"
+                :disabled="saving || parsing"
             >
-                Submit
+                {{ saving ? 'Saving…' : 'Submit' }}
             </button>
         </div>
         <p

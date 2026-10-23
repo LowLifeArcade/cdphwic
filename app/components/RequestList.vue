@@ -25,6 +25,10 @@ function agencyFor(request: RequestRecord) {
 }
 
 async function openRequest(request: RequestRecord) {
+    if (request.status === 'incomplete') {
+        await navigateTo(`/requests/new?draft=${request.id}`);
+        return;
+    }
     selected.value = request;
     if ((identity.value === 'admin' || identity.value === 'internal') && request.status === 'unopened') {
         const result = await $fetch<{ request: RequestRecord }>(`/api/requests/${request.id}`, {

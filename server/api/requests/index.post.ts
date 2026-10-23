@@ -1,3 +1,6 @@
+import { validateRequestSubmission } from '../../../shared/requestSubmission';
+import { readRequestDraft, canAccessDraft, deleteRequestDraft } from '../../utils/requestDraftStore';
+import { getSessionFromHeaders } from '../../utils/session';
 import type { RequestRecord } from '../../../shared/domain';
 import { normalizePhoneNumber } from '../../../shared/phone';
 import { createRequestRecord, deleteRequestRecord, updateRequestRecord } from '../../utils/requestStore';
@@ -17,7 +20,18 @@ export default defineEventHandler(async (event) => {
         throw createError({ statusCode: 400, statusMessage: 'Participant, product, agency, and rep are required.' });
     }
 
-    const { prescriptionKey, ...requestBody } = body as Omit<RequestRecord, 'id'> & { prescriptionKey?: string };
+    const { prescriptionKey, draftId, ...requestBody } = body as Omit<RequestRecord, 'id'> & { prescriptionKey?: string; draftId?: number };
+    const validationError = validateRequestSubmission(requestBody);
+    if (validationError) throw createError({ statusCode: 400, statusMessage: validationError });
+    const environment = event.context.cloudflare?.env as Env | undefined;
+    const user = getSessionFromHeaders({ 'x-demo-user': getHeader(event, 'x-demo-user') });
+    if (draftId) {
+        const draft = environment?.PRESCRIPTIONS ? await readRequestDraft(environment.PRESCRIPTIONS, environment.ENV, draftId) : undefined;
+        if (!draft || !canAccessDraft(draft, user)) throw createError({ statusCode: 404, statusMessage: 'Incomplete request not found.' });
+    }
+    const finishDraft = async () => {
+        if (draftId && environment?.PRESCRIPTIONS) await deleteRequestDraft(environment.PRESCRIPTIONS, environment.ENV, draftId);
+    };
     const doctorOfficePhone = normalizePhoneNumber(requestBody.doctorOfficePhone ?? '');
     if (!doctorOfficePhone) {
         throw createError({ statusCode: 400, statusMessage: 'Enter a valid 10-digit doctor office phone number.' });
@@ -25,13 +39,15 @@ export default defineEventHandler(async (event) => {
     const request = createRequestRecord({
         ...requestBody,
         doctorOfficePhone,
-        status: requestBody.status ?? 'pending',
+        agencyId: user.agencyId ?? requestBody.agencyId,
+        agencyMemberId: user.agencyMemberId ?? requestBody.agencyMemberId,
+        status: 'unopened',
     });
     if (!prescription?.data && !prescriptionKey) {
+        await finishDraft();
         return { request, demo: true };
     }
 
-    const environment = event.context.cloudflare?.env as Env | undefined;
     if (!environment?.PRESCRIPTIONS) {
         deleteRequestRecord(request.id);
         throw createError({ statusCode: 503, statusMessage: 'Prescription storage is unavailable.' });
@@ -39,6 +55,7 @@ export default defineEventHandler(async (event) => {
 
     let storedKey: string | undefined;
     let temporaryKey: string | undefined;
+    let savedRequest: RequestRecord = request;
     try {
         const attachment = prescriptionKey
             ? await promoteTemporaryPrescriptionAttachment(environment.PRESCRIPTIONS, environment.ENV, request.id, prescriptionKey)
@@ -63,7 +80,7 @@ export default defineEventHandler(async (event) => {
                 size: attachment.size,
             },
         });
-        return { request: updatedRequest ?? request, demo: true };
+        savedRequest = updatedRequest ?? request;
     } catch (error) {
         if (storedKey) {
             await environment.PRESCRIPTIONS.delete(storedKey);
@@ -71,4 +88,6 @@ export default defineEventHandler(async (event) => {
         deleteRequestRecord(request.id);
         throw createError({ statusCode: 400, statusMessage: (error as Error).message });
     }
+    await finishDraft();
+    return { request: savedRequest, demo: true };
 });

@@ -8,8 +8,15 @@ describe('new request entries', () => {
         expect(addDiagnosis([], '  ')).toEqual([]);
     });
     it('requires agency details, insurance, and a Medi-Cal status only for Medi-Cal', () => {
-        const valid = { ouncesPrescribed: '24', durationMonths: '3', diagnosis: 'Food allergy', prescriptionSignedDate: '2026-10-22', familyId: '123', individualId: '456', benefitsStartDate: '2026-10-22', requestKind: 'new', medicalStatus: 'no', mediCalStatus: '', doctorHasSignedOff: true, productForm: 'powder', readyToFeedJustification: '' };
+        const valid = { wicFoodRestrictions: 'none', wicStaffFoodRestrictions: '', wicNutritionStaffNotes: '', wicNutritionStaffName: '', ouncesPrescribed: '24', durationMonths: '3', diagnosis: 'Food allergy: Peanut', prescriptionSignedDate: '2026-10-22', familyId: '123', individualId: '456', benefitsStartDate: '2026-10-22', requestKind: 'new', medicalStatus: 'no', mediCalStatus: '', doctorHasSignedOff: true, productForm: 'powder', readyToFeedJustification: '' };
         expect(validateAgencyFields(valid)).toBe('');
+        expect(validateAgencyFields({ ...valid, wicFoodRestrictions: '' })).toContain('WIC Food Restrictions');
+        const staff = { ...valid, wicFoodRestrictions: 'not-indicated' };
+        expect(validateAgencyFields(staff)).toContain('select');
+        expect(validateAgencyFields({ ...staff, wicStaffFoodRestrictions: 'none' })).toContain('Name');
+        expect(validateAgencyFields({ ...staff, wicStaffFoodRestrictions: 'none', wicNutritionStaffName: 'Sam' })).toBe('');
+        expect(validateAgencyFields({ ...staff, wicStaffFoodRestrictions: 'restricted', wicNutritionStaffName: 'Sam' })).toContain('Notes');
+        expect(validateAgencyFields({ ...staff, wicStaffFoodRestrictions: 'restricted', wicNutritionStaffName: 'Sam', wicNutritionStaffNotes: 'No milk' })).toBe('');
         for (const key of ['ouncesPrescribed', 'durationMonths', 'diagnosis']) {
             expect(validateAgencyFields({ ...valid, [key]: '' })).not.toBe('');
         }

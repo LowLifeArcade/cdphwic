@@ -1,6 +1,7 @@
 export type UserRole = 'admin' | 'member';
 export type MemberType = 'internal' | 'agency';
 export type RequestStatus =
+    | 'incomplete'
     | 'unopened'
     | 'opened'
     | 'pending'
@@ -75,6 +76,7 @@ export interface RequestRecord {
     diagnosis?: string;
     wicFoodRestrictions?: 'under-6-months' | 'none' | 'restricted' | 'not-indicated';
     wicFoodRestrictionDetails?: string;
+    wicStaffFoodRestrictions?: 'none' | 'restricted';
     wicNutritionStaffNotes?: string;
     wicNutritionStaffName?: string;
     formulaFlavor?: string;
