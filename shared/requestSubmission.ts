@@ -1,7 +1,7 @@
 import { validateRequestedMonths } from './requestMonthSelection';
 import type { RequestRecord } from './domain';
 import { validateAgencyFields } from './newRequestFields';
-import { validateFormulaEntry, validateFormulaSelection } from './formulaEntries';
+import { validateFormulaEntry, validateFormulaSelection, validateOtherFormulaName } from './formulaEntries';
 import { availableFormulaForms, findFormula } from './formulaCatalog';
 import { normalizePhoneNumber } from './phone';
 
@@ -10,6 +10,7 @@ export function validateRequestSubmission(request: Partial<RequestRecord>) {
     if (!request.doctorPrintedName?.trim() || !request.doctorOfficeName?.trim() || !request.doctorOfficeAddress?.trim()) return 'Complete Health Care Provider information.';
     if (!normalizePhoneNumber(request.doctorOfficePhone ?? '')) return 'Enter a valid Phone Number.';
     const customName = request.genericFields?.otherFormulaName?.trim();
+    if (customName) { const error = validateOtherFormulaName(customName); if (error) return error; }
     const isOther = Boolean(customName && customName === request.productName?.trim() && customName.toLowerCase() !== 'other' && !findFormula(customName));
     const forms = availableFormulaForms(isOther ? 'Other' : request.productName ?? '');
     if (!request.productName?.trim() || (!isOther && !findFormula(request.productName)) || !request.productForm || !forms.includes(request.productForm)) return 'Select a matching Formula Name and Form.';

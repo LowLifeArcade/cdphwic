@@ -25,6 +25,10 @@ describe('submission requirements', () => {
         expect(validateRequestSubmission({ ...custom, productName: 'Fortini', productForm: 'powder', genericFields: { otherFormulaName: 'Fortini' } })).not.toBe('');
     });
 
+    it('rejects catalog names submitted as Other for the first formula', () => {
+        expect(validateRequestSubmission({...complete, genericFields:{otherFormulaName:'Fortini'}})).toMatch(/already.*list/i);
+    });
+
     it('validates each additional formula and permits RTF-only products without a reason', () => {
         const first = { productName: 'Fortini', productForm: 'ready-to-feed' as const, ouncesPrescribed: 24 };
         const second = { productName: 'Similac NeoSure', productForm: 'powder' as const, ouncesPrescribed: 12 };
@@ -45,7 +49,7 @@ describe('submission requirements', () => {
 
     it('rejects duplicate requested formulas and more than two formulas at submission', () => {
         const formula = { productName: 'Fortini', productForm: 'ready-to-feed' as const, ouncesPrescribed: 24 };
-        expect(validateRequestSubmission({ ...complete, requestedFormulas: [formula, formula] })).toContain('already selected');
+        expect(validateRequestSubmission({ ...complete, requestedFormulas: [formula, formula] })).toContain('not be identical');
         expect(validateRequestSubmission({ ...complete, requestedFormulas: [formula, formula, formula] })).toContain('2 formulas');
     });
 

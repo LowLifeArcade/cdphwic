@@ -1,5 +1,6 @@
 import { requiresReadyToFeedReason } from './formulaCatalog';
 import { validateDiagnoses } from './diagnosisCatalog';
+export const providerSignatureMessage = 'Please verify that medical documentation is signed by a health care provider with prescriptive authority.';
 export function addDiagnosis(diagnoses: string[], value: string): string[] {
     const diagnosis = value.trim();
     return !diagnosis || diagnoses.some((item) => item.toLowerCase() === diagnosis.toLowerCase())
@@ -36,6 +37,6 @@ export function validateAgencyFields(fields: {
         if (fields.wicStaffFoodRestrictions === 'restricted' && !fields.wicNutritionStaffNotes.trim()) return 'Enter WIC Nutrition Staff Notes listing food restrictions.';
     }
     if (!fields.prescriptionSignedDate) return 'Enter Date Signed.';
-    if (!fields.doctorHasSignedOff) return 'Confirm that the medical documentation includes the provider’s signature.';
+    if (!fields.doctorHasSignedOff) return providerSignatureMessage;
     return '';
 }

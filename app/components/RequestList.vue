@@ -1,8 +1,10 @@
 <script setup lang="ts">
+import {canEditSubmission} from '~/../shared/requestEditing';
 import type { ProductRecord, RequestRecord } from '~/../shared/domain';
 const props = defineProps<{ requests: RequestRecord[]; products: ProductRecord[] }>();
 const identity = useState<'admin' | 'agency' | 'internal'>('demo-identity', () => 'admin');
 const selected = ref<RequestRecord | null>(null);
+const openError=ref('');
 const selectedIndex = computed(() => props.requests.findIndex((request) => request.id === selected.value?.id));
 const previousRequest = computed(() => props.requests[selectedIndex.value - 1]);
 const nextRequest = computed(() => selectedIndex.value < 0 ? undefined : props.requests[selectedIndex.value + 1]);
@@ -29,25 +31,28 @@ async function openRequest(request: RequestRecord) {
         await navigateTo(`/requests/new?draft=${request.id}`);
         return;
     }
-    selected.value = request;
+    openError.value='';
     if ((identity.value === 'admin' || identity.value === 'internal') && request.status === 'unopened') {
-        const result = await $fetch<{ request: RequestRecord }>(`/api/requests/${request.id}`, {
+        try { const result = await $fetch<{ request: RequestRecord }>(`/api/requests/${request.id}`, {
             method: 'PUT',
+            headers: {'x-demo-user':identity.value},
             body: { status: 'opened' },
         });
         Object.assign(request, result.request);
+        } catch {openError.value='The request could not be opened. Please refresh and try again.';return;}
     }
+    selected.value=request;
 }
 </script>
 
 <template>
+    <p v-if="openError" role="alert">{{openError}}</p>
     <div class="request-table-wrap">
         <div class="request-table-head">
             <span>Participant</span><span>Agency</span><span>Product</span><span>Status</span><span>ETA</span><span />
         </div>
+        <div v-for="request in requests" :key="request.id" class="request-row-shell">
         <button
-            v-for="request in requests"
-            :key="request.id"
             class="request-row"
             @click="openRequest(request)"
         >
@@ -95,6 +100,8 @@ async function openRequest(request: RequestRecord) {
             >
             <span class="row-arrow">›</span>
         </button>
+        <NuxtLink v-if="identity === 'agency' && canEditSubmission(request)" class="request-edit-link" :to="{path:'/requests/new',query:{request:request.id}}" :aria-label="`Edit submission for ${request.participantName}`">Edit submission</NuxtLink>
+        </div>
         <div
             v-if="!requests.length"
             class="empty-state"
@@ -123,3 +130,9 @@ async function openRequest(request: RequestRecord) {
         />
     </div>
 </template>
+
+<style scoped>
+.request-row-shell {position:relative;}
+.request-edit-link {position:absolute;right:12px;bottom:5px;padding:3px 6px;color:var(--purple-light);font-size:0.72rem;border-radius:4px;background:var(--surface);}
+.request-edit-link:hover {text-decoration:underline;}
+</style>

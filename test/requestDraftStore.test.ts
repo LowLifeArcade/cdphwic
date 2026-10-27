@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { saveRequestDraft, readRequestDraft, listRequestDrafts, deleteRequestDraft } from '../server/utils/requestDraftStore';
+import { saveRequestDraft, readRequestDraft, listRequestDrafts, deleteRequestDraft, deleteAccessibleRequestDraft } from '../server/utils/requestDraftStore';
 import { getDemoUser } from '../server/utils/session';
 
 function storage() {
@@ -40,4 +40,16 @@ describe('durable incomplete requests', () => {
         await expect(saveRequestDraft(bucket, 'dev', other, { id: draft.request.id, form: {} })).rejects.toThrow('not found');
         await expect(saveRequestDraft(bucket, 'dev', user, { form: {}, prescriptionKey: 'prod/requests/1/file.pdf' })).rejects.toThrow('Invalid');
     });
+});
+
+it('deletes only accessible incomplete requests and their temporary upload', async () => {
+ const bucket=storage(); const user=getDemoUser('agency');
+ const draft=await saveRequestDraft(bucket,'dev',user,{form:{},prescriptionKey:'temporary/dev/draft.pdf'});
+ await bucket.put('temporary/dev/draft.pdf','file');
+ await expect(deleteAccessibleRequestDraft(bucket,'dev',{...user,agencyId:99},draft.request.id)).rejects.toThrow('not found');
+ expect(await readRequestDraft(bucket,'dev',draft.request.id)).toBeTruthy();
+ await deleteAccessibleRequestDraft(bucket,'dev',user,draft.request.id);
+ expect(await readRequestDraft(bucket,'dev',draft.request.id)).toBeUndefined();
+ expect(await bucket.get('temporary/dev/draft.pdf')).toBeNull();
+ await expect(deleteAccessibleRequestDraft(bucket,'dev',user,123)).rejects.toThrow('not found');
 });

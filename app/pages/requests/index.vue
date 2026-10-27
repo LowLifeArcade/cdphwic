@@ -7,7 +7,7 @@ const agencyId = ref('');
 const repId = ref('');
 const { data: agencyData } = await useFetch('/api/agencies');
 const { data: productData } = await useFetch('/api/products');
-const { data, refresh } = await useFetch('/api/requests', {
+const { data, error, status, refresh } = await useFetch('/api/requests', {
     headers: computed(() => ({ 'x-demo-user': identity.value })),
     query: computed(() => ({
         scope: scope.value,
@@ -80,7 +80,17 @@ watch([agencyId, repId, identity], () => refresh());
             >
                 {{ member.name }}
             </option></select
-        ><span class="muted-copy">{{ requests.length }} requests</span>
+        ><span v-if="!error" class="muted-copy">{{ requests.length }} requests</span>
     </div>
-    <RequestList :requests="requests" :products="products" />
+    <div v-if="error" class="requests-load-error" role="alert">
+        <p>Requests could not be loaded. This does not mean they were deleted. Please try again.</p>
+        <button class="button button-secondary" type="button" :disabled="status === 'pending'" @click="refresh()">Retry</button>
+    </div>
+    <p v-else-if="status === 'pending' && !data" role="status">Loading requests…</p>
+    <RequestList v-else :requests="requests" :products="products" />
 </template>
+
+<style scoped>
+.requests-load-error { padding: 20px; border: 1px solid var(--red); border-radius: 8px; background: var(--surface); }
+.requests-load-error p { margin-top: 0; }
+</style>

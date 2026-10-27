@@ -4,6 +4,7 @@
     "private": true,
     "scripts": {
         "build": "nuxt build",
+        "predev": "CI=1 wrangler d1 migrations apply CDPHWIC --local --env dev",
         "dev": "NODE_OPTIONS=--no-deprecation CLOUDFLARE_ENV=dev nuxt dev",
         "generate": "nuxt generate",
         "test": "vitest run",

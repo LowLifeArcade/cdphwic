@@ -1,10 +1,11 @@
 <script setup lang="ts">
+import {canEditSubmission,restoreSubmittedForm} from '~/../shared/requestEditing';
 import { benefitMonthLabels, toggleRequestedMonth, serializeRequestedMonths, validateRequestedMonths } from '~/../shared/requestMonthSelection';
 import { formulaCatalog, findFormula, availableFormulaForms, defaultFormulaForm, requiresReadyToFeedReason } from '~/../shared/formulaCatalog';
 import type { ProductForm, RequestRecord } from '~/../shared/domain';
-import { blankFormula, formulaEntryName, validateFormulaEntry, validateFormulaSelection, type FormulaEntry } from '~/../shared/formulaEntries';
-import { diagnosisCatalog, findDiagnosis } from '~/../shared/diagnosisCatalog';
-import { addDiagnosis, validateAgencyFields } from '~/../shared/newRequestFields';
+import { blankFormula, formulaEntryName, getFormulaFieldErrors, validateOtherFormulaName, validateFormulaEntry, validateFormulaSelection, type FormulaEntry } from '~/../shared/formulaEntries';
+import { diagnosisCatalog, findDiagnosis, validateDiagnoses } from '~/../shared/diagnosisCatalog';
+import { addDiagnosis, validateAgencyFields, providerSignatureMessage } from '~/../shared/newRequestFields';
 import { formatPhoneNumber, normalizePhoneNumber } from '~/../shared/phone';
 
 const router = useRouter();
@@ -12,7 +13,26 @@ const route = useRoute();
 const identity = useState<'admin' | 'agency' | 'internal'>('demo-identity', () => 'admin');
 const draftId = ref<number | undefined>(route.query.draft ? Number(route.query.draft) : undefined);
 const submissionId = ref<string>(crypto.randomUUID());
+const editingId = ref<number|undefined>(route.query.request?Number(route.query.request):undefined);
+const editingRevision=ref(0);
+const editLocked=ref(false);
+const existingAttachment=ref<RequestRecord['prescriptionAttachment']>();
+const removeExistingAttachment=ref(false);
 const saving = ref(false);
+const draftSavedNotice = ref('');
+const deleteConfirmationOpen=ref(false);
+async function deleteUnsubmittedRequest(){
+ if(saving.value || editingId.value) return;
+ saving.value=true;
+ try {
+  if(draftId.value) await $fetch(`/api/requests/drafts/${draftId.value}`,{method:'DELETE',headers:{'x-demo-user':identity.value}});
+  deleteConfirmationOpen.value=false;
+  await router.push('/requests');
+ } catch(error){
+  submissionError.value=(error as {data?:{statusMessage?:string}}).data?.statusMessage??'The request could not be deleted. Please try again.';
+  deleteConfirmationOpen.value=false;
+ } finally {saving.value=false;}
+}
 const formulaAlert = ref('');
 const additionalFormulas = ref<FormulaEntry[]>([]);
 const surplusEntries = ref<Array<{ productName: string; productForm: ProductForm | ''; flavor: string; units: string | number; expirationDate: string }>>([]);
@@ -26,6 +46,7 @@ const diagnosisMatchIndex = ref(0);
 const diagnosisFocused = ref(false);
 const fileInput = ref<HTMLInputElement>();
 const submitted = ref(false);
+const validationAttempted = ref(false);
 const submissionError = ref('');
 const diagnosisInput = ref('');
 const diagnoses = computed(() => form.diagnosis.split(/[\n;]/).map((value) => value.trim()).filter(Boolean));
@@ -84,7 +105,7 @@ const form = reactive({
     familyId: '',
     individualId: '',
     benefitsStartDate: '',
-    requestKind: 'new' as 'new' | 'extension',
+    requestKind: '' as '' | 'new' | 'extension',
     formulaName: '',
     otherFormulaName: '',
     formulaFlavor: '',
@@ -167,9 +188,12 @@ watch(() => form.formulaName, () => { formulaMatchIndex.value = 0; });
 watch(diagnosisInput, () => { diagnosisMatchIndex.value = 0; });
 
 if (draftId.value) {
-    const draft = await $fetch<{ form: Record<string, string | number | boolean>; prescriptionKey: string; fileName: string }>(`/api/requests/drafts/${draftId.value}`, {
+    const {data: draftData, error: draftError} = await useFetch<{ form: Record<string, string | number | boolean>; prescriptionKey: string; fileName: string }>(`/api/requests/drafts/${draftId.value}`, {
         headers: { 'x-demo-user': identity.value },
     });
+    if (draftError.value) throw createError(draftError.value);
+    const draft = draftData.value;
+    if (!draft) throw createError({statusCode:404,statusMessage:'Incomplete request not found.'});
     const { _submissionId, _diagnosisInput, _diagnosisDetails, _additionalFormulas, _surplusEntries, _requestedMonths, ...values } = draft.form;
     Object.assign(form, values);
     if (_submissionId) submissionId.value = String(_submissionId);
@@ -183,8 +207,30 @@ if (draftId.value) {
     if (draft.fileName) selectedPrescription.value = new File([], draft.fileName);
 }
 
+if(editingId.value){
+ const {data: editingData,error: editingError}=await useFetch<{request:RequestRecord}>(`/api/requests/${editingId.value}`,{headers:{'x-demo-user':identity.value}});
+ if(editingError.value) throw createError(editingError.value);
+ if(!editingData.value) throw createError({statusCode:404,statusMessage:'Request not found.'});
+ let request=editingData.value.request;
+ if(identity.value!=='agency' && canEditSubmission(request)){
+  const result=await $fetch<{request:RequestRecord}>(`/api/requests/${editingId.value}`,{method:'PUT',body:{status:'opened'},headers:{'x-demo-user':identity.value}});
+  request=result.request;
+ }
+ const restored=restoreSubmittedForm(request);
+ Object.assign(form,restored.form);
+ additionalFormulas.value=restored.additionalFormulas;
+ surplusEntries.value=restored.surplusEntries;
+ requestedMonths.value=restored.requestedMonths;
+ editingRevision.value=request.revision??0;
+ submissionId.value=request.submissionId??`legacy-${request.id}`;
+ editLocked.value=identity.value!=='agency'||!canEditSubmission(request);
+ existingAttachment.value=request.prescriptionAttachment;
+ if(request.prescriptionAttachment)selectedPrescription.value=new File([],request.prescriptionAttachment.fileName);
+}
+
 async function saveRequest() {
     if (saving.value || parsing.value) return;
+    draftSavedNotice.value = '';
     saving.value = true;
     submissionError.value = '';
     try {
@@ -198,7 +244,8 @@ async function saveRequest() {
             },
         });
         draftId.value = result.request.id;
-        await router.push('/requests');
+        await router.replace({path:route.path,query:{...route.query,draft:String(result.request.id)}});
+        draftSavedNotice.value = 'Information saved.';
     } catch (error) {
         submissionError.value = (error as { data?: { statusMessage?: string } }).data?.statusMessage ?? 'The incomplete request could not be saved. Please try again.';
     } finally {
@@ -308,6 +355,7 @@ async function removePrescription() {
                 body: { key: uploadedStorageKey.value },
             });
         }
+        if (existingAttachment.value) removeExistingAttachment.value=true;
         selectedPrescription.value = null;
         uploadedStorageKey.value = '';
         parserMessage.value = '';
@@ -343,9 +391,54 @@ async function handleDrop(event: DragEvent) {
     await selectPrescription(event.dataTransfer?.files?.[0]);
 }
 
+function syncFieldValidity() {
+    // Read reactive values before accessing the DOM so dynamically added fields are revalidated.
+    const entries = [{...form}, ...additionalFormulas.value.map(entry => ({...entry}))];
+    const diagnosisError = validateDiagnoses(form.diagnosis);
+    const duplicateError = formulaSelectionError.value;
+    const attempted = validationAttempted.value;
+    const root = requestForm.value;
+    if (!root) return;
+    const controls = [...root.querySelectorAll<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>('input, select, textarea')];
+    for (const control of controls) {
+        control.setCustomValidity('');
+        if (control.required && control.type !== 'checkbox' && !control.value.trim()) control.setCustomValidity('Complete this field.');
+    }
+    const setError = (id: string, message: string) => {
+        const control = controls.find(item => item.id === id);
+        if (control && message) control.setCustomValidity(message);
+    };
+    entries.forEach((entry, index) => {
+        const ids = index === 0
+            ? {formulaName:'formula',otherFormulaName:'other-formula-name',productForm:'formula-form',ouncesPrescribed:'ounces',readyToFeedJustification:'rtf-justification'}
+            : {formulaName:`extra-formula-${index+1}`,otherFormulaName:`extra-formula-${index+1}-other`,productForm:`extra-formula-${index+1}-form`,ouncesPrescribed:`extra-formula-${index+1}-amount`,readyToFeedJustification:`extra-formula-${index+1}-reason`};
+        for (const [key, message] of Object.entries(getFormulaFieldErrors(entry))) setError(ids[key as keyof typeof ids], message!);
+    });
+    if (!form.doctorHasSignedOff) setError('doctor-signed-off', providerSignatureMessage);
+    if (duplicateError) setError('extra-formula-2', duplicateError);
+    if (diagnosisError && (!diagnosisInput.value.trim() || form.diagnosis.trim())) setError('diagnosis', diagnosisError);
+    if (form.doctorOfficePhone.trim() && !normalizePhoneNumber(form.doctorOfficePhone)) setError('doctor-phone', 'Enter a valid Phone Number.');
+    for (const control of controls) {
+        if (attempted && !control.validity.valid) control.setAttribute('aria-invalid', 'true');
+        else control.removeAttribute('aria-invalid');
+    }
+}
+watch([form, additionalFormulas, surplusEntries, diagnosisInput, diagnosisDetails, requestForm, validationAttempted], syncFieldValidity, {deep:true, flush:'post', immediate:true});
+
 async function submitRequest() {
     submitted.value = false;
-    if (saving.value || parsing.value || !commitDiagnosis()) return;
+    if (saving.value || parsing.value) return;
+    validationAttempted.value = true;
+    const diagnosisCommitted = commitDiagnosis();
+    await nextTick();
+    syncFieldValidity();
+    const invalid = requestForm.value?.querySelector<HTMLElement>('input:invalid, select:invalid, textarea:invalid, [data-required-group][aria-invalid="true"]');
+    if (invalid || !diagnosisCommitted) {
+        submissionError.value = 'Complete the fields highlighted in red before submitting. You can still Save an incomplete request.';
+        invalid?.focus();
+        if (invalid && 'reportValidity' in invalid) (invalid as HTMLInputElement).reportValidity();
+        return;
+    }
     submissionError.value = formulaSelectionError.value || validateAgencyFields(form);
     if (!submissionError.value && ((!selectedFormula.value && !isOtherFormula.value) || (isOtherFormula.value && (!form.otherFormulaName.trim() || form.otherFormulaName.trim().toLowerCase() === 'other')) || !availableForms.value.includes(form.productForm as ProductForm))) {
         submissionError.value = 'Select a matching formula name and an available form.';
@@ -370,6 +463,8 @@ async function submitRequest() {
             'request',
             JSON.stringify({
                 draftId: draftId.value,
+                revision: editingRevision.value,
+                removePrescriptionAttachment: removeExistingAttachment.value,
                 submissionId: submissionId.value,
                 agencyId: 10,
                 agencyMemberId: 100,
@@ -413,7 +508,7 @@ async function submitRequest() {
                 },
             }),
         );
-        await $fetch('/api/requests', { method: 'POST', body, headers: { 'x-demo-user': identity.value } });
+        await $fetch(editingId.value?`/api/requests/${editingId.value}/submission`:'/api/requests', { method: editingId.value?'PUT':'POST', body, headers: { 'x-demo-user': identity.value } });
         submitted.value = true;
         await router.push('/requests');
     } catch (error) {
@@ -428,7 +523,8 @@ async function submitRequest() {
     <div class="page-heading">
         <div>
             <p class="eyebrow">Requests</p>
-            <h1>New Request</h1>
+            <h1>{{editingId?'Edit Request':'New Request'}}</h1>
+            <p v-if="editingId&&!editLocked">You can update this submission until Admin or FPU opens it.</p>
         </div>
         <NuxtLink
             class="button button-ghost"
@@ -436,9 +532,12 @@ async function submitRequest() {
             >Cancel</NuxtLink
         >
     </div>
-    <form
+    <p v-if="editLocked" role="alert">Admin/FPU has opened this submission. Its submitted form can no longer be edited.</p>
+    <form v-else
         ref="requestForm"
         class="panel form-panel request-form"
+        :class="{'validation-attempted': validationAttempted}"
+        novalidate
         @submit.prevent="submitRequest"
     >
         <section class="form-section prescription-first">
@@ -533,8 +632,7 @@ async function submitRequest() {
             >
                 <h2 id="remove-prescription-title">Remove uploaded prescription?</h2>
                 <p>
-                    Remove <strong>{{ selectedPrescription.name }}</strong>? The temporary upload will also be removed
-                    from storage.
+                    Remove <strong>{{ selectedPrescription.name }}</strong>? Changes to a submitted attachment take effect when you save. Temporary uploads are removed from storage.
                 </p>
                 <div class="form-actions">
                     <button
@@ -561,7 +659,7 @@ async function submitRequest() {
                     <h2>Participant</h2>
                 </div>
             </div>
-            <div class="form-grid">
+            <div class="form-grid participant-grid">
                 <div class="form-field">
                     <label for="patient-first">{{ requiredLabel('Patient First Name') }}</label>
                     <input
@@ -590,6 +688,7 @@ async function submitRequest() {
                         required
                     />
                 </div>
+                <div class="insurance-fields">
                 <div class="form-field">
                     <label for="medical">Health Insurance</label>
                     <select
@@ -612,6 +711,7 @@ async function submitRequest() {
                         <option value="Product Not Covered">Product Not Covered</option>
                     </select>
                 </div>
+            </div>
             </div>
             <fieldset class="form-field full local-agency-fields">
                 <legend>Additional Participant Details</legend>
@@ -653,6 +753,7 @@ async function submitRequest() {
                             class="form-input"
                             required
                         >
+                            <option disabled value="">Select New or Extension</option>
                             <option value="new">New</option>
                             <option value="extension">Extension</option>
                         </select>
@@ -680,91 +781,98 @@ async function submitRequest() {
                 </div>
             </div>
             <div class="form-grid">
-                <div class="form-field">
-                    <label for="formula">{{ requiredLabel('Formula Name') }}</label>
-                    <div class="formula-autocomplete">
-                        <input
-                            id="formula"
-                            v-model="form.formulaName"
-                            @focus="formulaFocused = true"
-                            @input="formulaFocused = true"
-                            @keydown.esc.prevent="formulaFocused = false"
-                            role="combobox"
-                            aria-autocomplete="list"
-                            aria-controls="formula-matches"
-                            :aria-expanded="formulaFocused && formulaMatches.length > 0"
-                            :aria-activedescendant="formulaFocused && formulaMatches.length ? `formula-match-${formulaMatchIndex}` : undefined"
-                            @blur="formulaFocused = false"
-                            @keydown.down.prevent="formulaMatchIndex = Math.min(formulaMatchIndex + 1, formulaMatches.length - 1)"
-                            @keydown.up.prevent="formulaMatchIndex = Math.max(formulaMatchIndex - 1, 0)"
-                            @keydown.enter.prevent="formulaMatches[formulaMatchIndex] && selectFormula(formulaMatches[formulaMatchIndex]!.name)"
-                            class="form-input"
-                            placeholder="Start typing a formula name or type Other to enter a name not on the list"
-                            autocomplete="off"
-                            required
-                        />
-                        <div v-if="formulaFocused && formulaMatches.length" id="formula-matches" class="form-suggestions formula-dropdown" role="listbox" aria-label="Matching formulas">
-                            <button v-for="(formula, index) in formulaMatches" :key="formula.name" type="button" role="option" tabindex="-1"
-                                :id="`formula-match-${index}`" :aria-selected="index === formulaMatchIndex"
-                                :class="{ 'suggestion-active': index === formulaMatchIndex }"
-                                @pointerdown.prevent @click="selectFormula(formula.name)">{{ formula.name }}</button>
+                <fieldset class="formula-group full">
+                    <legend>Formula 1</legend>
+                    <div class="form-grid formula-entry-grid" :class="{'has-formula-details': isOtherFormula || selectedFormula?.hasFlavor}">
+                        <div class="form-field formula-name-field">
+                            <label for="formula">{{ requiredLabel('Formula Name') }}</label>
+                            <div class="formula-autocomplete">
+                                <input
+                                    id="formula"
+                                    v-model="form.formulaName"
+                                    @focus="formulaFocused = true"
+                                    @input="formulaFocused = true"
+                                    @keydown.esc.prevent="formulaFocused = false"
+                                    role="combobox"
+                                    aria-autocomplete="list"
+                                    aria-controls="formula-matches"
+                                    :aria-expanded="formulaFocused && formulaMatches.length > 0"
+                                    :aria-activedescendant="formulaFocused && formulaMatches.length ? `formula-match-${formulaMatchIndex}` : undefined"
+                                    @blur="formulaFocused = false"
+                                    @keydown.down.prevent="formulaMatchIndex = Math.min(formulaMatchIndex + 1, formulaMatches.length - 1)"
+                                    @keydown.up.prevent="formulaMatchIndex = Math.max(formulaMatchIndex - 1, 0)"
+                                    @keydown.enter.prevent="formulaMatches[formulaMatchIndex] && selectFormula(formulaMatches[formulaMatchIndex]!.name)"
+                                    class="form-input"
+                                    placeholder="Start typing a formula name or type Other"
+                                    autocomplete="off"
+                                    required
+                                />
+                                <div v-if="formulaFocused && formulaMatches.length" id="formula-matches" class="form-suggestions formula-dropdown" role="listbox" aria-label="Matching formulas">
+                                    <button v-for="(formula, index) in formulaMatches" :key="formula.name" type="button" role="option" tabindex="-1"
+                                        :id="`formula-match-${index}`" :aria-selected="index === formulaMatchIndex"
+                                        :class="{ 'suggestion-active': index === formulaMatchIndex }"
+                                        @pointerdown.prevent @click="selectFormula(formula.name)">{{ formula.name }}</button>
+                                </div>
+                            </div>
+                        </div>
+                        <div v-if="isOtherFormula" class="form-field formula-detail-field">
+                            <label for="other-formula-name">{{ requiredLabel('Other Formula Name') }}</label>
+                            <input id="other-formula-name" v-model="form.otherFormulaName" class="form-input" required aria-describedby="other-formula-error" />
+                            <small v-if="form.otherFormulaName.trim() && validateOtherFormulaName(form.otherFormulaName)" id="other-formula-error" class="field-error" role="alert">{{ validateOtherFormulaName(form.otherFormulaName) }}</small>
+                        </div>
+                        <div v-if="selectedFormula?.hasFlavor" class="form-field formula-detail-field">
+                            <label for="formula-flavor">Flavor</label>
+                            <input id="formula-flavor" v-model="form.formulaFlavor" class="form-input" />
+                        </div>
+                        <div class="form-field formula-form-field">
+                            <label for="formula-form">{{ requiredLabel('Form') }}</label>
+                            <select
+                                id="formula-form"
+                                v-model="form.productForm"
+                                class="form-input"
+                                required
+                            >
+                                <option disabled value="">Select Form</option>
+                                <option v-for="availableForm in availableForms" :key="availableForm" :value="availableForm">
+                                    {{ { powder: 'Powder', concentrate: 'Liquid Concentrate', 'ready-to-feed': 'Ready-to-Feed' }[availableForm] }}
+                                </option>
+                            </select>
+                        </div>
+                        <div class="form-field formula-amount-field">
+                            <label for="ounces">Amount (in ounces per day)</label>
+                            <input
+                                id="ounces"
+                                v-model="form.ouncesPrescribed"
+                                required
+                                class="form-input"
+                                type="text"
+                                inputmode="decimal"
+                                pattern="(?:[0-9]+(?:\.[0-9]+)?|\.[0-9]+)"
+                            />
+                        </div>
+                        <div
+                            v-if="requiresReadyToFeedReason(form.formulaName, form.productForm)"
+                            class="form-field formula-justification-field"
+                        >
+                            <label for="rtf-justification">{{ requiredLabel('Justification') }}</label>
+                            <textarea
+                                id="rtf-justification"
+                                v-model="form.readyToFeedJustification"
+                                placeholder='List reason(s) why ready-to-feed is needed. Otherwise, type "Only form available"'
+                                required
+                                rows="1"
+                                class="form-textarea rtf-reason"
+                            />
                         </div>
                     </div>
-                </div>
-                <div v-if="isOtherFormula" class="form-field">
-                    <label for="other-formula-name">{{ requiredLabel('Other Formula Name') }}</label>
-                    <input id="other-formula-name" v-model="form.otherFormulaName" class="form-input" required />
-                </div>
-                <div v-if="selectedFormula?.hasFlavor" class="form-field">
-                    <label for="formula-flavor">Flavor</label>
-                    <input id="formula-flavor" v-model="form.formulaFlavor" class="form-input" />
-                </div>
-                <div class="form-field">
-                    <label for="formula-form">{{ requiredLabel('Form') }}</label>
-                    <select
-                        id="formula-form"
-                        v-model="form.productForm"
-                        class="form-input"
-                        required
-                    >
-                        <option disabled value="">Select Form</option>
-                        <option v-for="availableForm in availableForms" :key="availableForm" :value="availableForm">
-                            {{ { powder: 'Powder', concentrate: 'Liquid Concentrate', 'ready-to-feed': 'Ready-to-Feed' }[availableForm] }}
-                        </option>
-                    </select>
-                </div>
-                <div
-                    v-if="requiresReadyToFeedReason(form.formulaName, form.productForm)"
-                    class="form-field full"
-                >
-                    <label for="rtf-justification">{{ requiredLabel('List reason(s) why ready-to-feed is needed.') }}</label>
-                    <textarea
-                        id="rtf-justification"
-                        v-model="form.readyToFeedJustification"
-                        required
-                        rows="1"
-                        class="form-textarea rtf-reason"
-                    />
-                </div>
-                <div class="form-field">
-                    <label for="ounces">{{ requiredLabel('Amount Per Day (in ounces)') }}</label>
-                    <input
-                        id="ounces"
-                        v-model="form.ouncesPrescribed"
-                        required
-                        class="form-input"
-                        type="text"
-                        inputmode="decimal"
-                        pattern="(?:[0-9]+(?:\.[0-9]+)?|\.[0-9]+)"
-                    />
-                </div>
-                <fieldset v-for="(_, index) in additionalFormulas" :key="index" class="additional-formula full">
+                </fieldset>
+                <fieldset v-for="(_, index) in additionalFormulas" :key="index" class="additional-formula formula-group full">
                     <legend>Formula {{ index + 2 }}</legend>
                     <AdditionalFormulaFields v-model="additionalFormulas[index]!" :index="index + 2" />
-                    <p v-if="formulaSelectionError" role="alert">{{ formulaSelectionError }}</p>
+                    <p v-if="formulaSelectionError" class="field-error" role="alert">{{ formulaSelectionError }}</p>
                     <button class="text-button" type="button" @click="additionalFormulas.splice(index, 1)">Remove formula {{ index + 2 }}</button>
                 </fieldset>
-                <div v-if="!additionalFormulas.length" class="form-field full">
+                <div v-if="!additionalFormulas.length" class="form-field full add-formula-action">
                     <button class="button button-ghost add-formula-button" type="button" @click="addAdditionalFormula">Add another formula</button>
                 </div>
                 <div class="form-field">
@@ -783,6 +891,7 @@ async function submitRequest() {
                     <input
                         id="diagnosis"
                         v-model="diagnosisInput"
+                        placeholder="Start typing a diagnosis and press Enter to add each diagnosis."
                         :required="!diagnoses.length"
                         aria-required="true"
                         @focus="diagnosisFocused = true"
@@ -816,7 +925,7 @@ async function submitRequest() {
 
         <section class="form-section">
             <div class="panel-heading"><h2>{{ requiredLabel('WIC Food Restrictions') }}</h2></div>
-            <fieldset class="food-restriction-options" aria-label="WIC Food Restrictions">
+            <fieldset class="food-restriction-options" aria-label="WIC Food Restrictions" data-required-group tabindex="-1" :aria-invalid="validationAttempted && !form.wicFoodRestrictions">
                 <label v-for="option in [
                     { value: 'under-6-months', label: 'Participant is under 6 months' },
                     { value: 'none', label: 'No food restrictions (all WIC foods allowed)' },
@@ -834,7 +943,7 @@ async function submitRequest() {
             <fieldset v-if="form.wicFoodRestrictions === 'not-indicated'" class="local-agency-fields staff-food-review">
                 <legend>Local Agency WIC Nutrition Staff Review</legend>
                 <p>A WIC Nutrition Staff member must complete this section.</p>
-                <div class="food-restriction-options" role="group" aria-label="WIC Nutrition Staff food restrictions">
+                <div class="food-restriction-options" role="group" aria-label="WIC Nutrition Staff food restrictions" data-required-group tabindex="-1" :aria-invalid="validationAttempted && !form.wicStaffFoodRestrictions">
                     <label v-for="option in [
                         { value: 'none', label: 'No food restrictions (all WIC foods allowed)' },
                         { value: 'restricted', label: 'Food restrictions (listed below)' },
@@ -960,7 +1069,7 @@ async function submitRequest() {
                     <input :id="`surplus-flavor-${index}`" v-model="entry.flavor" class="form-input" />
                 </div>
                 <div class="form-field">
-                    <label :for="`surplus-units-${index}`">Surplus Quantity (units)</label>
+                    <label :for="`surplus-units-${index}`">Surplus Quantity (in units)</label>
                     <input :id="`surplus-units-${index}`" v-model="entry.units" class="form-input" type="number" min="1" required />
                 </div>
                 <div class="form-field">
@@ -988,11 +1097,23 @@ async function submitRequest() {
 
         <div v-if="formulaAlert" class="confirmation-backdrop" role="presentation" @click.self="dismissFormulaAlert">
             <section class="confirmation-modal" role="alertdialog" aria-modal="true" aria-labelledby="formula-alert-title" aria-describedby="formula-alert-message">
-                <h2 id="formula-alert-title">Review formula selection</h2>
+                <h2 id="formula-alert-title">Error - Duplicate Formula</h2>
                 <p id="formula-alert-message">{{ formulaAlert }}</p>
-                <button class="button button-primary" type="button" @click="dismissFormulaAlert">OK</button>
+                <div class="formula-alert-actions">
+                    <button class="button button-primary" type="button" @click="dismissFormulaAlert">OK</button>
+                </div>
             </section>
         </div>
+        <div v-if="deleteConfirmationOpen" class="confirmation-backdrop" role="presentation" @click.self="!saving && (deleteConfirmationOpen=false)">
+            <section class="confirmation-modal" role="alertdialog" aria-modal="true" aria-labelledby="delete-request-title" @keydown.esc="!saving && (deleteConfirmationOpen=false)">
+                <h2 id="delete-request-title">Are you sure you want to delete this?</h2>
+                <div class="form-actions">
+                    <button class="button button-ghost" type="button" :disabled="saving" @click="deleteConfirmationOpen=false">Cancel</button>
+                    <button class="button button-danger" type="button" :disabled="saving" @click="deleteUnsubmittedRequest">{{saving?'Deleting…':'Delete'}}</button>
+                </div>
+            </section>
+        </div>
+        <p v-if="draftSavedNotice" class="save-feedback save-feedback-saved" role="status" aria-live="polite">{{ draftSavedNotice }}</p>
         <p v-if="submissionError" role="alert">{{ submissionError }}</p>
         <div class="form-actions">
             <NuxtLink
@@ -1000,13 +1121,15 @@ async function submitRequest() {
                 to="/requests"
                 >Cancel</NuxtLink
             >
-            <button class="button button-ghost" type="button" :disabled="saving || parsing" @click="saveRequest">Save</button>
+            <button v-if="!editingId" class="button button-ghost" type="button" :disabled="saving || parsing" @click="saveRequest">Save</button>
+            <button v-if="!editingId" class="button button-ghost" type="button" :disabled="saving || parsing" @click="router.push('/requests')">Close</button>
+            <button v-if="!editingId" class="button button-danger" type="button" :disabled="saving || parsing" @click="deleteConfirmationOpen=true">Delete</button>
             <button
                 class="button button-primary"
                 type="submit"
                 :disabled="saving || parsing"
             >
-                {{ saving ? 'Saving…' : 'Submit' }}
+                {{ saving ? 'Saving…' : editingId?'Save Changes':'Submit' }}
             </button>
         </div>
         <p
@@ -1017,3 +1140,8 @@ async function submitRequest() {
         </p>
     </form>
 </template>
+
+<style scoped>
+.participant-grid {align-items:start;}
+.insurance-fields {display:grid;gap:16px;align-content:start;}
+</style>

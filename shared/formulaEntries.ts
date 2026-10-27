@@ -16,14 +16,29 @@ export function blankFormula(): FormulaEntry {
 export function formulaEntryName(entry: FormulaEntry) {
     return entry.formulaName.trim().toLowerCase() === 'other' ? entry.otherFormulaName.trim() : findFormula(entry.formulaName)?.name ?? entry.formulaName.trim();
 }
-export function validateFormulaEntry(entry: FormulaEntry) {
-    const other = entry.formulaName.trim().toLowerCase() === 'other';
-    if ((!findFormula(entry.formulaName) && !other) || !formulaEntryName(entry) || formulaEntryName(entry).toLowerCase() === 'other') return 'Select Formula Name or enter an Other Formula Name.';
-    const catalogName = other ? findFormula(entry.otherFormulaName)?.name ?? 'Other' : entry.formulaName;
-    if (!entry.productForm || !availableFormulaForms(catalogName).includes(entry.productForm)) return 'Select an available Form.';
-    if (!Number.isFinite(Number(entry.ouncesPrescribed)) || Number(entry.ouncesPrescribed) <= 0) return 'Enter Amount Per Day greater than zero.';
-    if (requiresReadyToFeedReason(catalogName, entry.productForm) && !entry.readyToFeedJustification.trim()) return 'List reason(s) why ready-to-feed is needed.';
+export function validateOtherFormulaName(name: string) {
+    const normalized = name.trim().replace(/\s+/g, ' ');
+    if (!normalized || normalized.toLowerCase() === 'other') return 'Enter an Other Formula Name.';
+    if (findFormula(normalized)) return 'This formula is already on the list. Select it under Formula Name instead of Other.';
     return '';
+}
+
+export function getFormulaFieldErrors(entry: FormulaEntry): Partial<Record<keyof FormulaEntry, string>> {
+    const errors: Partial<Record<keyof FormulaEntry, string>> = {};
+    const other = entry.formulaName.trim().toLowerCase() === 'other';
+    if (!findFormula(entry.formulaName) && !other) errors.formulaName = 'Select Formula Name or enter Other.';
+    if (other) {
+        const error = validateOtherFormulaName(entry.otherFormulaName);
+        if (error) errors.otherFormulaName = error;
+    }
+    if (!entry.productForm || !availableFormulaForms(entry.formulaName).includes(entry.productForm)) errors.productForm = 'Select an available Form.';
+    if (!Number.isFinite(Number(entry.ouncesPrescribed)) || Number(entry.ouncesPrescribed) <= 0) errors.ouncesPrescribed = 'Enter Amount Per Day greater than zero.';
+    if (requiresReadyToFeedReason(entry.formulaName, entry.productForm) && !entry.readyToFeedJustification.trim()) errors.readyToFeedJustification = 'List reason(s) why ready-to-feed is needed.';
+    return errors;
+}
+
+export function validateFormulaEntry(entry: FormulaEntry) {
+    return Object.values(getFormulaFieldErrors(entry))[0] ?? '';
 }
 
 export function validateFormulaSelection(entries: Array<{ name: string; form?: string; flavor?: string }>) {
@@ -38,6 +53,6 @@ export function validateFormulaSelection(entries: Array<{ name: string; form?: s
         if (flavorApplies && !flavor) return [];
         return [JSON.stringify([name, form, flavor])];
     });
-    if (new Set(identities).size !== identities.length) return 'Formula 2 is already selected as Formula 1 with the same form and flavor (if applicable). Choose a different formula, form, or flavor.';
+    if (new Set(identities).size !== identities.length) return 'Formula 2 should not be identical to Formula 1. Select or enter a different formula, form, or flavor (if applicable).';
     return '';
 }

@@ -27,7 +27,7 @@ describe('new request entries', () => {
         }
         expect(validateAgencyFields({ ...valid, medicalStatus: 'yes' })).toContain('Medi-Cal Status');
         expect(validateAgencyFields({ ...valid, medicalStatus: 'yes', mediCalStatus: 'Denied' })).toBe('');
-        expect(validateAgencyFields({ ...valid, doctorHasSignedOff: false })).toContain('signature');
+        expect(validateAgencyFields({ ...valid, doctorHasSignedOff: false })).toBe('Please verify that medical documentation is signed by a health care provider with prescriptive authority.');
         expect(validateAgencyFields({ ...valid, productForm: 'ready-to-feed' })).toContain('ready-to-feed');
         expect(validateAgencyFields({ ...valid, productForm: 'ready-to-feed', readyToFeedJustification: 'Unable to mix powder' })).toBe('');
     });

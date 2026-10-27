@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import {canEditSubmission} from '~/../shared/requestEditing';
 import type { ProductRecord, RequestRecord, RequestStatus } from '~/../shared/domain';
 import { getNextBenefitMonth, validateBenefitIssuances, canGenerateAuthorizationForm, getApprovalStatus, canSelectShippedStatus } from '~/../shared/requestOperations';
 import { normalizeRequestedMonths, validateRequestDetailNumbers, validateSurplusItems } from '~/../shared/requestDetailFields';
@@ -44,6 +45,7 @@ const previousDecision = ref<Partial<Pick<RequestRecord, 'status' | 'approved' |
 const pendingDecision = ref<'denied' | null>(null);
 const shippingSaveStatus = ref<'idle' | 'saving' | 'saved' | 'failed'>('idle');
 const canStaffEdit = computed(() => identity.value === 'admin' || identity.value === 'internal');
+const canEditOriginal= computed(()=>!!props.request&&canEditSubmission(props.request));
 const canRepEdit = computed(() => identity.value === 'admin' || identity.value === 'agency');
 const selectedProduct = computed(() => props.products?.find((product) => product.id === props.request?.productId));
 const trackingCarrier = computed<'fedex' | 'dhl' | 'ups'>({
@@ -149,6 +151,7 @@ async function save(updates: Partial<RequestRecord> = draft) {
     try {
         const result = await $fetch<{ request: RequestRecord }>(`/api/requests/${props.request.id}`, {
             method: 'PUT',
+            headers: {'x-demo-user':identity.value},
             body: updates,
         });
         Object.assign(props.request, result.request);
@@ -491,6 +494,7 @@ function handlePhotos(event: Event) {
                 </button>
             </div>
         </div>
+        <div v-if="identity === 'agency' && canEditOriginal && request" class="form-actions"><NuxtLink class="button button-secondary" :to="{path:'/requests/new',query:{request:request.id}}">Edit submission</NuxtLink><small>Editable until Admin/FPU opens the submission.</small></div>
         <div class="drawer-status">
             <div class="request-status-tags">
                 <StatusBadge :status="draft.status ?? request.status" />
@@ -509,7 +513,7 @@ function handlePhotos(event: Event) {
         <section class="detail-section participant-summary">
             <div class="section-heading">
                 <h3>Participant</h3>
-                <button v-if="(canStaffEdit || canRepEdit) && editingSection !== 'participant'" class="text-button" type="button" @click="startEditing('participant')">Edit fields</button>
+                <button v-if="canStaffEdit && editingSection !== 'participant'" class="text-button" type="button" @click="startEditing('participant')">Edit fields</button>
             </div>
             <div v-if="editingSection === 'participant'" class="form-grid compact-form-grid">
                 <label class="field-label">WIC Individual ID<input v-model="draft.wicIndividualId" class="form-input" /></label>
@@ -538,7 +542,7 @@ function handlePhotos(event: Event) {
         <section class="detail-section">
             <div class="section-heading">
                 <h3>Prescription</h3>
-                <button v-if="(canStaffEdit || canRepEdit) && editingSection !== 'overview'" class="text-button" type="button" @click="startEditing('overview')">Edit fields</button>
+                <button v-if="canStaffEdit && editingSection !== 'overview'" class="text-button" type="button" @click="startEditing('overview')">Edit fields</button>
             </div>
             <div v-if="editingSection === 'overview'" class="form-grid compact-form-grid">
                 <label class="field-label">Formula<input v-model="draft.productName" class="form-input" /></label>
@@ -627,7 +631,7 @@ function handlePhotos(event: Event) {
         <section class="detail-section">
             <div class="section-heading">
                 <h3>Health Care Provider</h3>
-                <button v-if="(canStaffEdit || canRepEdit) && editingSection !== 'prescription'" class="text-button" type="button" @click="startEditing('prescription')">Edit fields</button>
+                <button v-if="canStaffEdit && editingSection !== 'prescription'" class="text-button" type="button" @click="startEditing('prescription')">Edit fields</button>
             </div>
             <div v-if="editingSection === 'prescription'" class="form-grid compact-form-grid">
                 <label class="field-label">Doctor<input v-model="draft.doctorPrintedName" class="form-input" /></label>
@@ -917,7 +921,7 @@ function handlePhotos(event: Event) {
             >
                 {{ photoNames.join(', ') }}
             </p>
-            <div v-if="canRepEdit && reportingSurplus" class="benefit-allocation-editor">
+            <div v-if="canStaffEdit && reportingSurplus" class="benefit-allocation-editor">
                 <div class="panel-heading">
                     <div>
                         <h4>Surplus</h4>
@@ -934,7 +938,7 @@ function handlePhotos(event: Event) {
                     <button class="text-button" type="button" @click="addSurplusItem">+ Add row</button>
                 </div>
             </div>
-            <div v-else-if="canRepEdit" class="confirmation-response-actions">
+            <div v-else-if="canStaffEdit" class="confirmation-response-actions">
                 <button class="button button-primary report-surplus-button" type="button" @click="startSurplusReport">Report Surplus</button>
             </div>
             <div v-else-if="draft.surplusItems?.length" class="detail-grid">

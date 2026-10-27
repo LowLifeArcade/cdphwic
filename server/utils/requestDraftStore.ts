@@ -63,3 +63,12 @@ export async function listRequestDrafts(bucket: R2Bucket, environment: string, u
 export async function deleteRequestDraft(bucket: R2Bucket, environment: string, id: number) {
     await bucket.delete(`${prefix(environment)}${id}.json`);
 }
+
+export async function deleteAccessibleRequestDraft(bucket: R2Bucket, environment: string, user: SessionUser, id: number) {
+    const draft = await readRequestDraft(bucket, environment, id);
+    if (!draft || draft.request.status !== 'incomplete' || !canAccessDraft(draft, user)) {
+        throw Object.assign(new Error('Incomplete request not found.'), {statusCode:404});
+    }
+    await deleteRequestDraft(bucket, environment, id);
+    if (draft.prescriptionKey.startsWith(`temporary/${environment}/`)) await bucket.delete(draft.prescriptionKey);
+}

@@ -1,24 +1,30 @@
 import type { RequestRecord } from '../../../shared/domain';
 import { getRequestById, updateRequestRecord } from '../../utils/requestStore';
-import { submittedRequest, updateSubmittedRequest } from '../../utils/submittedRequests';
+import { submittedRequest, ensureSubmittedRequest, updateSubmittedRequest } from '../../utils/submittedRequests';
 import { getSessionFromHeaders } from '../../utils/session';
-import { canSeeAgency } from '../../../shared/surplus';
+import { canSeeAgency, isReviewer } from '../../../shared/surplus';
+import { submissionFields } from '../../../shared/requestEditing';
 export default defineEventHandler(async (event) => {
     const id = Number(getRouterParam(event, 'id'));
     const updates = await readBody<Partial<RequestRecord>>(event);
     const user = getSessionFromHeaders({ 'x-demo-user': getHeader(event, 'x-demo-user') });
     const env = event.context.cloudflare?.env as Partial<Env> | undefined;
-    const saved = env?.CDPHWIC ? await submittedRequest(env.CDPHWIC, id, user) : undefined;
-    const previous = saved ?? getRequestById(id);
-    if (!previous || !canSeeAgency(user, previous.agencyId))
+    if (!env?.CDPHWIC) throw createError({ statusCode: 503, statusMessage: 'Request database unavailable.' });
+    const saved = await submittedRequest(env.CDPHWIC, id, user);
+    const raw = saved ?? getRequestById(id);
+    if (!raw || !canSeeAgency(user, raw.agencyId))
         throw createError({ statusCode: 404, statusMessage: 'Request not found.' });
-    const safe = {
-        ...updates,
-        id: previous.id,
-        agencyId: previous.agencyId,
-        agencyMemberId: previous.agencyMemberId,
-        submissionId: previous.submissionId,
-    };
-    const request = saved ? await updateSubmittedRequest(env!.CDPHWIC!, saved, safe) : updateRequestRecord(id, safe);
+    const previous = saved ?? (await ensureSubmittedRequest(env.CDPHWIC, raw));
+    const changesForm = Object.entries(submissionFields(updates)).some(
+        ([key, value]) => JSON.stringify(key === 'surplusItems' ? value ?? [] : value) !== JSON.stringify(key === 'surplusItems' ? previous.surplusItems ?? [] : previous[key as keyof RequestRecord]),
+    );
+    if (!isReviewer(user) && changesForm)
+        throw createError({
+            statusCode: 409,
+            statusMessage: 'Use Edit submission to update the complete form before Admin/FPU opens it.',
+        });
+    const { prescriptionAttachment, openedAt, revision, ...safe } = updates;
+    const request = await updateSubmittedRequest(env.CDPHWIC, previous, safe, !isReviewer(user) && changesForm);
+    updateRequestRecord(id, request);
     return { request, demo: true };
 });

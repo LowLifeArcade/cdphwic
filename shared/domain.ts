@@ -43,6 +43,8 @@ export interface RequestedFormula {
 }
 
 export interface RequestRecord {
+    openedAt?: string;
+    revision?: number;
     submissionId?: string;
     requestedFormulas?: RequestedFormula[];
     id: number;

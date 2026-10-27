@@ -1970,15 +1970,15 @@ select.form-input {
     border-color: transparent;
 }
 
-.additional-formula {
+.formula-group {
     grid-column: 1 / -1;
     min-width: 0;
-    margin: 8px 0;
+    margin: 0;
     padding: 16px;
     border: 1px solid var(--line);
     border-radius: 8px;
 }
-.additional-formula legend { padding: 0 6px; font-weight: 600; }
+.formula-group legend { padding: 0 6px; font-weight: 600; }
 .additional-formula > .text-button { margin-top: 12px; }
 .add-formula-button { justify-self: start; }
 .office-address { min-height: 84px; }
@@ -2021,4 +2021,33 @@ select.form-input {
 .form-textarea.rtf-reason {
     min-height: 50px;
     height: 50px;
+}
+
+/* Show every invalid field after Submit while keeping incomplete forms saveable. */
+.request-form.validation-attempted :is(input, select, textarea):invalid,
+.request-form.validation-attempted [data-required-group][aria-invalid='true'],
+.request-form.validation-attempted .checkbox-confirmation:has(input:invalid) {
+    outline: 2px solid var(--red);
+    outline-offset: 2px;
+    border-color: var(--red);
+    box-shadow: 0 0 0 1px var(--red);
+}
+.field-error { color: var(--red); }
+.add-formula-action { padding-block: 8px; }
+
+.request-form .formula-amount-field > .form-input { margin-bottom: 0; }
+
+.formula-alert-actions { padding-top: 24px; }
+
+.formula-entry-grid { grid-template-areas: 'name form' 'amount justification'; }
+.formula-entry-grid.has-formula-details { grid-template-areas: 'name form' 'details justification' 'amount justification'; }
+.formula-entry-grid > .form-field { min-width: 0; align-content: start; }
+.formula-name-field { grid-area: name; }
+.formula-form-field { grid-area: form; }
+.formula-detail-field { grid-area: details; }
+.formula-amount-field { grid-area: amount; }
+.formula-justification-field { grid-area: justification; }
+@media (max-width: 720px) {
+    .formula-entry-grid { grid-template-areas: 'name' 'form' 'amount' 'justification'; }
+    .formula-entry-grid.has-formula-details { grid-template-areas: 'name' 'details' 'form' 'amount' 'justification'; }
 }
