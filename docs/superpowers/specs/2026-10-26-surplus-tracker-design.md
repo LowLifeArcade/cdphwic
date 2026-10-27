@@ -1,6 +1,6 @@
 # Agency formula surplus tracker
 
-Status: proposed design for user review. The user selected reserving transfer stock when requested and deducting it when shipped. Other decisions below are implementation proposals, not additional user approvals.
+Status: core tracker design approved by the user on 2026-10-26; additions below record the subsequent requirements and implementation proposals. The user selected reserving transfer stock when requested and deducting it when shipped. Other decisions below are implementation proposals, not additional user approvals.
 
 ## Purpose and scope
 
@@ -59,7 +59,7 @@ Admin and FPU record shipment and receipt after confirmation from the agencies. 
 
 All transitions are authorized and atomic. Duplicate or out-of-order transitions cannot alter balances again. A cancelled transfer cannot ship, a shipped transfer cannot be cancelled, and a transfer can be received only once. A reservation made before expiration cannot be marked shipped after expiration; release it through cancellation.
 
-The app records transfer instructions and agency contact/address details. This feature does not send email or messages automatically.
+The app records transfer instructions and agency contact/address details. Donation notices are in-app only, as selected by the user. No email delivery is included.
 
 ## Screens and permissions
 
@@ -97,3 +97,37 @@ Prepare and test the migration locally. Applying it to production and deploying 
 ## Proposed decisions for review
 
 The implementation proposals to review are: pending reports followed by explicit stock-count reconciliation; individual units only; Admin/FPU-controlled shipment/receipt confirmation; no partial-transfer workflow in the initial version; expiration required before stock becomes allocatable; and the existing role/session model retained.
+
+
+## Anticipated surplus and confirmation
+
+Anticipated surplus entered by Admin/FPU when ordering is a forecast, not verified inventory. Keep it in a separate forecast record linked to the order/request and formula variant. Forecasts never increase on-hand or available inventory and cannot be transferred or donated.
+
+Proposed confirmation workflow: when Admin/FPU records an anticipated surplus, select a confirmation due date reflecting when the agency expects to have dispensed the participant's allocation. An agency task asks staff to confirm actual usable, uncommitted stock, formula variant, expiration date, count date, and their name. Delivery confirmation records receipt only and cannot confirm surplus. Zero actual surplus is a valid response.
+
+Compare the agency's actual count with the forecast and show any variance. A discrepancy requires an explanation from the agency. Admin/FPU then reconciles the actual count using the report-review mechanism above. Only that review changes verified inventory. The forecast's completion status records confirmation and review separately; an agency acknowledgement alone does not mark it reconciled. After a later stock movement, older confirmations do not overwrite current stock. Outstanding and overdue confirmations remain visible to the agency and Admin/FPU until resolved. Revising the forecast preserves history and does not change verified inventory.
+
+This establishes an accountable confirmation process; the app cannot independently measure stock physically held at an agency. The counted quantity must exclude stock already committed to participant dispensing, and any transfer reservations remain protected by inventory constraints.
+
+## Donation notices at 60 days
+
+User requirement: local agencies receive in-app-only donation notices for formula stock with 60 days or fewer until expiration. The Formula Donation form will be uploaded later and must be available with the notice once provided.
+
+Proposed behavior: run a daily Worker check, and also evaluate a lot when its verified balance or expiration changes. Compare date-only expiration against the current date in America/Los_Angeles. For positive on-hand stock expiring in 0 through 60 calendar days inclusive, create or update one active notice for the owning agency and lot. Include formula, form, flavor, expiration, on-hand quantity, reservations, and the available donation quantity. Reserved stock is explicitly excluded from donation availability. If all units are reserved, the notice directs the agency to coordinate with Admin/FPU rather than donate reserved units.
+
+Do not send donation instructions for already-expired stock; use a separate expired-stock alert visible to the agency and Admin/FPU and prevent allocation. A lot reduced to zero closes its active notice. Revising the expiry updates that lot's existing notice and eligibility. Daily retries, manual balance updates, and restarts cannot create duplicate active notices. Acknowledging a notice does not deduct stock or establish that donation happened. Record an actual donation through an audited deduction with reason Donation.
+
+Admin can upload/version the Formula Donation PDF in private R2 storage and select the active version. In-app notices provide an authorized attachment download. Until the form is uploaded, issue the time-sensitive notice with an explicit 'Formula Donation form not yet available' message and an Admin/FPU configuration warning; do not invent an attachment or silently suppress expiring-stock notices. Publishing the form makes it available from active notices. Version metadata and download history references remain auditable.
+
+Add agency-scoped in-app notifications to the existing bell with unread counts, a list of notices and confirmation tasks, and acknowledgement/read state per user. Agency members see their agency's notices; Admin/FPU can see notices across agencies. These are application notifications, not Codex desktop automations. The later production release must configure the Worker scheduled trigger.
+
+## Additional acceptance checks
+
+- Anticipated quantities never increase verified on hand or available stock.
+- Receipt confirmation alone cannot resolve a surplus forecast.
+- Agency actual counts, including zero, preserve count date and confirmer; variances require explanation.
+- Reviewer reconciliation closes the forecast only after successful stock-count processing.
+- Donation notices cover days 60, 1, and 0, but not day 61 or already-expired stock.
+- Date boundaries and daylight-saving changes use America/Los_Angeles calendar dates.
+- A notice never encourages donating reserved stock, never duplicates on retries, and never changes a balance on acknowledgement.
+- Notice attachments remain agency-authorized and clearly unavailable until a real donation form is published.
