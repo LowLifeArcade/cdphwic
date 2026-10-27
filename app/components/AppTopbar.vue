@@ -40,8 +40,8 @@ function toggleMobileNav() {
                     @change="switchIdentity(($event.target as HTMLSelectElement).value as DemoIdentity)"
                 >
                     <option value="admin">Admin</option>
-                    <option value="agency">Agency rep</option>
-                    <option value="internal">FPU analyst</option>
+                    <option value="agency">Local Agency</option>
+                    <option value="internal">CDPH/WIC</option>
                 </select>
             </label>
             <AppearanceToggle />
