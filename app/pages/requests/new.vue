@@ -563,8 +563,8 @@ async function submitRequest() {
                 @drop.prevent="handleDrop"
             >
                 <template v-if="!selectedPrescription">
-                    <strong>Drag and drop medical documentation here.</strong>
-                    <span>Choose a PDF or photo. PDFs populate matching form fields; photos require manual entry.</span>
+                    <strong>Drag and drop medical documentation here</strong>
+                    <span>Choose a PDF or photo.<br />PDFs populate matching form fields; photos require manual entry.</span>
                     <input
                         ref="fileInput"
                         type="file"
@@ -783,7 +783,7 @@ async function submitRequest() {
             <div class="form-grid">
                 <fieldset class="formula-group full">
                     <legend>Formula 1</legend>
-                    <div class="form-grid formula-entry-grid" :class="{'has-formula-details': isOtherFormula || selectedFormula?.hasFlavor}">
+                    <div class="form-grid formula-entry-grid" :class="{'has-formula-details': isOtherFormula || selectedFormula?.hasFlavor, 'has-other-formula': isOtherFormula}">
                         <div class="form-field formula-name-field">
                             <label for="formula">{{ requiredLabel('Formula Name') }}</label>
                             <div class="formula-autocomplete">
@@ -1115,7 +1115,7 @@ async function submitRequest() {
             </section>
         </div>
         <p v-if="draftSavedNotice" class="save-feedback save-feedback-saved" role="status" aria-live="polite">{{ draftSavedNotice }}</p>
-        <p v-if="submissionError" role="alert">{{ submissionError }}</p>
+        <p v-if="submissionError" class="submission-alert" role="alert">{{ submissionError }}</p>
         <div class="form-actions">
             <NuxtLink
                 class="button button-ghost"

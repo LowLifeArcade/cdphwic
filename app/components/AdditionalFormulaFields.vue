@@ -25,7 +25,7 @@ function nameChanged(value: string) {
 </script>
 
 <template>
-    <div class="form-grid formula-entry-grid" :class="{'has-formula-details': other || selected?.hasFlavor}">
+    <div class="form-grid formula-entry-grid" :class="{'has-formula-details': other || selected?.hasFlavor, 'has-other-formula': other}">
         <div class="form-field formula-name-field">
             <label :for="prefix">Formula Name *</label>
             <div class="formula-autocomplete">

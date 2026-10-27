@@ -7,7 +7,7 @@ describe('new request doctor fields', () => {
     it('does not present uploads as AI review and explains photo manual entry', () => {
         expect(requestForm).not.toContain('AI review');
         expect(requestForm).not.toContain('AI extraction');
-        expect(requestForm).toContain('Choose a PDF or photo. PDFs populate matching form fields; photos require manual entry.');
+        expect(requestForm).toContain('Choose a PDF or photo.<br />PDFs populate matching form fields; photos require manual entry.');
         expect(requestForm).toContain('@change="handleFileSelection"');
         expect(requestForm).toContain('@drop.prevent="handleDrop"');
         expect(requestForm).toContain('v-if="!selectedPrescription"');
@@ -28,7 +28,7 @@ describe('new request doctor fields', () => {
         expect(requestForm).toContain('Provider printed name, signature, and date signed');
         expect(requestForm).toContain('Provider office name, address, and phone number');
         expect(requestForm).not.toContain('<li>Date signed</li>');
-        expect(requestForm).toContain('Drag and drop medical documentation here.');
+        expect(requestForm).toContain('<strong>Drag and drop medical documentation here</strong>');
         expect(requestForm).not.toContain('Fields marked with * are required.');
     });
 

@@ -1392,7 +1392,7 @@ label {
     display: block;
     margin-bottom: 5px;
     color: var(--primary-text, #e3e8f1);
-    font-size: calc(0.82rem + 2px);
+    font-size: calc(0.82rem + 6px);
 }
 .upload-drop span {
     max-width: 540px;
@@ -2102,6 +2102,7 @@ label {
 
 .formula-entry-grid { grid-template-areas: 'name form' 'amount justification'; }
 .formula-entry-grid.has-formula-details { grid-template-areas: 'name form' 'details justification' 'amount justification'; }
+.formula-entry-grid.has-other-formula { grid-template-areas: 'name .' 'details form' 'amount justification'; }
 .formula-entry-grid > .form-field { min-width: 0; align-content: start; }
 .formula-name-field { grid-area: name; }
 .formula-form-field { grid-area: form; }
@@ -2120,4 +2121,15 @@ label {
 @media (max-width: 720px) {
     .benefit-month-option { flex-direction: column; gap: 4px; padding: 8px 2px; }
     .benefit-month-option input { margin: 0; }
+}
+
+.submission-alert {
+    padding: 12px 16px;
+    border: 1px solid var(--red);
+    border-left-width: 4px;
+    border-radius: 8px;
+    color: var(--red);
+    background: color-mix(in srgb, var(--red) 8%, var(--surface));
+    font-weight: 600;
+    line-height: 1.5;
 }
