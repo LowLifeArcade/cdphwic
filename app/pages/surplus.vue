@@ -749,7 +749,7 @@ td:nth-child(2) { white-space: nowrap; }
 .surplus-page .button:not(.button-main) { background: var(--surface-raised); border: 1px solid var(--line); color: var(--text); }
 .row-actions .button {
     margin: 3px;
-    font-size: 11px;
+    font-size: 13px;
     padding: 7px 9px;
 }
 .surplus-backdrop {

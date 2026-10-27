@@ -913,9 +913,9 @@ async function submitRequest() {
                         <input id="diagnosis-details" ref="diagnosisDetailInput" v-model="diagnosisDetails" class="form-input" required @keydown.enter.prevent="commitDiagnosis" />
                         <small>Specify the condition or nutrient, then press Enter to add this diagnosis.</small>
                     </div>
-                    <ul v-if="diagnoses.length" aria-label="Added diagnoses" aria-live="polite">
+                    <ul v-if="diagnoses.length" class="diagnosis-list" aria-label="Added diagnoses" aria-live="polite">
                         <li v-for="(diagnosis, index) in diagnoses" :key="diagnosis">
-                            {{ diagnosis }}
+                            <span>{{ diagnosis }}</span>
                             <button type="button" class="text-button" :aria-label="`Remove diagnosis: ${diagnosis}`" @click="removeDiagnosis(index)">Remove</button>
                         </li>
                     </ul>
@@ -1047,7 +1047,7 @@ async function submitRequest() {
         </section>
 
         <section class="form-section">
-            <div class="panel-heading"><h2>Formula Surplus</h2></div>
+            <div class="panel-heading"><h2>Surplus Formula</h2></div>
             <p>Enter any surplus the local agency has of the formula(s) requested.</p>
             <div v-for="(entry, index) in surplusEntries" :key="index" class="form-grid surplus-form-row">
                 <div class="form-field">
@@ -1085,12 +1085,13 @@ async function submitRequest() {
             <div class="panel-heading">
                 <div>
                     <h2>Additional Information</h2>
-                    <span>Provide any additional details relevant to this request.</span>
                 </div>
             </div>
             <textarea
                 id="notes"
                 v-model="form.additionalNotes"
+                aria-label="Additional Information"
+                placeholder="Provide any additional details relevant to this request."
                 class="form-textarea"
             />
         </section>

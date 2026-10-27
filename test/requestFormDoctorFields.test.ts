@@ -40,7 +40,7 @@ describe('new request doctor fields', () => {
             'Medical Formula/Nutritionals and Qualifying Diagnosis',
             'WIC Food Restrictions',
             'Health Care Provider',
-            'Formula Surplus',
+            'Surplus Formula',
             'Additional Information',
         ]);
         const providerFields = ['doctor-name', 'doctor-signed-off', 'prescription-signed-date', 'doctor-office', 'doctor-address', 'doctor-phone'];

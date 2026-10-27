@@ -10,7 +10,7 @@ const options:Array<{value:Appearance;label:string}>=[{value:'light',label:'Ligh
 </template>
 <style scoped>
 .appearance-toggle{display:inline-flex;flex-shrink:0;align-items:center;gap:2px;padding:3px;background:var(--surface);border:1px solid var(--line);border-radius:9px;}
-button{border:0;border-radius:6px;padding:7px 9px;background:transparent;color:var(--muted);font-size:0.76rem;cursor:pointer;}
+button{border:0;border-radius:6px;padding:7px 9px;background:transparent;color:var(--muted);font-size:calc(0.76rem + 2px);cursor:pointer;}
 button:hover{background:var(--surface-hover);color:var(--text);}
 button[aria-pressed="true"]{background:var(--nav-active);color:var(--purple-light);font-weight:700;}
 button:focus-visible{outline:2px solid var(--purple);outline-offset:2px;}

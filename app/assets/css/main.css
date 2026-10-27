@@ -1,5 +1,6 @@
 :root {
     color-scheme: dark;
+    --form-label-size: 0.875rem;
     --canvas: #080d1b;
     --sidebar: #0d1224;
     --surface: #111a2b;
@@ -74,6 +75,9 @@
 * {
     box-sizing: border-box;
 }
+h2 {
+    font-size: calc(1.5em + 4px);
+}
 body {
     margin: 0;
     min-width: 320px;
@@ -84,6 +88,9 @@ input,
 select,
 textarea {
     font: inherit;
+}
+button {
+    font-size: calc(1rem + 2px);
 }
 button,
 a {
@@ -218,7 +225,7 @@ a {
     background: transparent;
     text-align: left;
     cursor: pointer;
-    font-size: 0.78rem;
+    font-size: calc(0.78rem + 2px);
 }
 .profile-menu a:hover,
 .profile-menu button:hover {
@@ -317,7 +324,7 @@ a {
     align-items: center;
     gap: 7px;
     color: var(--muted);
-    font-size: 0.7rem;
+    font-size: var(--form-label-size);
 }
 .demo-switcher select {
     padding: 7px 36px 7px 9px;
@@ -336,7 +343,7 @@ a {
     border: 0;
     border-radius: 9px;
     cursor: pointer;
-    font-size: 0.78rem;
+    font-size: calc(0.78rem + 2px);
     font-weight: 800;
 }
 .button-main {
@@ -444,7 +451,7 @@ a {
     background: transparent;
     border: 0;
     border-radius: 5px;
-    font-size: 0.72rem;
+    font-size: calc(0.72rem + 2px);
     font-weight: 700;
     cursor: pointer;
 }
@@ -654,7 +661,7 @@ select.form-input {
 }
 .panel-heading h2 {
     margin: 0 0 5px;
-    font-size: 0.96rem;
+    font-size: calc(0.96rem + 4px);
 }
 .panel-heading span {
     color: var(--muted);
@@ -665,7 +672,7 @@ select.form-input {
     background: transparent;
     border: 0;
     cursor: pointer;
-    font-size: 0.72rem;
+    font-size: calc(0.72rem + 2px);
 }
 .chart-list {
     display: grid;
@@ -868,7 +875,7 @@ select.form-input {
 .drawer-header h2 {
     margin: 0;
     margin-bottom: 4px;
-    font-size: 1.35rem;
+    font-size: calc(1.35rem + 4px);
 }
 .drawer-header-actions {
     display: flex;
@@ -1039,11 +1046,14 @@ select.form-input {
     font-size: 0.78rem;
     line-height: 1.5;
 }
+label {
+    font-size: var(--form-label-size);
+}
 .field-label {
     display: grid;
     gap: 7px;
     color: var(--muted);
-    font-size: 0.7rem;
+    font-size: var(--form-label-size);
 }
 .field-label textarea {
     min-height: 78px;
@@ -1057,6 +1067,9 @@ select.form-input {
 .prescription-first {
     padding-bottom: 5px;
 }
+.prescription-first .panel-heading h2 {
+    font-size: calc(0.96rem + 6px);
+}
 .prescription-requirements {
     margin-bottom: 14px;
     padding: 13px 15px;
@@ -1064,7 +1077,7 @@ select.form-input {
     background: var(--warning-bg, #3b3020);
     border: 1px solid var(--warning-border, #80652f);
     border-radius: 9px;
-    font-size: 0.75rem;
+    font-size: calc(0.75rem + 2px);
 }
 .prescription-requirements strong {
     color: var(--warning-text, #ffe9a8);
@@ -1303,7 +1316,7 @@ select.form-input {
 }
 .form-field label {
     color: var(--secondary-text, #b4bfd2);
-    font-size: 0.72rem;
+    font-size: var(--form-label-size);
     font-weight: 700;
 }
 .checkbox-confirmation {
@@ -1319,7 +1332,7 @@ select.form-input {
     gap: 9px;
     min-height: 42px;
     color: var(--text) !important;
-    font-size: 0.82rem !important;
+    font-size: var(--form-label-size) !important;
     cursor: pointer;
 }
 .checkbox-control input[type='checkbox'] {
@@ -1359,7 +1372,7 @@ select.form-input {
     border: 1px solid var(--border, #304563);
     border-radius: 8px;
     cursor: pointer;
-    font-size: 0.72rem;
+    font-size: calc(0.72rem + 2px);
 }
 .upload-drop input[type='file']::file-selector-button {
     margin-right: 10px;
@@ -1369,7 +1382,7 @@ select.form-input {
     border: 1px solid var(--accent-border, #8053a3);
     border-radius: 6px;
     cursor: pointer;
-    font-size: 0.72rem;
+    font-size: calc(0.72rem + 4px);
     font-weight: 700;
 }
 .upload-drop input[type='file']::file-selector-button:hover {
@@ -1379,12 +1392,12 @@ select.form-input {
     display: block;
     margin-bottom: 5px;
     color: var(--primary-text, #e3e8f1);
-    font-size: 0.82rem;
+    font-size: calc(0.82rem + 2px);
 }
 .upload-drop span {
     max-width: 540px;
     line-height: 1.45;
-    font-size: 0.7rem;
+    font-size: calc(0.7rem + 2px);
 }
 .upload-processing,
 .uploaded-file {
@@ -1413,7 +1426,7 @@ select.form-input {
     border: 1px solid var(--danger-border, #6f4b58);
     border-radius: 50%;
     cursor: pointer;
-    font-size: 1rem;
+    font-size: calc(1rem + 2px);
     line-height: 1;
 }
 .uploaded-file button:hover {
@@ -1454,7 +1467,7 @@ select.form-input {
 }
 .confirmation-modal h2 {
     margin: 0 0 8px;
-    font-size: 1.05rem;
+    font-size: calc(1.05rem + 4px);
 }
 .confirmation-modal p {
     margin: 0;
@@ -1472,7 +1485,7 @@ select.form-input {
 .coverage-field legend {
     margin-bottom: 7px;
     color: var(--secondary-text, #b4bfd2);
-    font-size: 0.72rem;
+    font-size: var(--form-label-size);
     font-weight: 700;
 }
 .coverage-field label {
@@ -1661,7 +1674,7 @@ select.form-input {
 }
 .profile-section h2 {
     margin: 4px 0 8px;
-    font-size: 1.05rem;
+    font-size: calc(1.05rem + 4px);
 }
 .autocomplete-field {
     position: relative;
@@ -1712,7 +1725,7 @@ select.form-input {
     border: 0;
     background: transparent;
     color: inherit;
-    font-size: 1rem;
+    font-size: calc(1rem + 2px);
     line-height: 1;
     cursor: pointer;
 }
@@ -1927,7 +1940,8 @@ select.form-input {
     min-width: 0;
 }
 
-.local-agency-fields legend {
+.local-agency-fields > legend {
+    font-size: calc(1rem + 2px);
     padding: 0 0.5rem;
     font-weight: 600;
 }
@@ -2023,7 +2037,7 @@ select.form-input {
     border: 1px solid var(--line);
     border-radius: 8px;
 }
-.formula-group legend { padding: 0 6px; font-weight: 600; }
+.formula-group > legend { padding: 0 6px; font-weight: 600; font-size: calc(1rem + 2px); }
 .additional-formula > .text-button { margin-top: 12px; }
 .add-formula-button { justify-self: start; }
 .office-address { min-height: 84px; }
@@ -2039,19 +2053,21 @@ select.form-input {
     padding: 0;
     margin-bottom: 6px;
     color: var(--secondary-text, #b4bfd2);
-    font-size: 0.72rem;
+    font-size: var(--form-label-size);
     font-weight: 700;
 }
-.benefit-month-options { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.benefit-month-options { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); max-width: 600px; gap: 8px; margin-top: 10px; }
 .benefit-month-option {
     display: inline-flex;
+    justify-content: center;
+    min-width: 0;
     align-items: center;
     gap: 7px;
     padding: 8px 10px;
     border: 1px solid var(--line);
     border-radius: 6px;
     background: var(--surface);
-    font-size: 0.8rem;
+    font-size: var(--form-label-size);
     cursor: pointer;
 }
 .benefit-month-option input { accent-color: var(--purple); }
@@ -2095,4 +2111,13 @@ select.form-input {
 @media (max-width: 720px) {
     .formula-entry-grid { grid-template-areas: 'name' 'form' 'amount' 'justification'; }
     .formula-entry-grid.has-formula-details { grid-template-areas: 'name' 'details' 'form' 'amount' 'justification'; }
+}
+
+.diagnosis-list { display: grid; gap: 8px; margin: 8px 0 0; padding: 0; list-style: none; }
+.diagnosis-list li { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 12px; border: 1px solid var(--line); border-left: 3px solid var(--purple); border-radius: 7px; background: var(--nav-active); color: var(--text); font-size: 0.875rem; font-weight: 600; line-height: 1.5; }
+.diagnosis-list li > span { min-width: 0; overflow-wrap: anywhere; }
+.diagnosis-list .text-button { flex-shrink: 0; }
+@media (max-width: 720px) {
+    .benefit-month-option { flex-direction: column; gap: 4px; padding: 8px 2px; }
+    .benefit-month-option input { margin: 0; }
 }
