@@ -1,6 +1,8 @@
+import {appearanceInitScript} from './shared/appearance';
 // https://nuxt.com/docs/api/configuration/nuxt-config
 export default defineNuxtConfig({
     compatibilityDate: '2026-10-07',
+    app: {head: {script: [{innerHTML: appearanceInitScript, tagPosition:'head', tagPriority:'critical'}]}},
     devtools: { enabled: true },
     css: ['~/assets/css/main.css'],
     nitro: {

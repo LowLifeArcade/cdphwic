@@ -44,6 +44,7 @@ function toggleMobileNav() {
                     <option value="internal">FPU analyst</option>
                 </select>
             </label>
+            <AppearanceToggle />
             <NotificationInbox />
             <NuxtLink
                 class="button button-main"
