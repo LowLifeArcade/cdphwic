@@ -970,6 +970,7 @@ function handlePhotos(event: Event) {
             </div>
         </div>
 
+        <RequestSurplusPanel v-if="request" :request="request" :key="request.id" />
         <div v-if="surplusRemovalIndex !== null" class="confirmation-backdrop" @click.self="surplusRemovalIndex = null">
             <div class="confirmation-modal" role="dialog" aria-modal="true" aria-labelledby="remove-surplus-title">
                 <h3 id="remove-surplus-title">Remove surplus row?</h3>

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { formulaCatalog, findFormula, availableFormulaForms, defaultFormulaForm } from '../shared/formulaCatalog';
+import { formulaCatalog, findFormula, availableFormulaForms, defaultFormulaForm, requiresReadyToFeedReason } from '../shared/formulaCatalog';
 
 describe('request formula catalog', () => {
     it('contains all 27 requested names without duplicates', () => {
@@ -11,6 +11,13 @@ describe('request formula catalog', () => {
         expect(defaultFormulaForm('Fortini')).toBe('ready-to-feed');
         expect(defaultFormulaForm('EleCare Infant')).toBe('powder');
         expect(defaultFormulaForm('')).toBe('');
+    });
+    it('only requires a reason when ready-to-feed is an alternative form', () => {
+        expect(requiresReadyToFeedReason('Fortini', 'ready-to-feed')).toBe(false);
+        expect(requiresReadyToFeedReason('Kate Farms Pediatric Std 1.2 Cal', 'ready-to-feed')).toBe(false);
+        expect(findFormula('Kate Farms Pediatric Std 1.2 Cal')?.hasFlavor).toBe(true);
+        expect(requiresReadyToFeedReason('Similac NeoSure', 'ready-to-feed')).toBe(true);
+        expect(requiresReadyToFeedReason('Other', 'ready-to-feed')).toBe(true);
     });
     it('limits forms for single and multiple form products', () => {
         expect(availableFormulaForms('Nutramigen')).toEqual(['concentrate', 'ready-to-feed']);

@@ -17,8 +17,8 @@ export function getRequestById(id: number): RequestRecord | undefined {
     return requestStore.find((request) => request.id === id);
 }
 
-export function createRequestRecord(input: Omit<RequestRecord, 'id'>): RequestRecord {
-    const record: RequestRecord = { ...input, id: nextRequestId++ };
+export function createRequestRecord(input: Omit<RequestRecord, 'id'>, persistentId?: number): RequestRecord {
+    const record: RequestRecord = { ...input, id: persistentId ?? nextRequestId++ };
     requestStore.unshift(record);
     return record;
 }

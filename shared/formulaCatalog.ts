@@ -10,7 +10,7 @@ export interface FormulaOption {
 export const formulaCatalog: FormulaOption[] = [
     { name: 'Enfamil NeuroPro EnfaCare', forms: ['powder', 'ready-to-feed'], pdfField: 'Enfamil-1' },
     { name: 'Similac NeoSure', forms: ['powder', 'ready-to-feed'], pdfField: 'Similac-1' },
-    { name: 'Kate Farms Pediatric Std 1.2 Cal', forms: ['ready-to-feed'], pdfField: 'Kate Farms' },
+    { name: 'Kate Farms Pediatric Std 1.2 Cal', forms: ['ready-to-feed'], pdfField: 'Kate Farms', hasFlavor: true },
     { name: 'PediaSure', forms: ['ready-to-feed'], pdfField: 'PediaSure-1', hasFlavor: true },
     { name: 'PediaSure with Fiber', forms: ['ready-to-feed'], pdfField: 'PediaSure-2' },
     { name: 'PediaSure 1.5 Cal', forms: ['ready-to-feed'], pdfField: 'PediaSure3' },
@@ -49,4 +49,8 @@ export function availableFormulaForms(name: string): ProductForm[] {
 export function defaultFormulaForm(name: string): ProductForm | '' {
     const forms = availableFormulaForms(name);
     return forms.length === 1 ? forms[0]! : '';
+}
+
+export function requiresReadyToFeedReason(name: string, form: string) {
+    return form === 'ready-to-feed' && availableFormulaForms(name).length > 1;
 }

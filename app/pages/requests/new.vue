@@ -1,6 +1,8 @@
 <script setup lang="ts">
-import { formulaCatalog, findFormula, availableFormulaForms, defaultFormulaForm } from '~/../shared/formulaCatalog';
+import { benefitMonthLabels, toggleRequestedMonth, serializeRequestedMonths, validateRequestedMonths } from '~/../shared/requestMonthSelection';
+import { formulaCatalog, findFormula, availableFormulaForms, defaultFormulaForm, requiresReadyToFeedReason } from '~/../shared/formulaCatalog';
 import type { ProductForm, RequestRecord } from '~/../shared/domain';
+import { blankFormula, formulaEntryName, validateFormulaEntry, validateFormulaSelection, type FormulaEntry } from '~/../shared/formulaEntries';
 import { diagnosisCatalog, findDiagnosis } from '~/../shared/diagnosisCatalog';
 import { addDiagnosis, validateAgencyFields } from '~/../shared/newRequestFields';
 import { formatPhoneNumber, normalizePhoneNumber } from '~/../shared/phone';
@@ -9,7 +11,12 @@ const router = useRouter();
 const route = useRoute();
 const identity = useState<'admin' | 'agency' | 'internal'>('demo-identity', () => 'admin');
 const draftId = ref<number | undefined>(route.query.draft ? Number(route.query.draft) : undefined);
+const submissionId = ref<string>(crypto.randomUUID());
 const saving = ref(false);
+const formulaAlert = ref('');
+const additionalFormulas = ref<FormulaEntry[]>([]);
+const surplusEntries = ref<Array<{ productName: string; productForm: ProductForm | ''; flavor: string; units: string | number; expirationDate: string }>>([]);
+const requestedMonths = ref<string[]>([]);
 const requestForm = ref<HTMLFormElement | null>(null);
 const diagnosisDetailInput = ref<HTMLInputElement | null>(null);
 const diagnosisDetails = ref('');
@@ -21,7 +28,7 @@ const fileInput = ref<HTMLInputElement>();
 const submitted = ref(false);
 const submissionError = ref('');
 const diagnosisInput = ref('');
-const diagnoses = computed(() => form.diagnosis.split('\n').map((value) => value.trim()).filter(Boolean));
+const diagnoses = computed(() => form.diagnosis.split(/[\n;]/).map((value) => value.trim()).filter(Boolean));
 
 const pendingDiagnosis = computed(() => findDiagnosis(diagnosisInput.value));
 const diagnosisMatches = computed(() => diagnosisInput.value.trim() && !pendingDiagnosis.value
@@ -109,6 +116,40 @@ const selectedProduct = computed(() => products.value.find((product) =>
     product.name.toLowerCase() === selectedFormula.value?.name.toLowerCase() && product.form === form.productForm,
 ));
 const productName = computed(() => isOtherFormula.value ? form.otherFormulaName.trim() : selectedFormula.value?.name ?? form.formulaName.trim());
+const formulaSelectionError = computed(() => validateFormulaSelection([form, ...additionalFormulas.value].map((entry) => ({ name: formulaEntryName(entry), form: entry.productForm, flavor: entry.formulaFlavor }))));
+watch(formulaSelectionError, (error, previous) => { if (error && error !== previous) formulaAlert.value = error; });
+function addAdditionalFormula() {
+    if (!additionalFormulas.value.length) additionalFormulas.value.push(blankFormula());
+}
+function dismissFormulaAlert() {
+    formulaAlert.value = '';
+    nextTick(() => document.getElementById('extra-formula-2')?.focus());
+}
+const requestedFormulaNames = computed(() => [...new Set([productName.value, ...additionalFormulas.value.map(formulaEntryName)].filter(Boolean))]);
+function surplusForms(name: string) {
+    return findFormula(name) ? availableFormulaForms(name) : availableFormulaForms('Other');
+}
+function initializeSurplus(entry: typeof surplusEntries.value[number]) {
+    const match = [form, ...additionalFormulas.value].find((formula) => formulaEntryName(formula) === entry.productName);
+    entry.productForm = match?.productForm || defaultFormulaForm(entry.productName);
+    entry.flavor = findFormula(entry.productName)?.hasFlavor ? match?.formulaFlavor ?? '' : '';
+}
+function addSurplus() {
+    const entry: typeof surplusEntries.value[number] = { productName: requestedFormulaNames.value[0] ?? '', productForm: '', flavor: '', units: '', expirationDate: '' };
+    initializeSurplus(entry);
+    surplusEntries.value.push(entry);
+}
+function selectedBenefitMonths() {
+    return serializeRequestedMonths(requestedMonths.value, form.benefitsStartDate, new Date().getFullYear());
+}
+function serializedFormulas() {
+    return [form, ...additionalFormulas.value].map((entry) => ({
+        productName: formulaEntryName(entry), productForm: entry.productForm as ProductForm,
+        ouncesPrescribed: Number(entry.ouncesPrescribed), flavor: entry.formulaFlavor,
+        otherFormulaName: entry.formulaName.trim().toLowerCase() === 'other' ? entry.otherFormulaName.trim() : undefined,
+        readyToFeedJustification: requiresReadyToFeedReason(entry.formulaName, entry.productForm) ? entry.readyToFeedJustification : '',
+    }));
+}
 watch(() => isOtherFormula.value ? 'Other' : selectedFormula.value?.name, () => {
     form.productForm = defaultFormulaForm(form.formulaName);
 }, { flush: 'sync' });
@@ -129,8 +170,13 @@ if (draftId.value) {
     const draft = await $fetch<{ form: Record<string, string | number | boolean>; prescriptionKey: string; fileName: string }>(`/api/requests/drafts/${draftId.value}`, {
         headers: { 'x-demo-user': identity.value },
     });
-    const { _diagnosisInput, _diagnosisDetails, ...values } = draft.form;
+    const { _submissionId, _diagnosisInput, _diagnosisDetails, _additionalFormulas, _surplusEntries, _requestedMonths, ...values } = draft.form;
     Object.assign(form, values);
+    if (_submissionId) submissionId.value = String(_submissionId);
+    additionalFormulas.value = _additionalFormulas ? JSON.parse(String(_additionalFormulas)) : [];
+    surplusEntries.value = _surplusEntries ? JSON.parse(String(_surplusEntries)) : [];
+    for (const entry of surplusEntries.value) if (!entry.productForm) initializeSurplus(entry);
+    requestedMonths.value = _requestedMonths ? JSON.parse(String(_requestedMonths)) : [];
     diagnosisInput.value = String(_diagnosisInput ?? '');
     diagnosisDetails.value = String(_diagnosisDetails ?? '');
     uploadedStorageKey.value = draft.prescriptionKey;
@@ -146,7 +192,7 @@ async function saveRequest() {
             method: 'POST', headers: { 'x-demo-user': identity.value },
             body: {
                 id: draftId.value,
-                form: { ...form, _diagnosisInput: diagnosisInput.value, _diagnosisDetails: diagnosisDetails.value },
+                form: { ...form, _submissionId: submissionId.value, _diagnosisInput: diagnosisInput.value, _diagnosisDetails: diagnosisDetails.value, _additionalFormulas: JSON.stringify(additionalFormulas.value), _surplusEntries: JSON.stringify(surplusEntries.value), _requestedMonths: JSON.stringify(requestedMonths.value) },
                 prescriptionKey: uploadedStorageKey.value,
                 fileName: selectedPrescription.value?.name ?? '',
             },
@@ -177,6 +223,7 @@ async function processPrescription(file: File) {
             missing: string[];
             storageKey: string;
             extracted: {
+                formulas: FormulaEntry[];
                 formulaName: string;
                 wicFoodRestrictions: '' | 'under-6-months' | 'none' | 'restricted' | 'not-indicated';
                 wicFoodRestrictionDetails: string;
@@ -197,12 +244,20 @@ async function processPrescription(file: File) {
                 additionalNotes: string;
             };
         }>('/api/requests/parse-prescription', { method: 'POST', body });
+        const { formulas: parsedFormulas, ...parsedFields } = result.extracted;
         Object.assign(form, {
-            ...result.extracted,
+            ...parsedFields,
             formulaName: result.extracted.formulaName || form.formulaName,
             doctorOfficePhone: formatPhoneNumber(result.extracted.doctorOfficePhone),
             medicalStatus: result.extracted.medicalStatus === 'pending' ? '' : result.extracted.medicalStatus,
         });
+        if (parsedFormulas?.length) {
+            Object.assign(form, parsedFormulas[0]);
+            additionalFormulas.value = parsedFormulas.slice(1, 2);
+            if (parsedFormulas.length > 2) {
+                formulaAlert.value = `Only up to 2 formulas are allowed. The PDF also lists: ${parsedFormulas.slice(2).map(formulaEntryName).join(', ')}. Review the uploaded documentation and use a separate request for additional formulas.`;
+            }
+        }
         if (!availableForms.value.includes(form.productForm as ProductForm)) {
             form.productForm = defaultFormulaForm(form.formulaName);
         }
@@ -291,10 +346,21 @@ async function handleDrop(event: DragEvent) {
 async function submitRequest() {
     submitted.value = false;
     if (saving.value || parsing.value || !commitDiagnosis()) return;
-    submissionError.value = validateAgencyFields(form);
+    submissionError.value = formulaSelectionError.value || validateAgencyFields(form);
     if (!submissionError.value && ((!selectedFormula.value && !isOtherFormula.value) || (isOtherFormula.value && (!form.otherFormulaName.trim() || form.otherFormulaName.trim().toLowerCase() === 'other')) || !availableForms.value.includes(form.productForm as ProductForm))) {
         submissionError.value = 'Select a matching formula name and an available form.';
     }
+    if (!submissionError.value) {
+        for (const [index, entry] of additionalFormulas.value.entries()) {
+            const error = validateFormulaEntry(entry);
+            if (error) { submissionError.value = `Formula ${index + 2}: ${error}`; break; }
+        }
+    }
+    if (!submissionError.value && surplusEntries.value.some((entry) => !requestedFormulaNames.value.includes(entry.productName) || !Number.isFinite(Number(entry.units)) || Number(entry.units) <= 0)) {
+        submissionError.value = 'Select a requested formula and enter a positive surplus quantity.';
+    }
+    if (!submissionError.value) submissionError.value = validateRequestedMonths(selectedBenefitMonths());
+    if (!submissionError.value && surplusEntries.value.some((entry) => !entry.productForm || !surplusForms(entry.productName).includes(entry.productForm))) submissionError.value = 'Select a valid Form for each surplus entry.';
     if (submissionError.value) return;
     saving.value = true;
     try {
@@ -304,6 +370,7 @@ async function submitRequest() {
             'request',
             JSON.stringify({
                 draftId: draftId.value,
+                submissionId: submissionId.value,
                 agencyId: 10,
                 agencyMemberId: 100,
                 participantName,
@@ -313,9 +380,12 @@ async function submitRequest() {
                 participantFamilyId: Number(form.familyId) || undefined,
                 wicIndividualId: form.individualId || undefined,
                 benefitsStartDate: form.benefitsStartDate,
+                benefitMonthsRequested: selectedBenefitMonths(),
                 requestKind: form.requestKind,
                 productId: selectedProduct.value?.id ?? -1,
                 productName: productName.value,
+                requestedFormulas: serializedFormulas(),
+                surplusItems: surplusEntries.value.map((entry) => ({ ...entry, units: Number(entry.units) })),
                 productForm: form.productForm,
                 formulaFlavor: selectedFormula.value?.hasFlavor ? form.formulaFlavor.trim() : undefined,
                 wicFoodRestrictions: form.wicFoodRestrictions || undefined,
@@ -378,11 +448,12 @@ async function submitRequest() {
                 </div>
             </div>
             <div class="prescription-requirements">
-                <strong>Before uploading, check that the medical documentation includes:</strong>
+                <strong>Before uploading, check that medical documentation includes ALL of the following:</strong>
                 <ul>
-                    <li>Patient first name, last name, and date of birth</li>
-                    <li>Qualifying medical diagnosis/condition(s)</li>
-                    <li>Formula name, form, amount in ounces per day, and duration in months</li>
+                    <li>Patient first name and last name</li>
+                    <li>Prescribed formula name, form, amount in ounces per day, and duration in months (if RTF form is selected, must include justification)</li>
+                    <li>Qualifying medical diagnosis(es)/condition(s)</li>
+                    <li>WIC food restrictions, if applicable</li>
                     <li>Provider printed name, signature, and date signed</li>
                     <li>Provider office name, address, and phone number</li>
                 </ul>
@@ -510,7 +581,7 @@ async function submitRequest() {
                     />
                 </div>
                 <div class="form-field">
-                    <label for="dob">{{ requiredLabel('Date of Birth') }}</label>
+                    <label for="dob">Date of Birth</label>
                     <input
                         id="dob"
                         v-model="form.participantDob"
@@ -544,7 +615,7 @@ async function submitRequest() {
             </div>
             <fieldset class="form-field full local-agency-fields">
                 <legend>Additional Participant Details</legend>
-                <p>To be completed by the local agency. These fields are required to submit the request but are not part of complete medical documentation.</p>
+                <p>To be provided by the local agency. These fields are needed to submit the request but not part of complete medical documentation.</p>
                 <div class="form-grid">
                     <div class="form-field">
                         <label for="family">WIC Family ID</label>
@@ -587,6 +658,18 @@ async function submitRequest() {
                         </select>
                     </div>
                 </div>
+                <fieldset class="benefit-month-picker">
+                    <legend>Benefit Month(s) Requested</legend>
+                    <small>Select up to 3 months.</small>
+                    <div class="benefit-month-options">
+                        <label v-for="(month, index) in benefitMonthLabels" :key="month" class="benefit-month-option" :class="{ 'month-selected': requestedMonths.includes(String(index + 1).padStart(2, '0')) }">
+                            <input type="checkbox" :checked="requestedMonths.includes(String(index + 1).padStart(2, '0'))"
+                                :disabled="requestedMonths.length >= 3 && !requestedMonths.includes(String(index + 1).padStart(2, '0'))"
+                                @change="requestedMonths = toggleRequestedMonth(requestedMonths, String(index + 1).padStart(2, '0'))" />
+                            {{ month }}
+                        </label>
+                    </div>
+                </fieldset>
             </fieldset>
         </section>
 
@@ -651,15 +734,16 @@ async function submitRequest() {
                     </select>
                 </div>
                 <div
-                    v-if="form.productForm === 'ready-to-feed'"
+                    v-if="requiresReadyToFeedReason(form.formulaName, form.productForm)"
                     class="form-field full"
                 >
-                    <label for="rtf-justification">{{ requiredLabel('List reasons why ready-to-feed is needed.') }}</label>
+                    <label for="rtf-justification">{{ requiredLabel('List reason(s) why ready-to-feed is needed.') }}</label>
                     <textarea
                         id="rtf-justification"
                         v-model="form.readyToFeedJustification"
                         required
-                        class="form-textarea"
+                        rows="1"
+                        class="form-textarea rtf-reason"
                     />
                 </div>
                 <div class="form-field">
@@ -674,17 +758,25 @@ async function submitRequest() {
                         pattern="(?:[0-9]+(?:\.[0-9]+)?|\.[0-9]+)"
                     />
                 </div>
+                <fieldset v-for="(_, index) in additionalFormulas" :key="index" class="additional-formula full">
+                    <legend>Formula {{ index + 2 }}</legend>
+                    <AdditionalFormulaFields v-model="additionalFormulas[index]!" :index="index + 2" />
+                    <p v-if="formulaSelectionError" role="alert">{{ formulaSelectionError }}</p>
+                    <button class="text-button" type="button" @click="additionalFormulas.splice(index, 1)">Remove formula {{ index + 2 }}</button>
+                </fieldset>
+                <div v-if="!additionalFormulas.length" class="form-field full">
+                    <button class="button button-ghost add-formula-button" type="button" @click="addAdditionalFormula">Add another formula</button>
+                </div>
                 <div class="form-field">
                     <label for="duration">{{ requiredLabel('Duration (in months)') }}</label>
-                    <input
+                    <select
                         id="duration"
                         v-model="form.durationMonths"
                         required
                         class="form-input"
-                        type="number"
-                        min="1"
-                        max="6"
-                    />
+                    >
+                        <option v-for="month in 6" :key="month" :value="String(month)">{{ month }}</option>
+                    </select>
                 </div>
                 <div class="form-field full">
                     <label for="diagnosis">{{ requiredLabel('Qualifying Diagnosis(es)') }}</label>
@@ -790,6 +882,7 @@ async function submitRequest() {
                             id="doctor-signed-off"
                             v-model="form.doctorHasSignedOff"
                             type="checkbox"
+                            required
                             aria-required="true"
                         />
                         <span>{{ requiredLabel('Provider Signature') }}</span>
@@ -815,12 +908,13 @@ async function submitRequest() {
                         class="form-input"
                         required
                     />
-                    <input
+                    <textarea
                         id="doctor-address"
                         aria-label="Medical office/clinic address"
-                        placeholder="Office/clinic address"
+                        placeholder="Street address&#10;City, State ZIP"
                         v-model="form.doctorOfficeAddress"
-                        class="form-input"
+                        class="form-textarea office-address"
+                        rows="3"
                         required
                     />
                 </div>
@@ -844,6 +938,41 @@ async function submitRequest() {
         </section>
 
         <section class="form-section">
+            <div class="panel-heading"><h2>Formula Surplus</h2></div>
+            <p>Enter any surplus the local agency has of the formula(s) requested.</p>
+            <div v-for="(entry, index) in surplusEntries" :key="index" class="form-grid surplus-form-row">
+                <div class="form-field">
+                    <label :for="`surplus-formula-${index}`">Formula Name</label>
+                    <select :id="`surplus-formula-${index}`" v-model="entry.productName" class="form-input" required @change="initializeSurplus(entry)">
+                        <option disabled value="">Select requested formula</option>
+                        <option v-for="name in requestedFormulaNames" :key="name" :value="name">{{ name }}</option>
+                    </select>
+                </div>
+                <div class="form-field">
+                    <label :for="`surplus-form-${index}`">Form</label>
+                    <select :id="`surplus-form-${index}`" v-model="entry.productForm" class="form-input" required>
+                        <option disabled value="">Select Form</option>
+                        <option v-for="option in surplusForms(entry.productName)" :key="option" :value="option">{{ { powder: 'Powder', concentrate: 'Liquid Concentrate', 'ready-to-feed': 'Ready-to-Feed' }[option] }}</option>
+                    </select>
+                </div>
+                <div v-if="findFormula(entry.productName)?.hasFlavor" class="form-field">
+                    <label :for="`surplus-flavor-${index}`">Flavor</label>
+                    <input :id="`surplus-flavor-${index}`" v-model="entry.flavor" class="form-input" />
+                </div>
+                <div class="form-field">
+                    <label :for="`surplus-units-${index}`">Surplus Quantity (units)</label>
+                    <input :id="`surplus-units-${index}`" v-model="entry.units" class="form-input" type="number" min="1" required />
+                </div>
+                <div class="form-field">
+                    <label :for="`surplus-expiration-${index}`">Expiration Date</label>
+                    <input :id="`surplus-expiration-${index}`" v-model="entry.expirationDate" class="form-input" type="date" />
+                </div>
+                <button type="button" class="text-button" @click="surplusEntries.splice(index, 1)">Remove surplus entry</button>
+            </div>
+            <button class="button button-ghost add-surplus-button" type="button" @click="addSurplus">Add surplus</button>
+        </section>
+
+        <section class="form-section">
             <div class="panel-heading">
                 <div>
                     <h2>Additional Information</h2>
@@ -857,6 +986,13 @@ async function submitRequest() {
             />
         </section>
 
+        <div v-if="formulaAlert" class="confirmation-backdrop" role="presentation" @click.self="dismissFormulaAlert">
+            <section class="confirmation-modal" role="alertdialog" aria-modal="true" aria-labelledby="formula-alert-title" aria-describedby="formula-alert-message">
+                <h2 id="formula-alert-title">Review formula selection</h2>
+                <p id="formula-alert-message">{{ formulaAlert }}</p>
+                <button class="button button-primary" type="button" @click="dismissFormulaAlert">OK</button>
+            </section>
+        </div>
         <p v-if="submissionError" role="alert">{{ submissionError }}</p>
         <div class="form-actions">
             <NuxtLink

@@ -30,6 +30,7 @@ describe('CDPH prescription field parser', () => {
         });
 
         expect(result).toEqual({
+            formulas: [],
             formulaName: '',
             wicFoodRestrictions: 'not-indicated',
             wicFoodRestrictionDetails: '',
@@ -99,6 +100,29 @@ describe('CDPH prescription field parser', () => {
             wicFoodRestrictionDetails: 'No milk',
             formulaName: 'Fortini',
         });
+    });
+
+    it('extracts every checked formula and separates diagnoses without assigning a shared amount twice', () => {
+        const result = mapPrescriptionFields({
+            'Enfamil-1': [{ value: 'Yes' }], 'Similac-1': [{ value: 'Yes' }],
+            Powder: [{ value: 'Yes' }], Amount: [{ value: '24' }],
+            Prematurity: [{ value: 'Yes' }], Dysphagia: [{ value: 'Yes' }],
+        });
+        expect(result.formulas.map((item) => item.formulaName)).toEqual(['Enfamil NeuroPro EnfaCare', 'Similac NeoSure']);
+        expect(result.formulas[0]?.ouncesPrescribed).toBe(24);
+        expect(result.formulas[1]?.ouncesPrescribed).toBe('');
+        expect(result.diagnosis.split('\n')).toEqual(['Prematurity', 'Dysphagia']);
+    });
+    it('reads multiple formula names written into the PDF without duplicating overlapping names', () => {
+        const result = mapPrescriptionFields({ 'formula/medical food': [{ value: 'PediaSure 1.5 Cal with Fiber and Similac NeoSure' }], Powder: [{ value: 'Yes' }], 'Ready to Feed': [{ value: 'Yes' }] });
+        expect(result.formulas.map((item) => item.formulaName)).toEqual(['PediaSure 1.5 Cal with Fiber', 'Similac NeoSure']);
+        expect(result.formulas[0]?.productForm).toBe('ready-to-feed');
+        expect(result.formulas[1]?.productForm).toBe('');
+    });
+
+    it('does not duplicate a single-line clinic name as its address', () => {
+        expect(mapPrescriptionFields({ 'Medical Office or Clinic Name and Address': [{ value: 'Example Clinic' }] })).toMatchObject({ doctorOfficeName: 'Example Clinic', doctorOfficeAddress: '' });
+        expect(mapPrescriptionFields({ 'Medical Office or Clinic Name and Address': [{ value: 'Example Clinic, 123 Main Street, Sacramento, CA 95814' }] })).toMatchObject({ doctorOfficeName: 'Example Clinic', doctorOfficeAddress: '123 Main Street\nSacramento, CA 95814' });
     });
 
     it('normalizes supported date formats and leaves unknown values blank', () => {

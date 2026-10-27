@@ -21,7 +21,7 @@ describe('durable incomplete requests', () => {
         expect(draft.request.status).toBe('incomplete');
         expect(await listRequestDrafts(bucket, 'dev', user)).toEqual([draft.request]);
         const updated = await saveRequestDraft(bucket, 'dev', user, {
-            id: draft.request.id, form: { patientFirstName: 'Ana', formulaName: 'Fortini', wicStaffFoodRestrictions: 'restricted', _diagnosisInput: 'Food allergy', _diagnosisDetails: 'Peanut' },
+            id: draft.request.id, form: { patientFirstName: 'Ana', formulaName: 'Fortini', wicStaffFoodRestrictions: 'restricted', _diagnosisInput: 'Food allergy', _diagnosisDetails: 'Peanut', _additionalFormulas: JSON.stringify([{ formulaName: 'Fortini', productForm: 'ready-to-feed', ouncesPrescribed: '12' }]), _requestedMonths: JSON.stringify(['01', '03']), _surplusEntries: JSON.stringify([{ productName: 'Fortini', productForm: 'ready-to-feed', flavor: '', units: '3', expirationDate: '2027-01-01' }]) },
             prescriptionKey: 'temporary/dev/example.pdf', fileName: 'example.pdf',
         });
         expect(updated.request.id).toBe(draft.request.id);

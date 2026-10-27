@@ -40,6 +40,7 @@ describe('new request doctor fields', () => {
             'Medical Formula/Nutritionals and Qualifying Diagnosis',
             'WIC Food Restrictions',
             'Health Care Provider',
+            'Formula Surplus',
             'Additional Information',
         ]);
         const providerFields = ['doctor-name', 'doctor-signed-off', 'prescription-signed-date', 'doctor-office', 'doctor-address', 'doctor-phone'];
@@ -70,7 +71,7 @@ describe('new request doctor fields', () => {
         expect(requestForm).toContain("requiredLabel('Provider Signature')");
         const signatureInput = requestForm.match(/<input\s+id="doctor-signed-off"[\s\S]*?\/>/)?.[0];
         expect(signatureInput).toContain('aria-required="true"');
-        expect(signatureInput).not.toMatch(/\srequired(?:\s|=)/);
+        expect(signatureInput).toMatch(/\srequired(?:\s|=)/);
         expect(signatureInput).not.toContain('title=');
         expect(requestForm).toContain('doctorHasSignedOff: false');
         expect(requestForm).toContain('v-model="form.doctorHasSignedOff"');

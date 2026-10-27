@@ -1,3 +1,6 @@
+import { submittedRequest } from '../../../utils/submittedRequests';
+import { getSessionFromHeaders } from '../../../utils/session';
+import { canSeeAgency } from '../../../../shared/surplus';
 import { canGenerateAuthorizationForm } from '../../../../shared/requestOperations';
 import { getRequestById } from '../../../utils/requestStore';
 import { SEED_AGENCIES, SEED_MEMBERS } from '../../../data/seed';
@@ -5,8 +8,10 @@ import { createAuthorizationFormPdf } from '../../../utils/authorizationForm';
 
 export default defineEventHandler(async (event) => {
     const id = Number(event.context.params?.id);
-    const request = getRequestById(id);
-    if (!request) {
+    const user=getSessionFromHeaders({'x-demo-user':getHeader(event,'x-demo-user')});
+    const env=event.context.cloudflare?.env as Partial<Env>|undefined;
+    const request=(env?.CDPHWIC?await submittedRequest(env.CDPHWIC,id,user):undefined)??getRequestById(id);
+    if (!request||!canSeeAgency(user,request.agencyId)) {
         throw createError({ statusCode: 404, statusMessage: 'Request not found.' });
     }
     if (!canGenerateAuthorizationForm(request)) {

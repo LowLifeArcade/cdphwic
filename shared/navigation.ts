@@ -16,6 +16,7 @@ export function getNavigationItems(user: SessionUser): NavigationItem[] {
             icon: '▤',
             children: [{ label: 'My Requests', to: '/requests?scope=mine', icon: '↳' }],
         },
+        { label: 'Formula Surplus', to: '/surplus', icon: '▦' },
         { label: 'Products', to: '/products', icon: '◫' },
         { label: 'Participants', to: '/participants', icon: '◎' },
         { label: 'Agencies', to: '/agencies', icon: '⌂' },

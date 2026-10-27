@@ -12,15 +12,17 @@
 
 ## Global Constraints
 
-- Duration is a whole number from 1 through 6 months.
 - Quantity is measured in individual units throughout this first version.
-- Reserved must never exceed on hand.
+- Reserved must never exceed usable on hand.
+- Expired/Quarantined units are separate from usable inventory and cannot be used, reserved, shipped, transferred, or donated.
 - Saving an incomplete form does not change inventory.
 - A confirmed count cannot be below active reservations; resolve those reservations first.
 - Admin and FPU record shipment and receipt after confirmation from the agencies.
 - Transfer quantity is fixed after reservation.
 - Donation notices are in-app only, as selected by the user. Donation notification delivery is implemented by the companion plan.
 - Inventory operations must remain correct across Worker restarts.
+- A deduction with reason Donation requires at least 60 calendar days remaining until expiration on the donation date; exactly 60 qualifies and 59 does not.
+- A deduction with reason Destruction requires expired stock and verified actual destruction; acknowledging a notice cannot deduct stock.
 - Prepare and test migrations locally; do not migrate production or deploy during implementation.
 
 ## Review Focus
@@ -39,9 +41,9 @@ Create `shared/surplus.ts` for domain types and pure rules; `db/migrations/0006_
 
 **Files:** create `shared/surplus.ts`, `db/migrations/0006_surplus_inventory.sql`, `test/surplusRules.test.ts`, `test/surplusSchema.test.ts`.
 
-**Interfaces:** export `SurplusVariant { formulaName: string; form: ProductForm; flavor: string; expirationDate: string }`, `SurplusLot { id: string; agencyId: number; variant: SurplusVariant; onHand: number; reserved: number; version: number }`, `SurplusActor { userId: number; role: 'admin'|'fpu'|'agency'; agencyId?: number }`, and `TransferState = 'reserved'|'shipped'|'received'|'cancelled'`. Export `variantKey(variant): string`, `availableUnits(lot): number`, `validateUnits(value): string`, `canAllocate(lot, quantity, today): boolean`.
+**Interfaces:** export `SurplusVariant { formulaName: string; form: ProductForm; flavor: string; expirationDate: string }`, `SurplusLot { id: string; agencyId: number; variant: SurplusVariant; onHand: number; reserved: number; expiredUnits: number; version: number }`, `SurplusActor { userId: number; role: 'admin'|'fpu'|'agency'; agencyId?: number }`, and `TransferState = 'reserved'|'shipped'|'received'|'cancelled'|'blocked-expired'`. Export `variantKey(variant): string`, `availableUnits(lot): number`, `validateUnits(value): string`, `canAllocate(lot, quantity, today): boolean`. `onHand` is usable stock; total physical stock is `onHand + expiredUnits`.
 
-- [ ] Write rule tests: identical canonical variants normalize consistently; powder and RTF do not merge; Vanilla and Chocolate do not merge; different expiration dates do not merge; quantities 0, -1, 1.5, NaN fail; available(10 on hand, 3 reserved) equals 7; 8 cannot be allocated; expired or undated stock cannot allocate.
+- [ ] Write rule tests: identical canonical variants normalize consistently; powder and RTF do not merge; Vanilla and Chocolate do not merge; different expiration dates do not merge; quantities 0, -1, 1.5, NaN fail; available(10 on hand, 3 reserved) equals 7; 8 cannot be allocated; expired or undated stock cannot allocate; expiredUnits never contribute to availableUnits.
 - [ ] Run `npm test -- test/surplusRules.test.ts`; confirm new tests fail before implementation.
 - [ ] Implement the exported rules and tables for lots, reports, forecasts, transfers, movements, submission snapshots, and idempotency. Use UUID text IDs and integer unit constraints. Preserve original entered names for display; canonical matching uses catalog names and normalized Other names.
 - [ ] Write schema tests using a fresh `node:sqlite` database loaded from the migration: invalid negative balances and reserved > on hand are rejected; duplicate source-report IDs and operation keys are rejected. Do not rely on seeded request IDs as foreign keys because submitted requests currently use the demo store.
@@ -51,12 +53,12 @@ Create `shared/surplus.ts` for domain types and pure rules; `db/migrations/0006_
 
 **Files:** create `server/utils/surplusStore.ts`, `server/utils/surplusAccess.ts`, `test/surplusStore.test.ts`, `test/surplusAccess.test.ts`, and `scripts/verify-surplus-local.mjs`.
 
-**Interfaces:** `executeSurplusCommand(db: D1Database, actor: SurplusActor, command: SurplusCommand): Promise<SurplusCommandResult>`; `getSurplusLots(db, actor, filters): Promise<SurplusLot[]>`; `getSurplusHistory(db, actor, lotId): Promise<SurplusMovement[]>`. Commands are `reconcile {lotId, countedUnits, expectedVersion, reportId, reason, operationId}`, `deduct {lotId, quantity, requestRef, reason, operationId}`, `reserve {lotId, destinationAgencyId, quantity, requestRef, operationId}`, `ship {transferId, shippedDate, trackingReference?, operationId}`, `receive {transferId, receivedDate, operationId}`, and `cancel {transferId, reason, operationId}`. Define command/result/history types in `shared/surplus.ts`.
+**Interfaces:** `executeSurplusCommand(db: D1Database, actor: SurplusActor, command: SurplusCommand): Promise<SurplusCommandResult>`; `getSurplusLots(db, actor, filters): Promise<SurplusLot[]>`; `getSurplusHistory(db, actor, lotId): Promise<SurplusMovement[]>`; `expireSurplusLots(db, today): Promise<{movedLots: number; blockedTransfers: number}>`. Commands are `reconcile {lotId, countedUnits, expectedVersion, reportId, reason, operationId}`, `deduct {lotId, quantity, requestRef, reason, operationId}`, `reserve {lotId, destinationAgencyId, quantity, requestRef, operationId}`, `ship {transferId, shippedDate, trackingReference?, operationId}`, `receive {transferId, receivedDate, operationId}`, and `cancel {transferId, reason, operationId}`. Define command/result/history types in `shared/surplus.ts`.
 
 - [ ] Write tests for Admin/FPU mutations, agency read isolation, and agency mutation rejection. Admin/FPU may inspect all source agencies.
-- [ ] Write transaction tests: start 10 units, reserve 4 => (onHand 10, reserved 4, available 6); ship => (6,0,6); receive => destination gains 4 once. Cancel an unshipped reservation restores availability; cancelling after shipping fails without mutation. A deduction cannot consume reserved stock.
+- [ ] Write transaction tests: start 10 units, reserve 4 => (onHand 10, reserved 4, available 6); ship => (6,0,6); receive => destination gains 4 once. Cancel an unshipped reservation restores availability; cancelling after shipping fails without mutation. A deduction cannot consume reserved stock. Donation deductions additionally require at least 60 calendar days remaining on the donation date; test exactly 60 accepted and 59 rejected. Destruction deductions require expiry before the destruction date, actual destroyed quantity, staff name, and evidence/reference supplied by the agency; test duplicate destruction operations deduct once, nonexpired stock is rejected, and destruction debits only expiredUnits. Test expiration moves (onHand 10, reserved 3, expired 0) to (0,0,10), blocks the pending transfer, and preserves total physical quantity; retrying expiry is a no-op. Test late receipt goes directly to expiredUnits and cannot subsequently ship.
 - [ ] Run tests and confirm failure before implementing commands.
-- [ ] Implement guarded atomic SQL and append-only history. Every balance mutation and its event/idempotency result commit together or roll back together. Treat affected-row mismatches as conflicts. Returning a stored result on an operation-ID retry must not mutate balances again.
+- [ ] Implement guarded atomic SQL and append-only history. Reclassify expired lots before eligible reads/mutations and guard every allocation by the current LA date; expiration and shipment must serialize without expired units escaping. An expiry-date correction requires an explicit audited release from quarantine. Every balance mutation and its event/idempotency result commit together or roll back together. Treat affected-row mismatches as conflicts. Returning a stored result on an operation-ID retry must not mutate balances again.
 - [ ] Add local Wrangler integration assertions for two concurrent reservations against the last units, stale reconciliation, duplicate transitions, restart persistence, and insufficient balance. Keep all test data in local storage; never target remote D1.
 - [ ] Run unit tests plus the local integration script against the migrated local dev environment. Commit with `feat: add atomic surplus deductions and transfers`.
 
@@ -90,7 +92,7 @@ Create `shared/surplus.ts` for domain types and pure rules; `db/migrations/0006_
 **Interfaces:** routes delegate to the exact services above. GET `/api/surplus` returns `{lots, pendingReports, forecasts, transfers}` filtered by authorized scope. POST `/api/surplus/commands` accepts `SurplusCommand`. The request panel consumes `{requestRef, requestedFormulas, agencyId}` and emits `changed` after a successful mutation.
 
 - [ ] Write API tests for agency cross-scope reads/mutations, Admin/FPU all-agency reads, invalid quantities, stale versions, repeated operation IDs, and expired lots. Return 403 for unauthorized actions and 409 for inventory conflicts.
-- [ ] Run failing tests, then implement thin routes and Surplus navigation. Display agency, formula variant, expiry, on hand, reserved, available, forecasts, reports, transfers, and history. Agency users see their own balance and relevant transfer/confirmation records.
+- [ ] Run failing tests, then implement thin routes and Surplus navigation. Display agency, formula variant, expiry, usable on hand, reserved, available, Expired/Quarantined, total physically present, forecasts, reports, transfers, and history. Expired/Quarantined rows have no use/ship/transfer/donate actions and support verified destruction only. Agency users see their own balance and relevant transfer/confirmation records.
 - [ ] Add request review actions for using local surplus and reserving stock from another agency. Confirm dialogs display quantity, source/destination, resulting availability, and the request reference. Record shipment/receipt/cancellation through the same shared commands.
 - [ ] Verify in a local browser: report -> reviewed count -> deduction -> reservation -> ship -> receive, and agency forecast confirmation. Verify a second reviewer receives a conflict instead of overspending. Verify errors preserve entered values.
 - [ ] Run API/navigation tests and commit with `feat: expose agency surplus tracker and review actions`.

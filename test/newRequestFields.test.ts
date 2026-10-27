@@ -8,7 +8,7 @@ describe('new request entries', () => {
         expect(addDiagnosis([], '  ')).toEqual([]);
     });
     it('requires agency details, insurance, and a Medi-Cal status only for Medi-Cal', () => {
-        const valid = { wicFoodRestrictions: 'none', wicStaffFoodRestrictions: '', wicNutritionStaffNotes: '', wicNutritionStaffName: '', ouncesPrescribed: '24', durationMonths: '3', diagnosis: 'Food allergy: Peanut', prescriptionSignedDate: '2026-10-22', familyId: '123', individualId: '456', benefitsStartDate: '2026-10-22', requestKind: 'new', medicalStatus: 'no', mediCalStatus: '', doctorHasSignedOff: true, productForm: 'powder', readyToFeedJustification: '' };
+        const valid = { formulaName: 'Similac NeoSure', wicFoodRestrictions: 'none', wicStaffFoodRestrictions: '', wicNutritionStaffNotes: '', wicNutritionStaffName: '', ouncesPrescribed: '24', durationMonths: '3', diagnosis: 'Food allergy: Peanut', prescriptionSignedDate: '2026-10-22', familyId: '123', individualId: '456', benefitsStartDate: '2026-10-22', requestKind: 'new', medicalStatus: 'no', mediCalStatus: '', doctorHasSignedOff: true, productForm: 'powder', readyToFeedJustification: '' };
         expect(validateAgencyFields(valid)).toBe('');
         expect(validateAgencyFields({ ...valid, wicFoodRestrictions: '' })).toContain('WIC Food Restrictions');
         const staff = { ...valid, wicFoodRestrictions: 'not-indicated' };

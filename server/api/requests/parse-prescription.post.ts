@@ -32,6 +32,7 @@ export default defineEventHandler(async (event) => {
     }
 
     let parsed: ParsedPrescriptionFields = {
+        formulas: [],
         formulaName: '',
         wicFoodRestrictions: '',
         wicFoodRestrictionDetails: '',
@@ -77,7 +78,7 @@ export default defineEventHandler(async (event) => {
     return {
         status: 'needs_review' as const,
         message: isPdf
-            ? 'PDF uploaded and fields populated. Review the form before submitting.'
+            ? 'Your file has been uploaded. Review all fields before submitting.'
             : 'Photo uploaded. Photos are accepted for reference but must be entered manually.',
         storageKey: attachment.key,
         extracted: {

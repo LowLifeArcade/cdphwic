@@ -33,7 +33,18 @@ export interface SessionUser {
     preferredInternalMemberId?: number;
 }
 
+export interface RequestedFormula {
+    productName: string;
+    productForm: ProductForm;
+    ouncesPrescribed: number;
+    readyToFeedJustification?: string;
+    flavor?: string;
+    otherFormulaName?: string;
+}
+
 export interface RequestRecord {
+    submissionId?: string;
+    requestedFormulas?: RequestedFormula[];
     id: number;
     agencyId: number;
     agencyMemberId: number;
@@ -99,7 +110,7 @@ export interface RequestRecord {
     expectedSurplusUnit?: 'units' | 'cases';
     agencyUnitsOnHand?: number;
     agencyUnitsOnHandUnit?: 'units' | 'cases';
-    surplusItems?: Array<{ productName: string; units: number; expirationDate: string }>;
+    surplusItems?: Array<{ productName: string; productForm?: ProductForm; flavor?: string; units: number; expirationDate: string }>;
     staffNotes?: string;
     nextSteps?: string;
     repNotes?: string;

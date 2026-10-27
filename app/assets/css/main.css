@@ -1969,3 +1969,56 @@ select.form-input {
     width: 100%;
     border-color: transparent;
 }
+
+.additional-formula {
+    grid-column: 1 / -1;
+    min-width: 0;
+    margin: 8px 0;
+    padding: 16px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+}
+.additional-formula legend { padding: 0 6px; font-weight: 600; }
+.additional-formula > .text-button { margin-top: 12px; }
+.add-formula-button { justify-self: start; }
+.office-address { min-height: 84px; }
+.surplus-form-row { margin-bottom: 16px; }
+
+.benefit-month-picker {
+    min-width: 0;
+    margin: 16px 0 0;
+    padding: 0;
+    border: 0;
+}
+.benefit-month-picker legend {
+    padding: 0;
+    margin-bottom: 6px;
+    color: #b4bfd2;
+    font-size: 0.72rem;
+    font-weight: 700;
+}
+.benefit-month-options { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.benefit-month-option {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    padding: 8px 10px;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    background: var(--surface);
+    font-size: 0.8rem;
+    cursor: pointer;
+}
+.benefit-month-option input { accent-color: var(--purple); }
+.benefit-month-option.month-selected { border-color: var(--purple); }
+.benefit-month-option:has(input:disabled) { opacity: 0.45; cursor: default; }
+
+.button.add-formula-button,
+.button.add-surplus-button {
+    color: var(--purple);
+}
+
+.form-textarea.rtf-reason {
+    min-height: 50px;
+    height: 50px;
+}

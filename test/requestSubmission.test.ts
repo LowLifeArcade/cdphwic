@@ -13,7 +13,7 @@ const complete: Partial<RequestRecord> = {
 describe('submission requirements', () => {
     it('accepts a complete request and rejects omissions even outside the browser', () => {
         expect(validateRequestSubmission(complete)).toBe('');
-        for (const key of ['participantFirstName', 'participantLastName', 'participantDob', 'participantFamilyId', 'wicIndividualId', 'benefitsStartDate', 'requestKind', 'medicalStatus', 'productName', 'productForm', 'ouncesPrescribed', 'durationMonths', 'diagnosis', 'wicFoodRestrictions', 'doctorPrintedName', 'doctorHasSignedOff', 'doctorOfficeName', 'doctorOfficeAddress', 'doctorOfficePhone', 'prescriptionSignedDate', 'genericFields']) {
+        for (const key of ['participantFirstName', 'participantLastName', 'participantDob', 'participantFamilyId', 'wicIndividualId', 'benefitsStartDate', 'requestKind', 'medicalStatus', 'productName', 'productForm', 'ouncesPrescribed', 'durationMonths', 'diagnosis', 'wicFoodRestrictions', 'doctorPrintedName', 'doctorHasSignedOff', 'doctorOfficeName', 'doctorOfficeAddress', 'doctorOfficePhone', 'prescriptionSignedDate']) {
             expect(validateRequestSubmission({ ...complete, [key]: undefined }), key).not.toBe('');
         }
     });
@@ -23,6 +23,30 @@ describe('submission requirements', () => {
         expect(validateRequestSubmission({ ...custom, productName: '' })).not.toBe('');
         expect(validateRequestSubmission({ ...custom, productName: 'Other', genericFields: {} })).not.toBe('');
         expect(validateRequestSubmission({ ...custom, productName: 'Fortini', productForm: 'powder', genericFields: { otherFormulaName: 'Fortini' } })).not.toBe('');
+    });
+
+    it('validates each additional formula and permits RTF-only products without a reason', () => {
+        const first = { productName: 'Fortini', productForm: 'ready-to-feed' as const, ouncesPrescribed: 24 };
+        const second = { productName: 'Similac NeoSure', productForm: 'powder' as const, ouncesPrescribed: 12 };
+        expect(validateRequestSubmission({ ...complete, genericFields: {}, requestedFormulas: [first, second] })).toBe('');
+        expect(validateRequestSubmission({ ...complete, requestedFormulas: [first, { ...second, ouncesPrescribed: 0 }] })).toContain('Formula 2');
+        expect(validateRequestSubmission({ ...complete, requestedFormulas: [first, { ...second, productForm: 'ready-to-feed' }] })).toContain('reason(s)');
+        expect(validateRequestSubmission({ ...complete, surplusItems: [{ productName: 'Fortini', productForm: 'ready-to-feed', units: 3, expirationDate: '2027-01-01' }] })).toBe('');
+        expect(validateRequestSubmission({ ...complete, surplusItems: [{ productName: 'Unknown', units: 3, expirationDate: '' }] })).toContain('surplus');
+    });
+
+    it('retains surplus forms and flavors and rejects invalid forms and too many months', () => {
+        const surplus = { productName: 'Kate Farms Pediatric Std 1.2 Cal', productForm: 'ready-to-feed' as const, flavor: 'Vanilla', units: 3, expirationDate: '2027-01-01' };
+        const request = { ...complete, requestedFormulas: [{ productName: surplus.productName, productForm: surplus.productForm, ouncesPrescribed: 24 }], surplusItems: [surplus] };
+        expect(validateRequestSubmission(request)).toBe('');
+        expect(validateRequestSubmission({ ...request, surplusItems: [{ ...surplus, productForm: 'powder' }] })).toContain('surplus');
+        expect(validateRequestSubmission({ ...complete, benefitMonthsRequested: ['2026-01', '2026-02', '2026-03', '2026-04'] })).toContain('3');
+    });
+
+    it('rejects duplicate requested formulas and more than two formulas at submission', () => {
+        const formula = { productName: 'Fortini', productForm: 'ready-to-feed' as const, ouncesPrescribed: 24 };
+        expect(validateRequestSubmission({ ...complete, requestedFormulas: [formula, formula] })).toContain('already selected');
+        expect(validateRequestSubmission({ ...complete, requestedFormulas: [formula, formula, formula] })).toContain('2 formulas');
     });
 
     it('requires diagnosis details and WIC staff completion when the HCP left both boxes blank', () => {

@@ -1,13 +1,11 @@
+import { persistSurplusSubmission } from '../../utils/surplusReports';
 import { validateRequestSubmission } from '../../../shared/requestSubmission';
 import { readRequestDraft, canAccessDraft, deleteRequestDraft } from '../../utils/requestDraftStore';
 import { getSessionFromHeaders } from '../../utils/session';
 import type { RequestRecord } from '../../../shared/domain';
 import { normalizePhoneNumber } from '../../../shared/phone';
 import { createRequestRecord, deleteRequestRecord, updateRequestRecord } from '../../utils/requestStore';
-import {
-    promoteTemporaryPrescriptionAttachment,
-    storePrescriptionAttachment,
-} from '../../utils/prescriptionStorage';
+import { promoteTemporaryPrescriptionAttachment, storePrescriptionAttachment } from '../../utils/prescriptionStorage';
 
 export default defineEventHandler(async (event) => {
     const parts = await readMultipartFormData(event);
@@ -20,32 +18,75 @@ export default defineEventHandler(async (event) => {
         throw createError({ statusCode: 400, statusMessage: 'Participant, product, agency, and rep are required.' });
     }
 
-    const { prescriptionKey, draftId, ...requestBody } = body as Omit<RequestRecord, 'id'> & { prescriptionKey?: string; draftId?: number };
+    const { prescriptionKey, draftId, ...requestBody } = body as Omit<RequestRecord, 'id'> & {
+        prescriptionKey?: string;
+        draftId?: number;
+    };
     const validationError = validateRequestSubmission(requestBody);
     if (validationError) throw createError({ statusCode: 400, statusMessage: validationError });
-    const environment = event.context.cloudflare?.env as Env | undefined;
+    const environment = event.context.cloudflare?.env as Partial<Env> | undefined;
     const user = getSessionFromHeaders({ 'x-demo-user': getHeader(event, 'x-demo-user') });
+    const submissionId = body.submissionId ?? crypto.randomUUID();
+    const submissionPayload = JSON.stringify(requestBody);
+    if (!environment?.CDPHWIC) throw createError({ statusCode: 503, statusMessage: 'Request database unavailable.' });
+    const previous = await environment.CDPHWIC.prepare(
+        'SELECT request_json,agency_id,payload,actor_id FROM surplus_submissions WHERE id=?',
+    )
+        .bind(submissionId)
+        .first<{ request_json: string; agency_id: number; payload: string; actor_id: number }>();
+    if (previous) {
+        if (previous.actor_id !== user.id || previous.payload !== submissionPayload)
+            throw createError({
+                statusCode: 409,
+                statusMessage: 'Submission reference already used. Reload the saved request.',
+            });
+        if(draftId&&environment.PRESCRIPTIONS){
+            const draft=await readRequestDraft(environment.PRESCRIPTIONS,environment.ENV??'prod',draftId);
+            if(draft&&canAccessDraft(draft,user))await deleteRequestDraft(environment.PRESCRIPTIONS,environment.ENV??'prod',draftId);
+        }
+        return { request: JSON.parse(previous.request_json), demo: true };
+    }
     if (draftId) {
-        const draft = environment?.PRESCRIPTIONS ? await readRequestDraft(environment.PRESCRIPTIONS, environment.ENV, draftId) : undefined;
-        if (!draft || !canAccessDraft(draft, user)) throw createError({ statusCode: 404, statusMessage: 'Incomplete request not found.' });
+        const draft = environment?.PRESCRIPTIONS
+            ? await readRequestDraft(environment.PRESCRIPTIONS, environment.ENV, draftId)
+            : undefined;
+        if (!draft || !canAccessDraft(draft, user))
+            throw createError({ statusCode: 404, statusMessage: 'Incomplete request not found.' });
     }
     const finishDraft = async () => {
-        if (draftId && environment?.PRESCRIPTIONS) await deleteRequestDraft(environment.PRESCRIPTIONS, environment.ENV, draftId);
+        if (draftId && environment?.PRESCRIPTIONS)
+            await deleteRequestDraft(environment.PRESCRIPTIONS, environment.ENV, draftId);
     };
     const doctorOfficePhone = normalizePhoneNumber(requestBody.doctorOfficePhone ?? '');
     if (!doctorOfficePhone) {
         throw createError({ statusCode: 400, statusMessage: 'Enter a valid 10-digit doctor office phone number.' });
     }
-    const request = createRequestRecord({
-        ...requestBody,
-        doctorOfficePhone,
-        agencyId: user.agencyId ?? requestBody.agencyId,
-        agencyMemberId: user.agencyMemberId ?? requestBody.agencyMemberId,
-        status: 'unopened',
-    });
+    const sequence = await environment.CDPHWIC.prepare(
+        'INSERT INTO surplus_request_ids DEFAULT VALUES RETURNING id',
+    ).first<number>('id');
+    if (!sequence) throw createError({ statusCode: 503, statusMessage: 'Could not allocate request ID.' });
+    const request = createRequestRecord(
+        {
+            ...requestBody,
+            submissionId,
+            doctorOfficePhone,
+            agencyId: user.agencyId ?? requestBody.agencyId,
+            agencyMemberId: user.agencyMemberId ?? requestBody.agencyMemberId,
+            status: 'unopened',
+        },
+        1000000 + sequence,
+    );
     if (!prescription?.data && !prescriptionKey) {
+        let saved: RequestRecord;
+        try {
+            saved = await persistSurplusSubmission(environment.CDPHWIC, submissionId, request, user, submissionPayload);
+            if (saved.id !== request.id) deleteRequestRecord(request.id);
+        } catch (error) {
+            deleteRequestRecord(request.id);
+            throw error;
+        }
         await finishDraft();
-        return { request, demo: true };
+        return { request: saved, demo: true };
     }
 
     if (!environment?.PRESCRIPTIONS) {
@@ -58,20 +99,30 @@ export default defineEventHandler(async (event) => {
     let savedRequest: RequestRecord = request;
     try {
         const attachment = prescriptionKey
-            ? await promoteTemporaryPrescriptionAttachment(environment.PRESCRIPTIONS, environment.ENV, request.id, prescriptionKey)
-            : await storePrescriptionAttachment(environment.PRESCRIPTIONS, environment.ENV, request.id, prescription);
+            ? await promoteTemporaryPrescriptionAttachment(
+                  environment.PRESCRIPTIONS,
+                  environment.ENV,
+                  request.id,
+                  prescriptionKey,
+              )
+            : await storePrescriptionAttachment(environment.PRESCRIPTIONS, environment.ENV, request.id, prescription!);
         storedKey = attachment.key;
-        temporaryKey = 'sourceKey' in attachment ? attachment.sourceKey : undefined;
+        temporaryKey = 'sourceKey' in attachment && typeof attachment.sourceKey==='string' ? attachment.sourceKey : undefined;
         await environment.CDPHWIC.prepare(
             `INSERT INTO request_attachments
                 (request_id, attachment_type, file_name, storage_key_stub, content_type, file_size)
              VALUES (?, ?, ?, ?, ?, ?)`,
         )
-            .bind(request.id, 'prescription', attachment.fileName, attachment.key, attachment.contentType, attachment.size)
+            .bind(
+                request.id,
+                'prescription',
+                attachment.fileName,
+                attachment.key,
+                attachment.contentType,
+                attachment.size,
+            )
             .run();
-        if (temporaryKey) {
-            await environment.PRESCRIPTIONS.delete(temporaryKey);
-        }
+
         const updatedRequest = updateRequestRecord(request.id, {
             prescriptionAttachment: {
                 storageKey: attachment.key,
@@ -80,14 +131,27 @@ export default defineEventHandler(async (event) => {
                 size: attachment.size,
             },
         });
-        savedRequest = updatedRequest ?? request;
+        savedRequest = await persistSurplusSubmission(
+            environment.CDPHWIC,
+            submissionId,
+            updatedRequest ?? request,
+            user,
+            submissionPayload,
+        );
     } catch (error) {
         if (storedKey) {
             await environment.PRESCRIPTIONS.delete(storedKey);
         }
+        await environment.CDPHWIC.prepare('DELETE FROM request_attachments WHERE request_id=?').bind(request.id).run();
         deleteRequestRecord(request.id);
         throw createError({ statusCode: 400, statusMessage: (error as Error).message });
     }
+    if (savedRequest.id !== request.id) {
+        if (storedKey) await environment.PRESCRIPTIONS.delete(storedKey);
+        await environment.CDPHWIC.prepare('DELETE FROM request_attachments WHERE request_id=?').bind(request.id).run();
+        deleteRequestRecord(request.id);
+    }
+    if (temporaryKey) await environment.PRESCRIPTIONS.delete(temporaryKey);
     await finishDraft();
     return { request: savedRequest, demo: true };
 });

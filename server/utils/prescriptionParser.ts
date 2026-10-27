@@ -1,10 +1,12 @@
+import { blankFormula, type FormulaEntry } from '../../shared/formulaEntries';
 import * as pdfjs from 'pdfjs-dist/legacy/build/pdf.mjs';
 import { WorkerMessageHandler } from 'pdfjs-dist/legacy/build/pdf.worker.mjs';
-import { formulaCatalog } from '../../shared/formulaCatalog';
+import { formulaCatalog, defaultFormulaForm, availableFormulaForms } from '../../shared/formulaCatalog';
 import type { ProductForm } from '../../shared/domain';
 import { normalizePhoneNumber } from '../../shared/phone';
 
 export interface ParsedPrescriptionFields {
+    formulas: FormulaEntry[];
     formulaName: string;
     wicFoodRestrictions: '' | 'none' | 'restricted' | 'not-indicated';
     wicFoodRestrictionDetails: string;
@@ -130,7 +132,14 @@ export function normalizePrescriptionDate(value: string) {
 
 export function mapPrescriptionFields(fields: Record<string, AcroFormField[]>): ParsedPrescriptionFields {
     const office = fieldValue(fields, 'Medical Office or Clinic Name and Address');
-    const officeLines = office.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+    let officeLines = office.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+    if (officeLines.length === 1) {
+        const split = /^(.*?)(?:,\s*|\s+)(?=\d{1,6}\s+\S)/.exec(office);
+        if (split) {
+            const addressParts = office.slice(split[0].length).split(/,\s*/);
+            officeLines = [split[1]!, addressParts.length > 1 ? `${addressParts[0]}\n${addressParts.slice(1).join(', ')}` : addressParts[0]!];
+        }
+    }
     const diagnosisFields: Array<[string, string, string]> = [
         ['Prematurity', 'adjusted age months', 'Prematurity'],
         ['Failure to thrive', '', 'Failure to thrive'],
@@ -150,12 +159,13 @@ export function mapPrescriptionFields(fields: Record<string, AcroFormField[]>): 
             const detail = detailField ? fieldValue(fields, detailField) : '';
             return detail ? `${label}: ${detail}` : label;
         })
-        .join('; ');
-    const productForm = [
+        .join('\n');
+    const checkedForms = [
         ['Powder', 'powder'],
         ['Concentrate', 'concentrate'],
         ['Ready to Feed', 'ready-to-feed'],
-    ].find(([field]) => isChecked(fields, field))?.[1] as ProductForm | undefined;
+    ].filter(([field]) => isChecked(fields, field));
+    const productForm = checkedForms.length === 1 ? checkedForms[0]![1] as ProductForm : undefined;
     const durationMonths = [1, 2, 3, 4, 5, 6].find((months) => isChecked(fields, `${months} month${months === 1 ? '' : 's'}`));
     const noRestrictions = isChecked(fields, 'No food restrictions');
     const restricted = isChecked(fields, 'Food restrictions');
@@ -174,8 +184,34 @@ export function mapPrescriptionFields(fields: Record<string, AcroFormField[]>): 
     if (isChecked(fields, 'If premature Provide infant foods after')) {
         restrictionDetails.push(`Provide infant foods after: ${fieldValue(fields, 'premature months')} months`);
     }
+    const formulaNames = formulaCatalog.filter((formula) => isChecked(fields, formula.pdfField)).map((formula) => formula.name);
+    const writtenFormula = fieldValue(fields, 'formula/medical food');
+    for (const text of writtenFormula.split(/\r?\n|;/).map((item) => item.trim()).filter(Boolean)) {
+        let remaining = text.toLowerCase();
+        const recognized: Array<{ name: string; position: number }> = [];
+        for (const formula of [...formulaCatalog].sort((a, b) => b.name.length - a.name.length)) {
+            const position = remaining.indexOf(formula.name.toLowerCase());
+            if (position >= 0) {
+                recognized.push({ name: formula.name, position });
+                remaining = remaining.slice(0, position) + ' '.repeat(formula.name.length) + remaining.slice(position + formula.name.length);
+            }
+        }
+        const names = recognized.length ? recognized.sort((a, b) => a.position - b.position).map((item) => item.name) : [text];
+        for (const name of names) if (!formulaNames.some((item) => item.toLowerCase() === name.toLowerCase())) formulaNames.push(name);
+    }
+    const formulas: FormulaEntry[] = formulaNames.map((name, index) => {
+        const listed = formulaCatalog.find((item) => item.name.toLowerCase() === name.toLowerCase());
+        const choice = listed?.name ?? 'Other';
+        return {
+            ...blankFormula(), formulaName: choice, otherFormulaName: listed ? '' : name,
+            productForm: productForm && availableFormulaForms(choice).includes(productForm) ? productForm : defaultFormulaForm(choice),
+            ouncesPrescribed: index === 0 ? numericFieldValue(fields, 'Amount') ?? '' : '',
+            readyToFeedJustification: index === 0 ? fieldValue(fields, 'rtf justification') : '',
+        };
+    });
     return {
-        formulaName: formulaCatalog.find((formula) => isChecked(fields, formula.pdfField))?.name ?? '',
+        formulas,
+        formulaName: formulas[0]?.formulaName ?? '',
         wicFoodRestrictions: noRestrictions && restricted ? '' : noRestrictions ? 'none' : restricted ? 'restricted' : 'not-indicated',
         wicFoodRestrictionDetails: restricted ? restrictionDetails.join('; ') : '',
         patientFirstName: fieldValue(fields, 'Patient First Name'),
@@ -183,7 +219,7 @@ export function mapPrescriptionFields(fields: Record<string, AcroFormField[]>): 
         participantDob: normalizePrescriptionDate(fieldValue(fields, 'Date of birth')),
         doctorPrintedName: fieldValue(fields, 'Provider Name'),
         doctorOfficeName: officeLines[0] ?? '',
-        doctorOfficeAddress: officeLines.slice(1).join('\n') || office,
+        doctorOfficeAddress: officeLines.slice(1).join('\n'),
         medicalStatus: isChecked(fields, 'medi-cal') ? 'yes' : isChecked(fields, 'private') ? 'no' : 'pending',
         ...(productForm ? { productForm } : {}),
         readyToFeedJustification: fieldValue(fields, 'rtf justification'),
