@@ -347,29 +347,29 @@ a {
     font-weight: 800;
 }
 .button-main {
-    color: white;
-    background: var(--red);
-    box-shadow: 0 6px 14px rgb(137 54 195 / 16%);
+    color: #fff;
+    background: var(--button-main);
+    box-shadow: none;
 }
 .button-primary {
-    color: white;
-    background: #9346c6;
-    box-shadow: 0 6px 14px rgb(137 54 195 / 16%);
+    color: #fff;
+    background: var(--button-primary);
+    box-shadow: none;
 }
 .button-secondary {
-    color: var(--accent-text, #e0b8ff);
-    background: var(--accent-bg, #271d3d);
-    border: 1px solid var(--accent-border, #75419a);
+    color: var(--button-secondary-text);
+    background: var(--button-secondary-bg);
+    border: 1px solid #902a92;
 }
 .button-danger {
-    color: var(--danger-text, #ffd1cd);
-    background: var(--danger-bg, #632e32);
-    border: 1px solid var(--danger-border, #a84d50);
+    color: var(--button-danger-text);
+    background: var(--button-danger-bg);
+    border: 1px solid #ae5018;
 }
 .button-ghost {
-    color: var(--muted);
+    color: var(--button-neutral-text);
     background: transparent;
-    border: 1px solid var(--line);
+    border: 1px solid #6a7073;
 }
 .icon-button {
     display: inline-grid;
@@ -461,7 +461,7 @@ a {
     background: var(--neutral-bg, var(--border, #293852));
 }
 .product-view-button:focus-visible {
-    outline: 2px solid var(--purple-light);
+    outline: 2px solid #0077cf;
     outline-offset: 2px;
 }
 .filter-select,
@@ -668,7 +668,7 @@ select.form-input {
     font-size: 0.7rem;
 }
 .text-button {
-    color: var(--purple-light);
+    color: var(--button-secondary-text);
     background: transparent;
     border: 0;
     cursor: pointer;
@@ -779,9 +779,9 @@ select.form-input {
     display: inline-flex;
     width: fit-content;
     padding: 3px 6px;
-    color: var(--warning-text, #f5dca1);
-    background: var(--warning-bg, #5a4828);
-    border: 1px solid var(--warning-border, #92733c);
+    color: var(--button-tag-text);
+    background: var(--button-tag-bg);
+    border: 1px solid #eaab33;
     border-radius: 5px;
     font-size: 0.61rem;
     font-weight: 800;
@@ -1377,16 +1377,16 @@ label {
 .upload-drop input[type='file']::file-selector-button {
     margin-right: 10px;
     padding: 8px 12px;
-    color: var(--accent-text, #f4eaff);
-    background: var(--accent-bg, #493064);
-    border: 1px solid var(--accent-border, #8053a3);
+    color: var(--button-secondary-text);
+    background: var(--button-secondary-bg);
+    border: 1px solid #902a92;
     border-radius: 6px;
     cursor: pointer;
     font-size: calc(0.72rem + 4px);
     font-weight: 700;
 }
 .upload-drop input[type='file']::file-selector-button:hover {
-    background: var(--accent-bg, #5c3b7c);
+    background: var(--button-secondary-hover);
 }
 .upload-drop strong {
     display: block;
@@ -2076,7 +2076,7 @@ label {
 
 .button.add-formula-button,
 .button.add-surplus-button {
-    color: var(--purple);
+    color: var(--button-secondary-text);
 }
 
 .form-textarea.rtf-reason {
@@ -2304,7 +2304,7 @@ label {
 }
 .participant-age-alert p { margin: 4px 0 0; }
 
-.detail-drawer .diagnosis-readonly { gap: 6px; }
+.detail-drawer .diagnosis-readonly { gap: 2px; }
 .detail-drawer .diagnosis-readonly li {
     display: block;
     padding: 0;
@@ -2315,3 +2315,82 @@ label {
     font-weight: 700;
 }
 :root[data-theme='light'] .detail-drawer .diagnosis-readonly li { color: #000; }
+
+.detail-drawer .diagnosis-editor > .diagnosis-edit-row,
+.detail-drawer .diagnosis-editor > .text-button {
+    margin-left: 12px;
+}
+
+.prescription-detail-section { scroll-margin-top: 16px; }
+
+/* Avoid stacking input margins on top of the edit-form grid spacing. */
+.detail-drawer .compact-form-grid {
+    row-gap: 12px;
+    margin-block: 10px;
+}
+.detail-drawer .compact-form-grid :is(.form-input, .form-textarea) {
+    margin-bottom: 0;
+}
+.detail-drawer .compact-form-grid :is(.field-label, .form-field) {
+    gap: 5px;
+}
+.detail-drawer .compact-form-grid .formula-entry-grid {
+    row-gap: 12px;
+}
+.detail-drawer .clinic-editor { gap: 10px; }
+.detail-drawer .diagnosis-edit-row { margin-bottom: 8px; }
+.detail-drawer .detail-section > .form-actions {
+    margin-top: 16px;
+    padding-top: 14px;
+}
+
+.detail-drawer .formula-edit-card > .text-button {
+    margin-top: 10px;
+}
+
+.detail-drawer .request-kind-tag { padding: 5px 9px; font-size: 0.75rem; }
+
+/* Button colors derive from the supplied CDPH/WIC palette. */
+:root {
+    --button-primary: #002595;
+    --button-primary-hover: #141f68;
+    --button-main: #007888;
+    --button-secondary-text: #df76b8;
+    --button-secondary-bg: color-mix(in srgb, #902a92 22%, #151e28);
+    --button-secondary-hover: #421263;
+    --button-danger-text: #e2742f;
+    --button-danger-bg: color-mix(in srgb, #ae5018 18%, #151e28);
+    --button-neutral-text: #a9d3ca;
+    --button-neutral-bg: #151e28;
+    --button-neutral-hover: color-mix(in srgb, #a9d3ca 12%, #151e28);
+}
+:root[data-theme='light'] {
+    --button-secondary-text: #902a92;
+    --button-secondary-bg: color-mix(in srgb, #902a92 7%, #fff);
+    --button-secondary-hover: color-mix(in srgb, #902a92 14%, #fff);
+    --button-danger-text: #ae5018;
+    --button-danger-bg: color-mix(in srgb, #ae5018 7%, #fff);
+    --button-neutral-text: #151e28;
+    --button-neutral-bg: #fff;
+    --button-neutral-hover: color-mix(in srgb, #6a7073 9%, #fff);
+}
+.button-primary:hover { background: var(--button-primary-hover); }
+.button-main:hover { background: color-mix(in srgb, #007888 80%, #151e28); }
+.button-secondary:hover { background: var(--button-secondary-hover); }
+.button-danger:hover { color: #fff; background: #ae5018; }
+.button-ghost:hover, .icon-button:hover, .product-view-button:hover,
+.product-view-button[aria-pressed='true'], .profile-menu button:hover {
+    color: var(--button-neutral-text);
+    background: var(--button-neutral-hover);
+}
+.icon-button, .product-view-button, .profile-menu button { color: var(--button-neutral-text); }
+button:focus-visible, .button:focus-visible { outline: 2px solid #0077cf; outline-offset: 2px; }
+.form-suggestions button { color: var(--button-neutral-text); background: var(--button-neutral-bg); border-color: #6a7073; }
+.form-suggestions button:hover, .form-suggestions button:focus-visible,
+.form-suggestions button.suggestion-active { background: var(--button-neutral-hover); border-color: #902a92; }
+.uploaded-file button { color: var(--button-danger-text); border-color: #ae5018; }
+.uploaded-file button:hover { color: #fff; background: #ae5018; }
+.profile-chip button { color: var(--button-neutral-text); }
+
+:root { --button-tag-text: #eaab33; --button-tag-bg: color-mix(in srgb, #eaab33 12%, #151e28); }
+:root[data-theme='light'] { --button-tag-text: #151e28; --button-tag-bg: color-mix(in srgb, #eaab33 20%, #fff); }

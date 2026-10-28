@@ -746,7 +746,7 @@ th {
 }
 td:nth-child(2) { white-space: nowrap; }
 .row-actions { min-width: 215px; }
-.surplus-page .button:not(.button-main) { background: var(--surface-raised); border: 1px solid var(--line); color: var(--text); }
+.surplus-page .button:not(.button-main):not(.button-primary):not(.button-secondary):not(.button-danger) { background: var(--button-neutral-bg); border: 1px solid #6a7073; color: var(--button-neutral-text); }
 .row-actions .button {
     margin: 3px;
     font-size: 13px;

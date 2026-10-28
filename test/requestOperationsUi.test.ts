@@ -44,8 +44,8 @@ describe('request operations UI', () => {
         const preview=readFileSync(new URL('../app/components/RequestDocumentPreview.vue', import.meta.url),'utf8');
         expect(preview).toMatch(/'x-demo-user':\s*identity.value/);
         expect(preview).toContain('URL.revokeObjectURL');
-        expect(drawer.indexOf('<h3>Participant</h3>')).toBeLessThan(drawer.indexOf('<h3>Prescription</h3>'));
-        expect(drawer.indexOf('<h3>Prescription</h3>')).toBeLessThan(drawer.indexOf('<h3>WIC Food Restrictions</h3>'));
+        expect(drawer.indexOf('<h3>Participant</h3>')).toBeLessThan(drawer.indexOf('>Prescription</h3>'));
+        expect(drawer.indexOf('>Prescription</h3>')).toBeLessThan(drawer.indexOf('<h3>WIC Food Restrictions</h3>'));
         expect(drawer.indexOf('<h3>WIC Food Restrictions</h3>')).toBeLessThan(drawer.indexOf('<h3>Health Care Provider</h3>'));
         expect(drawer.indexOf('rep?.email')).toBeGreaterThan(drawer.indexOf('<h3>Shipping Info</h3>'));
     });

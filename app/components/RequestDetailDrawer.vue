@@ -46,6 +46,7 @@ const surplusRemovalIndex = ref<number | null>(null);
 const editingSection = ref<'participant' | 'overview' | 'prescription' | 'food' | null>(null);
 const editableDiagnoses = ref<string[]>([]);
 const editableFormulas = ref<FormulaEntry[]>([]);
+const prescriptionSection = ref<HTMLElement>();
 const agencyAlertSaving = ref(false);
 const agencyAlertMessage = ref('');
 const agencySaveStatus = ref<'idle' | 'saving' | 'saved' | 'failed'>('idle');
@@ -219,6 +220,8 @@ function cancelEditing() {
 }
 
 function saveFormSection() {
+    const savedSection = editingSection.value;
+    const savedRequestId = props.request?.id;
     const updates: Partial<RequestRecord> = {};
     if (editingSection.value === 'participant') {
         const monthError = validateRequestedMonths(draft.benefitMonthsRequested);
@@ -268,8 +271,14 @@ function saveFormSection() {
             doctorOfficePhone: normalizePhoneNumber(draft.doctorOfficePhone ?? ''),
         });
     }
-    save(updates).then(() => {
-        if (!error.value) editingSection.value = null;
+    save(updates).then(async () => {
+        if (error.value || props.request?.id !== savedRequestId) return;
+        editingSection.value = null;
+        await nextTick();
+        if (savedSection === 'overview') {
+            prescriptionSection.value?.querySelector<HTMLElement>('h3')?.focus({preventScroll:true});
+            prescriptionSection.value?.scrollIntoView({block:'start',behavior:'instant'});
+        }
     });
 }
 
@@ -530,7 +539,7 @@ function handlePhotos(event: Event) {
         <div v-if="identity === 'agency' && canEditOriginal && request" class="form-actions"><NuxtLink class="button button-secondary" :to="{path:'/requests/new',query:{request:request.id}}">Edit submission</NuxtLink><small>Editable until Admin/FPU opens the submission.</small></div>
         <div class="drawer-status">
             <div class="request-status-tags">
-                <span class="request-tag">{{ request.requestKind === 'extension' ? 'Extension' : 'New' }}</span>
+                <span class="request-tag request-kind-tag">{{ request.requestKind === 'extension' ? 'Extension' : 'New' }}</span>
                 <StatusBadge :status="draft.status ?? request.status" />
                 <span
                     v-if="request.specialOrder"
@@ -595,9 +604,9 @@ function handlePhotos(event: Event) {
         >
             {{ error }}
         </p>
-        <section class="detail-section">
+        <section ref="prescriptionSection" class="detail-section prescription-detail-section">
             <div class="section-heading">
-                <h3>Prescription</h3>
+                <h3 tabindex="-1">Prescription</h3>
                 <button v-if="canStaffEdit && editingSection !== 'overview'" class="text-button" type="button" @click="startEditing('overview')">Edit</button>
             </div>
             <div v-if="editingSection === 'overview'" class="form-grid compact-form-grid prescription-editor">

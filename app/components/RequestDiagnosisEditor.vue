@@ -49,4 +49,5 @@ function enter() {
 <style scoped>
 .request-diagnosis-editor { flex: 1; min-width: 0; display: grid; gap: 7px; }
 .diagnosis-details-field { margin-left: 20px; min-width: 0; }
+.diagnosis-details-field .form-input { font-size: calc(var(--form-label-size) + 1px); }
 </style>
