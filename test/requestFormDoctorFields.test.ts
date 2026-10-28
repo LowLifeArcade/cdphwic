@@ -9,6 +9,7 @@ describe('new request doctor fields', () => {
         expect(requestForm).not.toContain('AI extraction');
         expect(requestForm).toContain('Choose a PDF or photo.<br />PDFs populate matching form fields; photos require manual entry.');
         expect(requestForm).toContain('@change="handleFileSelection"');
+        expect(requestForm).toContain(':aria-invalid="validationAttempted && !hasRequiredDocumentation"');
         expect(requestForm).toContain('@drop.prevent="handleDrop"');
         expect(requestForm).toContain('v-if="!selectedPrescription"');
         expect(requestForm).toMatch(/class="upload-drop"[\s\S]*v-if="!selectedPrescription"/);
@@ -21,7 +22,7 @@ describe('new request doctor fields', () => {
     });
 
     it('shows medical documentation requirements without the CDPH download link', () => {
-        expect(requestForm).toContain('<h2>Medical Documentation</h2>');
+        expect(requestForm).toContain('<h2>Medical Documentation *</h2>');
         expect(requestForm).not.toContain('cdph247.pdf');
         expect(requestForm).not.toContain('Download the CDPH prescription form here.');
         expect(requestForm).not.toContain('(usually 1–6)');
@@ -35,7 +36,7 @@ describe('new request doctor fields', () => {
     it('orders participant, formula, provider, and additional information sections', () => {
         const headings = [...requestForm.matchAll(/<h2>(.*?)<\/h2>/g)].map((match) => match[1]!.includes("requiredLabel('WIC Food Restrictions')") ? 'WIC Food Restrictions' : match[1]);
         expect(headings).toEqual([
-            'Medical Documentation',
+            'Medical Documentation *',
             'Participant',
             'Medical Formula/Nutritionals and Qualifying Diagnosis',
             'WIC Food Restrictions',

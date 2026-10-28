@@ -1,3 +1,4 @@
+import { hasMedicalDocumentation, medicalDocumentationRequiredMessage } from '../../../shared/medicalDocumentation';
 import {requestAgency} from '../../utils/requestAgency';
 import {resolveShipping} from '../../utils/clinicStore';
 import { persistSurplusSubmission } from '../../utils/surplusReports';
@@ -49,6 +50,8 @@ export default defineEventHandler(async (event) => {
         }
         return { request: JSON.parse(previous.request_json), demo: true };
     }
+    if (!hasMedicalDocumentation({temporaryKey: prescriptionKey, fileSize: prescription?.data?.length}))
+        throw createError({statusCode:400,statusMessage:medicalDocumentationRequiredMessage});
     if (draftId) {
         const draft = environment?.PRESCRIPTIONS
             ? await readRequestDraft(environment.PRESCRIPTIONS, environment.ENV, draftId)
@@ -80,18 +83,6 @@ export default defineEventHandler(async (event) => {
         },
         1000000 + sequence,
     );
-    if (!prescription?.data && !prescriptionKey) {
-        let saved: RequestRecord;
-        try {
-            saved = await persistSurplusSubmission(environment.CDPHWIC, submissionId, request, user, submissionPayload);
-            if (saved.id !== request.id) deleteRequestRecord(request.id);
-        } catch (error) {
-            deleteRequestRecord(request.id);
-            throw error;
-        }
-        await finishDraft();
-        return { request: saved, demo: true };
-    }
 
     if (!environment?.PRESCRIPTIONS) {
         deleteRequestRecord(request.id);

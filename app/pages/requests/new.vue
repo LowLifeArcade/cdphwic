@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { hasMedicalDocumentation, medicalDocumentationRequiredMessage } from '~/../shared/medicalDocumentation';
 import {blankClinicAddress,validateShipping,type RequestShipping} from '~/../shared/shipping';
 import {canEditSubmission,restoreSubmittedForm} from '~/../shared/requestEditing';
 import { benefitMonthLabels, toggleRequestedMonth, serializeRequestedMonths, validateRequestedMonths } from '~/../shared/requestMonthSelection';
@@ -410,6 +411,12 @@ async function handleDrop(event: DragEvent) {
     await selectPrescription(event.dataTransfer?.files?.[0]);
 }
 
+const hasRequiredDocumentation = computed(() => hasMedicalDocumentation({
+    temporaryKey: uploadedStorageKey.value,
+    existingKey: existingAttachment.value?.storageKey,
+    removeExisting: removeExistingAttachment.value,
+}));
+
 function syncFieldValidity() {
     // Read reactive values before accessing the DOM so dynamically added fields are revalidated.
     const entries = [{...form}, ...additionalFormulas.value.map(entry => ({...entry}))];
@@ -565,7 +572,7 @@ async function submitRequest() {
         <section class="form-section prescription-first">
             <div class="panel-heading">
                 <div>
-                    <h2>Medical Documentation</h2>
+                    <h2>Medical Documentation *</h2>
                 </div>
             </div>
             <div class="prescription-requirements">
@@ -581,6 +588,10 @@ async function submitRequest() {
             </div>
             <div
                 class="upload-drop"
+                data-required-group
+                tabindex="-1"
+                aria-label="Medical Documentation"
+                :aria-invalid="validationAttempted && !hasRequiredDocumentation"
                 @dragover.prevent
                 @drop.prevent="handleDrop"
             >
@@ -620,6 +631,7 @@ async function submitRequest() {
                     </div>
                 </template>
             </div>
+            <p v-if="validationAttempted && !hasRequiredDocumentation" class="field-error" role="alert">{{ medicalDocumentationRequiredMessage }}</p>
             <p
                 v-if="parserMessage"
                 class="success-copy"

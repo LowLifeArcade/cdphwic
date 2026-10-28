@@ -1,3 +1,4 @@
+import { hasMedicalDocumentation, medicalDocumentationRequiredMessage } from '../../../../shared/medicalDocumentation';
 import { getRequestById, updateRequestRecord } from '../../../utils/requestStore';
 import { submittedRequest, ensureSubmittedRequest, editSubmittedRequest } from '../../../utils/submittedRequests';
 import { surplusContext } from '../../../utils/surplusContext';
@@ -16,6 +17,8 @@ export default defineEventHandler(async (event) => {
     if (!raw || !canSeeAgency(user, raw.agencyId))
         throw createError({ statusCode: 404, statusMessage: 'Request not found.' });
     const previous = saved ?? (await ensureSubmittedRequest(db, raw));
+    if (!hasMedicalDocumentation({temporaryKey:body.prescriptionKey,existingKey:previous.prescriptionAttachment?.storageKey,removeExisting:body.removePrescriptionAttachment}))
+        throw createError({statusCode:400,statusMessage:medicalDocumentationRequiredMessage});
     const fields = Object.fromEntries(submissionFieldKeys.map((key) => [key, body[key]]));
     let promoted: Awaited<ReturnType<typeof promoteTemporaryPrescriptionAttachment>> | undefined;
     try {
