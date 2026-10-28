@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import {requestFormulas,participantNames,insuranceDetails,requestedMonthLabels,foodRestrictionLabel,formulaFormLabel,formulaOverviewUpdates,providerAddressLines} from '~/../shared/requestPresentation';
+import { validateDiagnoses } from '~/../shared/diagnosisCatalog';
 import {canEditSubmission} from '~/../shared/requestEditing';
 import type { ProductRecord, RequestRecord, RequestStatus } from '~/../shared/domain';
 import { getNextBenefitMonth, validateBenefitIssuances, canGenerateAuthorizationForm, getApprovalStatus, canSelectShippedStatus } from '~/../shared/requestOperations';
@@ -35,7 +36,8 @@ const error = ref('');
 const staffSaveStatus = ref<'idle' | 'saving' | 'saved' | 'failed'>('idle');
 const photoNames = ref<string[]>([]);
 const surplusRemovalIndex = ref<number | null>(null);
-const editingSection = ref<'participant' | 'overview' | 'prescription' | null>(null);
+const editingSection = ref<'participant' | 'overview' | 'prescription' | 'food' | null>(null);
+const editableDiagnoses = ref<string[]>([]);
 const trackingCarrierFallback = ref<'fedex' | 'dhl' | 'ups'>('fedex');
 const agencyAlertSaving = ref(false);
 const agencyAlertMessage = ref('');
@@ -210,7 +212,8 @@ function removeRequestedMonth(index: number) {
     draft.benefitMonthsRequested = (draft.benefitMonthsRequested ?? []).filter((_, itemIndex) => itemIndex !== index);
 }
 
-function startEditing(section: 'participant' | 'overview' | 'prescription') {
+function startEditing(section: 'participant' | 'overview' | 'prescription' | 'food') {
+    if (section === 'overview') editableDiagnoses.value = (draft.diagnosis ?? '').split(/[\n;]/).map(value => value.trim()).filter(Boolean);
     editingSection.value = section;
     error.value = '';
 }
@@ -234,7 +237,23 @@ function saveFormSection() {
             medicalStatus: draft.medicalStatus,
         });
     } else if (editingSection.value === 'overview') {
-        Object.assign(updates, formulaOverviewUpdates(draft));
+        const diagnoses = editableDiagnoses.value.map(value => value.trim()).filter(Boolean).join('\n');
+        const diagnosisError = validateDiagnoses(diagnoses);
+        if (diagnosisError) { error.value = diagnosisError; return; }
+        Object.assign(updates, formulaOverviewUpdates({...draft, diagnosis: diagnoses}));
+    } else if (editingSection.value === 'food') {
+        if (!draft.wicFoodRestrictions) { error.value = 'Select WIC Food Restrictions.'; return; }
+        if (draft.wicFoodRestrictions === 'not-indicated' && (!draft.wicStaffFoodRestrictions || !draft.wicNutritionStaffName?.trim() || (draft.wicStaffFoodRestrictions === 'restricted' && !draft.wicNutritionStaffNotes?.trim()))) {
+            error.value = 'Complete the WIC Nutrition Staff selection, name, and notes when food restrictions are selected.';
+            return;
+        }
+        Object.assign(updates, {
+            wicFoodRestrictions: draft.wicFoodRestrictions,
+            wicFoodRestrictionDetails: draft.wicFoodRestrictions === 'restricted' ? draft.wicFoodRestrictionDetails : '',
+            wicStaffFoodRestrictions: draft.wicFoodRestrictions === 'not-indicated' ? draft.wicStaffFoodRestrictions : undefined,
+            wicNutritionStaffName: draft.wicFoodRestrictions === 'not-indicated' ? draft.wicNutritionStaffName : '',
+            wicNutritionStaffNotes: draft.wicFoodRestrictions === 'not-indicated' && draft.wicStaffFoodRestrictions === 'restricted' ? draft.wicNutritionStaffNotes : '',
+        });
     } else if (editingSection.value === 'prescription') {
         Object.assign(updates, {
             doctorPrintedName: draft.doctorPrintedName,
@@ -549,9 +568,9 @@ function handlePhotos(event: Event) {
                     <div v-else class="month-list">
                         <div v-for="(month, index) in draft.benefitMonthsRequested" :key="`${month}-${index}`" class="month-row">
                             <select v-model="draft.benefitMonthsRequested[index]" class="form-input">
-                                <option v-for="option in benefitMonths" :key="option.value" :value="option.value">{{ option.label }}</option>
+                                <option v-for="option in benefitMonths" :key="option.value" :value="option.value">{{ requestedMonthLabels([option.value]) }}</option>
                             </select>
-                            <button class="icon-button" type="button" :aria-label="`Remove ${month}`" @click="removeRequestedMonth(index)">×</button>
+                            <button class="icon-button" type="button" :aria-label="`Remove ${requestedMonthLabels([month])}`" @click="removeRequestedMonth(index)">×</button>
                         </div>
                         <button class="text-button" type="button" @click="addRequestedMonth">+ Add requested month</button>
                     </div>
@@ -559,7 +578,7 @@ function handlePhotos(event: Event) {
             </div>
             <div v-if="editingSection === 'participant'" class="form-actions">
                 <button class="button button-ghost" type="button" @click="cancelEditing">Cancel</button>
-                <button class="button button-secondary" type="button" :disabled="saving" @click="saveFormSection">Save fields</button>
+                <button class="button button-secondary" type="button" :disabled="saving" @click="saveFormSection">Save Section</button>
             </div>
         </section>
         <p
@@ -580,7 +599,14 @@ function handlePhotos(event: Event) {
                 <label class="field-label">Flavor<input v-model="draft.formulaFlavor" class="form-input" /></label>
                 <label v-if="draft.genericFields" class="field-label">Justification<textarea v-model="draft.genericFields.readyToFeedJustification" class="form-textarea" /></label>
                 <label class="field-label">Duration (in months)<input v-model.number="draft.durationMonths" class="form-input" type="number" min="1" max="6" /></label>
-                <label class="field-label">Qualifying Diagnosis(es)<input v-model="draft.diagnosis" class="form-input" /></label>
+                <fieldset class="detail-field-wide diagnosis-editor">
+                    <legend>Qualifying Diagnosis(es)</legend>
+                    <div v-for="(_, index) in editableDiagnoses" :key="index" class="diagnosis-edit-row">
+                        <label class="field-label">Diagnosis {{ index + 1 }}<input v-model="editableDiagnoses[index]" class="form-input" /></label>
+                        <button type="button" class="text-button" :aria-label="`Remove diagnosis ${index + 1}`" @click="editableDiagnoses.splice(index, 1)">Remove</button>
+                    </div>
+                    <button type="button" class="text-button" @click="editableDiagnoses.push('')">Add diagnosis</button>
+                </fieldset>
             </div>
             <div v-else class="submitted-formula-details">
                 <section v-for="(formula,index) in requestFormulas(request)" :key="index" class="submitted-formula-card">
@@ -598,12 +624,32 @@ function handlePhotos(event: Event) {
             </div>
             <div v-if="editingSection === 'overview'" class="form-actions">
                 <button class="button button-ghost" type="button" @click="cancelEditing">Cancel</button>
-                <button class="button button-secondary" type="button" :disabled="saving" @click="saveFormSection">Save fields</button>
+                <button class="button button-secondary" type="button" :disabled="saving" @click="saveFormSection">Save Section</button>
             </div>
         </section>
         <section class="detail-section">
-            <h3>WIC Food Restrictions</h3>
-            <div class="detail-grid">
+            <div class="section-heading">
+                <h3>WIC Food Restrictions</h3>
+                <button v-if="canStaffEdit && editingSection !== 'food'" class="text-button" type="button" @click="startEditing('food')">Edit</button>
+            </div>
+            <div v-if="editingSection === 'food'" class="form-grid compact-form-grid">
+                <label class="field-label detail-field-wide">Health Care Provider Selection
+                    <select v-model="draft.wicFoodRestrictions" class="form-input">
+                        <option value="under-6-months">Participant is under 6 months</option>
+                        <option value="none">No food restrictions (all WIC foods allowed)</option>
+                        <option value="restricted">Food restrictions (see medical documentation)</option>
+                        <option value="not-indicated">Neither box checked by HCP</option>
+                    </select>
+                </label>
+                <template v-if="draft.wicFoodRestrictions === 'not-indicated'">
+                    <label class="field-label detail-field-wide">WIC Nutrition Staff Selection
+                        <select v-model="draft.wicStaffFoodRestrictions" class="form-input"><option value="" disabled>Select</option><option value="none">No food restrictions (all WIC foods allowed)</option><option value="restricted">Food restrictions (listed below)</option></select>
+                    </label>
+                    <label v-if="draft.wicStaffFoodRestrictions === 'restricted'" class="field-label detail-field-wide">WIC Nutrition Staff Notes<textarea v-model="draft.wicNutritionStaffNotes" class="form-textarea" /></label>
+                    <label class="field-label detail-field-wide">WIC Nutrition Staff Name<input v-model="draft.wicNutritionStaffName" class="form-input" /></label>
+                </template>
+            </div>
+            <div v-else class="detail-grid">
                 <div class="detail-field-wide"><span>Health Care Provider Selection</span><strong>{{foodRestrictionLabel(request.wicFoodRestrictions)}}</strong></div>
                 <div v-if="request.wicFoodRestrictionDetails"><span>Food Restriction Details</span><strong>{{request.wicFoodRestrictionDetails}}</strong></div>
                 <template v-if="request.wicFoodRestrictions==='not-indicated'">
@@ -611,6 +657,10 @@ function handlePhotos(event: Event) {
                     <div v-if="request.wicStaffFoodRestrictions==='restricted'" class="detail-field-wide"><span>WIC Nutrition Staff Notes</span><strong class="preserve-lines">{{request.wicNutritionStaffNotes || '—'}}</strong></div>
                     <div><span>WIC Nutrition Staff Name</span><strong>{{request.wicNutritionStaffName || '—'}}</strong></div>
                 </template>
+            </div>
+            <div v-if="editingSection === 'food'" class="form-actions">
+                <button class="button button-ghost" type="button" @click="cancelEditing">Cancel</button>
+                <button class="button button-secondary" type="button" :disabled="saving" @click="saveFormSection">Save Section</button>
             </div>
         </section>
         <section class="detail-section">
@@ -621,21 +671,23 @@ function handlePhotos(event: Event) {
             <div v-if="editingSection === 'prescription'" class="form-grid compact-form-grid">
                 <label class="field-label">Provider Name<input v-model="draft.doctorPrintedName" class="form-input" /></label>
                 <label class="field-label checkbox-control">Provider Signature<input v-model="draft.doctorHasSignedOff" type="checkbox" /></label>
-                <label class="field-label">Date Signed<input v-model="draft.prescriptionSignedDate" class="form-input" type="date" /></label>
-                <label class="field-label">Medical Office/Clinic Name<input v-model="draft.doctorOfficeName" class="form-input" /></label>
-                <label class="field-label">Medical Office/Clinic Address<input v-model="draft.doctorOfficeAddress" class="form-input" /></label>
-                <label class="field-label">Office Phone<input v-model="draft.doctorOfficePhone" class="form-input" type="tel" @input="formatDoctorPhone" /></label>
+                <label class="field-label provider-date-signed">Date Signed<input v-model="draft.prescriptionSignedDate" class="form-input" type="date" /></label>
+                <fieldset class="provider-clinic clinic-editor">
+                    <legend>Medical Office/Clinic</legend>
+                    <label class="field-label">Name<input v-model="draft.doctorOfficeName" class="form-input" /></label>
+                    <label class="field-label">Address<input v-model="draft.doctorOfficeAddress" class="form-input" /></label>
+                    <label class="field-label">Phone Number<input v-model="draft.doctorOfficePhone" class="form-input" type="tel" @input="formatDoctorPhone" /></label>
+                </fieldset>
             </div>
             <div v-else class="detail-grid">
                 <div><span>Provider Name</span><strong>{{ request.doctorPrintedName ?? '—' }}</strong></div>
                 <div><span>Provider Signature</span><strong>{{request.doctorHasSignedOff?'Verified on medical documentation':'Not verified'}}</strong></div>
-                <div><span>Date Signed</span><strong>{{ formatDisplayDate(request.prescriptionSignedDate) }}</strong></div>
-                <div class="detail-field-wide"><span>Medical Office/Clinic</span><strong>{{ request.doctorOfficeName || '—' }}<template v-for="(line,index) in providerAddressLines(request.doctorOfficeAddress)" :key="index"><br />{{line}}</template></strong></div>
-                <div><span>Office Phone</span><strong>{{ request.doctorOfficePhone ? formatPhoneNumber(request.doctorOfficePhone) : '—' }}</strong></div>
+                <div class="provider-date-signed"><span>Date Signed</span><strong>{{ formatDisplayDate(request.prescriptionSignedDate) }}</strong></div>
+                <div class="provider-clinic"><span>Medical Office/Clinic</span><strong>{{ request.doctorOfficeName || '—' }}<template v-for="(line,index) in providerAddressLines(request.doctorOfficeAddress)" :key="index"><br />{{line}}</template><br />{{ request.doctorOfficePhone ? formatPhoneNumber(request.doctorOfficePhone) : '—' }}</strong></div>
             </div>
             <div v-if="editingSection === 'prescription'" class="form-actions">
                 <button class="button button-ghost" type="button" @click="cancelEditing">Cancel</button>
-                <button class="button button-secondary" type="button" :disabled="saving" @click="saveFormSection">Save fields</button>
+                <button class="button button-secondary" type="button" :disabled="saving" @click="saveFormSection">Save Section</button>
             </div>
         </section>
         <section
@@ -798,7 +850,7 @@ function handlePhotos(event: Event) {
                 <div><span>Phone Number</span><strong>{{rep?.phone?formatPhoneNumber(rep.phone):'—'}}</strong></div>
                 <div class="detail-field-wide"><span>Email</span><strong>{{rep?.email || '—'}}</strong></div>
             </div>
-            <address v-if="request.shipping" class="shipping-preview shipping-destination"><strong>{{request.shipping.clinicName}}</strong><br />Attention: {{request.shipping.attention}}<br />{{request.shipping.addressLine1}}<template v-if="request.shipping.addressLine2"><br />{{request.shipping.addressLine2}}</template><br />{{request.shipping.city}}, {{request.shipping.state}} {{request.shipping.postalCode}}</address>
+            <div v-if="request.shipping" class="shipping-address-field"><span class="detail-field-heading">Shipping Address</span><address class="shipping-preview shipping-destination"><strong>{{request.shipping.clinicName}}</strong><br />{{request.shipping.addressLine1}}<template v-if="request.shipping.addressLine2"><br />{{request.shipping.addressLine2}}</template><br />{{request.shipping.city}}, {{request.shipping.state}} {{request.shipping.postalCode}}</address></div>
             <div v-if="canStaffEdit" class="form-grid compact-form-grid">
                 <label class="field-label">
                     ETA
