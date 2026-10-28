@@ -807,6 +807,7 @@ function handlePhotos(event: Event) {
 
         <section class="detail-section">
             <h3>Shipping Info</h3>
+            <address v-if="request.shipping" class="shipping-preview shipping-destination"><strong>{{request.shipping.clinicName}}</strong><br />Attention: {{request.shipping.attention}}<br />{{request.shipping.addressLine1}}<template v-if="request.shipping.addressLine2"><br />{{request.shipping.addressLine2}}</template><br />{{request.shipping.city}}, {{request.shipping.state}} {{request.shipping.postalCode}}</address>
             <div v-if="canStaffEdit" class="form-grid compact-form-grid">
                 <label class="field-label">
                     ETA

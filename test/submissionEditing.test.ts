@@ -6,6 +6,7 @@ import * as store from '../server/utils/submittedRequests';
 import type { RequestRecord } from '../shared/domain';
 const agency = getDemoUser('agency');
 const request: RequestRecord = {
+    shipping:{clinicName:'Test Clinic',addressLine1:'123 Test St',addressLine2:'',city:'Ukiah',state:'CA',postalCode:'95482',attention:'Maria'},
     id: 1000099,
     submissionId: 'editable-submission',
     agencyId: 10,

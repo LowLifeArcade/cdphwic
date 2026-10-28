@@ -4,6 +4,7 @@ import { formatPhoneNumber } from './phone';
 export const canEditSubmission = (request: Pick<RequestRecord, 'status' | 'openedAt'>) =>
     request.status === 'unopened' && !request.openedAt;
 export const submissionFieldKeys = [
+    'shipping',
     'participantName',
     'participantFirstName',
     'participantLastName',
@@ -91,6 +92,7 @@ export function restoreSubmittedForm(request: RequestRecord) {
             prescriptionSignedDate: request.prescriptionSignedDate ?? '',
             additionalNotes: request.genericFields?.additionalNotes ?? '',
         },
+        shipping: request.shipping,
         additionalFormulas: formulas.slice(1),
         surplusEntries: (request.surplusItems ?? []).map((e) => ({
             ...e,

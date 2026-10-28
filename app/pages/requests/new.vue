@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import {blankClinicAddress,validateShipping,type RequestShipping} from '~/../shared/shipping';
 import {canEditSubmission,restoreSubmittedForm} from '~/../shared/requestEditing';
 import { benefitMonthLabels, toggleRequestedMonth, serializeRequestedMonths, validateRequestedMonths } from '~/../shared/requestMonthSelection';
 import { formulaCatalog, findFormula, availableFormulaForms, defaultFormulaForm, requiresReadyToFeedReason } from '~/../shared/formulaCatalog';
@@ -98,6 +99,13 @@ const removeConfirmationOpen = ref(false);
 let removeConfirmationResolver: ((confirmed: boolean) => void) | undefined;
 const { data: productData } = await useFetch('/api/products');
 const products = computed(() => productData.value?.products ?? []);
+const {data:agencyOptions}=await useFetch('/api/agencies');
+const {data:shippingProfile}=await useFetch('/api/profile',{headers:computed(()=>({'x-demo-user':identity.value}))});
+const requestAgencyId=ref(shippingProfile.value?.user?.agencyId??10);
+const shipping=ref<RequestShipping>({...blankClinicAddress(),attention:''});
+const selectedAgencyMemberId=ref<number|''>(shippingProfile.value?.user?.agencyMemberId??agencyOptions.value?.members.find(m=>m.agencyId===requestAgencyId.value)?.id??'');
+const agencyMembers=computed(()=>agencyOptions.value?.members.filter(m=>m.agencyId===requestAgencyId.value)??[]);
+const requestAgencyMemberId=computed(()=>identity.value==='agency'?shippingProfile.value?.user?.agencyMemberId:agencyMembers.value.find(m=>m.id===selectedAgencyMemberId.value)?.id);
 const form = reactive({
     patientFirstName: '',
     patientLastName: '',
@@ -196,6 +204,10 @@ if (draftId.value) {
     if (!draft) throw createError({statusCode:404,statusMessage:'Incomplete request not found.'});
     const { _submissionId, _diagnosisInput, _diagnosisDetails, _additionalFormulas, _surplusEntries, _requestedMonths, ...values } = draft.form;
     Object.assign(form, values);
+    requestAgencyId.value=(draft as typeof draft & {request?:RequestRecord}).request?.agencyId??requestAgencyId.value;
+    selectedAgencyMemberId.value=(draft as typeof draft & {request?:RequestRecord}).request?.agencyMemberId??selectedAgencyMemberId.value;
+    if(values._shipping) shipping.value=JSON.parse(String(values._shipping));
+    delete (form as Record<string,unknown>)._shipping;
     if (_submissionId) submissionId.value = String(_submissionId);
     additionalFormulas.value = _additionalFormulas ? JSON.parse(String(_additionalFormulas)) : [];
     surplusEntries.value = _surplusEntries ? JSON.parse(String(_surplusEntries)) : [];
@@ -221,12 +233,18 @@ if(editingId.value){
  additionalFormulas.value=restored.additionalFormulas;
  surplusEntries.value=restored.surplusEntries;
  requestedMonths.value=restored.requestedMonths;
+ requestAgencyId.value=request.agencyId;
+ selectedAgencyMemberId.value=request.agencyMemberId;
+ if(restored.shipping) shipping.value={...restored.shipping};
  editingRevision.value=request.revision??0;
  submissionId.value=request.submissionId??`legacy-${request.id}`;
  editLocked.value=identity.value!=='agency'||!canEditSubmission(request);
  existingAttachment.value=request.prescriptionAttachment;
  if(request.prescriptionAttachment)selectedPrescription.value=new File([],request.prescriptionAttachment.fileName);
 }
+
+watch(requestAgencyId,()=>{shipping.value={...blankClinicAddress(),attention:shipping.value.attention};selectedAgencyMemberId.value=agencyMembers.value[0]?.id??'';},{flush:'sync'});
+watch(()=>shippingProfile.value?.user?.agencyId,agencyId=>{if(identity.value==='agency'&&agencyId)requestAgencyId.value=agencyId;});
 
 async function saveRequest() {
     if (saving.value || parsing.value) return;
@@ -238,7 +256,8 @@ async function saveRequest() {
             method: 'POST', headers: { 'x-demo-user': identity.value },
             body: {
                 id: draftId.value,
-                form: { ...form, _submissionId: submissionId.value, _diagnosisInput: diagnosisInput.value, _diagnosisDetails: diagnosisDetails.value, _additionalFormulas: JSON.stringify(additionalFormulas.value), _surplusEntries: JSON.stringify(surplusEntries.value), _requestedMonths: JSON.stringify(requestedMonths.value) },
+                agencyId:requestAgencyId.value,agencyMemberId:requestAgencyMemberId.value,
+                form: { ...form, _shipping:JSON.stringify(shipping.value), _submissionId: submissionId.value, _diagnosisInput: diagnosisInput.value, _diagnosisDetails: diagnosisDetails.value, _additionalFormulas: JSON.stringify(additionalFormulas.value), _surplusEntries: JSON.stringify(surplusEntries.value), _requestedMonths: JSON.stringify(requestedMonths.value) },
                 prescriptionKey: uploadedStorageKey.value,
                 fileName: selectedPrescription.value?.name ?? '',
             },
@@ -402,6 +421,7 @@ function syncFieldValidity() {
     const controls = [...root.querySelectorAll<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>('input, select, textarea')];
     for (const control of controls) {
         control.setCustomValidity('');
+        if(control.dataset.inactiveClinic==='true')control.setCustomValidity('This clinic address is archived. Select an active clinic or enter a new address.');
         if (control.required && control.type !== 'checkbox' && !control.value.trim()) control.setCustomValidity('Complete this field.');
     }
     const setError = (id: string, message: string) => {
@@ -423,7 +443,7 @@ function syncFieldValidity() {
         else control.removeAttribute('aria-invalid');
     }
 }
-watch([form, additionalFormulas, surplusEntries, diagnosisInput, diagnosisDetails, requestForm, validationAttempted], syncFieldValidity, {deep:true, flush:'post', immediate:true});
+watch([form, additionalFormulas, surplusEntries, diagnosisInput, diagnosisDetails, requestForm, validationAttempted, shipping], syncFieldValidity, {deep:true, flush:'post', immediate:true});
 
 async function submitRequest() {
     submitted.value = false;
@@ -452,6 +472,7 @@ async function submitRequest() {
     if (!submissionError.value && surplusEntries.value.some((entry) => !requestedFormulaNames.value.includes(entry.productName) || !Number.isFinite(Number(entry.units)) || Number(entry.units) <= 0)) {
         submissionError.value = 'Select a requested formula and enter a positive surplus quantity.';
     }
+    if (!submissionError.value) submissionError.value = validateShipping(shipping.value);
     if (!submissionError.value) submissionError.value = validateRequestedMonths(selectedBenefitMonths());
     if (!submissionError.value && surplusEntries.value.some((entry) => !entry.productForm || !surplusForms(entry.productName).includes(entry.productForm))) submissionError.value = 'Select a valid Form for each surplus entry.';
     if (submissionError.value) return;
@@ -466,8 +487,9 @@ async function submitRequest() {
                 revision: editingRevision.value,
                 removePrescriptionAttachment: removeExistingAttachment.value,
                 submissionId: submissionId.value,
-                agencyId: 10,
-                agencyMemberId: 100,
+                agencyId: requestAgencyId.value,
+                agencyMemberId: requestAgencyMemberId.value,
+                shipping: shipping.value,
                 participantName,
                 participantFirstName: form.patientFirstName,
                 participantLastName: form.patientLastName,
@@ -1081,6 +1103,12 @@ async function submitRequest() {
             <button class="button button-ghost add-surplus-button" type="button" @click="addSurplus">Add surplus</button>
         </section>
 
+        <section class="form-section shipping-section">
+            <div class="panel-heading"><h2>Shipping</h2></div>
+            <div v-if="identity==='admin'" class="form-field"><label for="shipping-agency">Local Agency</label><select id="shipping-agency" v-model.number="requestAgencyId" class="form-input" required :disabled="!!editingId"><option v-for="agency in agencyOptions?.agencies??[]" :key="agency.id" :value="agency.id">{{agency.name}}</option></select></div>
+            <div v-if="identity==='admin'" class="form-field"><label for="shipping-representative">Local Agency Representative</label><select id="shipping-representative" v-model.number="selectedAgencyMemberId" class="form-input" required><option disabled value="">Select a representative</option><option v-for="member in agencyMembers" :key="member.id" :value="member.id">{{member.name}}</option></select><small v-if="!agencyMembers.length">This local agency needs a representative before a request can be submitted. You can still Save an incomplete request.</small></div>
+            <RequestShippingFields :allow-saved-snapshot="!!editingId" :key="`${identity}-${requestAgencyId}`" v-model="shipping" :agency-id="requestAgencyId" />
+        </section>
         <section class="form-section">
             <div class="panel-heading">
                 <div>

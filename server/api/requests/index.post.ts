@@ -1,3 +1,5 @@
+import {requestAgency} from '../../utils/requestAgency';
+import {resolveShipping} from '../../utils/clinicStore';
 import { persistSurplusSubmission } from '../../utils/surplusReports';
 import { validateRequestSubmission } from '../../../shared/requestSubmission';
 import { readRequestDraft, canAccessDraft, deleteRequestDraft } from '../../utils/requestDraftStore';
@@ -26,6 +28,7 @@ export default defineEventHandler(async (event) => {
     if (validationError) throw createError({ statusCode: 400, statusMessage: validationError });
     const environment = event.context.cloudflare?.env as Partial<Env> | undefined;
     const user = getSessionFromHeaders({ 'x-demo-user': getHeader(event, 'x-demo-user') });
+    const membership=requestAgency(user,requestBody.agencyId,requestBody.agencyMemberId);
     const submissionId = body.submissionId ?? crypto.randomUUID();
     const submissionPayload = JSON.stringify(requestBody);
     if (!environment?.CDPHWIC) throw createError({ statusCode: 503, statusMessage: 'Request database unavailable.' });
@@ -57,6 +60,7 @@ export default defineEventHandler(async (event) => {
         if (draftId && environment?.PRESCRIPTIONS)
             await deleteRequestDraft(environment.PRESCRIPTIONS, environment.ENV, draftId);
     };
+    requestBody.shipping=await resolveShipping(environment.CDPHWIC,user,user.agencyId??requestBody.agencyId,requestBody.shipping);
     const doctorOfficePhone = normalizePhoneNumber(requestBody.doctorOfficePhone ?? '');
     if (!doctorOfficePhone) {
         throw createError({ statusCode: 400, statusMessage: 'Enter a valid 10-digit doctor office phone number.' });
@@ -70,8 +74,8 @@ export default defineEventHandler(async (event) => {
             ...requestBody,
             submissionId,
             doctorOfficePhone,
-            agencyId: user.agencyId ?? requestBody.agencyId,
-            agencyMemberId: user.agencyMemberId ?? requestBody.agencyMemberId,
+            agencyId: membership.agencyId,
+            agencyMemberId: membership.agencyMemberId,
             status: 'unopened',
         },
         1000000 + sequence,

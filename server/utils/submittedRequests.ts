@@ -1,3 +1,4 @@
+import {resolveShipping} from './clinicStore';
 import { canEditSubmission, submissionFields } from '../../shared/requestEditing';
 import { validateRequestSubmission } from '../../shared/requestSubmission';
 import { validDate, localDate } from '../../shared/surplus';
@@ -103,6 +104,7 @@ export async function editSubmittedRequest(
         throw conflict();
     const request = nextRecord(previous, submissionFields(updates));
     if (options.attachment !== undefined) request.prescriptionAttachment = options.attachment ?? undefined;
+    request.shipping = await resolveShipping(db,user,previous.agencyId,request.shipping,previous.shipping);
     const validation = validateRequestSubmission(request);
     if (validation) throw Object.assign(new Error(validation), { statusCode: 400, statusMessage: validation });
     const rows = (r: RequestRecord) =>

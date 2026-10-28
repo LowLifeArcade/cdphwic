@@ -7,7 +7,7 @@ export function getDemoUser(identity: DemoIdentity = 'admin'): SessionUser {
     const user =
         identity === 'admin'
             ? SEED_USERS.find((item) => item.role === 'admin')
-            : SEED_USERS.find((item) => item.memberType === identity);
+            : SEED_USERS.find((item) => item.memberType === identity && item.role === 'member');
 
     if (!user) {
         throw new Error(`No demo user found for ${identity}`);

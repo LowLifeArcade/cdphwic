@@ -2,7 +2,7 @@ import { saveRequestDraft, type DraftValues } from '../../../utils/requestDraftS
 import { getSessionFromHeaders } from '../../../utils/session';
 
 export default defineEventHandler(async (event) => {
-    const body = await readBody<{ id?: number; form?: DraftValues; prescriptionKey?: string; fileName?: string }>(event);
+    const body = await readBody<{ id?: number; agencyId?:number; agencyMemberId?:number; form?: DraftValues; prescriptionKey?: string; fileName?: string }>(event);
     const env = event.context.cloudflare?.env as Env | undefined;
     if (!env?.PRESCRIPTIONS) throw createError({ statusCode: 503, statusMessage: 'Saving incomplete requests is unavailable.' });
     if (!body?.form || typeof body.form !== 'object' || Array.isArray(body.form) || Object.keys(body.form).length > 80 ||

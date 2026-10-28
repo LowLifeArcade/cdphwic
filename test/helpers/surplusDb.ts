@@ -4,6 +4,7 @@ export function surplusDb() {
     const sqlite = new DatabaseSync(':memory:');
     sqlite.exec(readFileSync(new URL('../../db/migrations/0006_surplus_inventory.sql', import.meta.url), 'utf8'));
     sqlite.exec(readFileSync(new URL('../../db/migrations/0007_surplus_notices.sql', import.meta.url), 'utf8'));
+    sqlite.exec(readFileSync(new URL('../../db/migrations/0008_clinic_addresses.sql', import.meta.url), 'utf8'));
     const statement = (sql: string, values: unknown[] = []) => ({
         bind: (...params: unknown[]) => statement(sql, params),
         first: async (column?: string) => {

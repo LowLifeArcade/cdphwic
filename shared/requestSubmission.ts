@@ -1,3 +1,4 @@
+import {validateShipping} from './shipping';
 import { validateRequestedMonths } from './requestMonthSelection';
 import type { RequestRecord } from './domain';
 import { validateAgencyFields } from './newRequestFields';
@@ -34,6 +35,8 @@ export function validateRequestSubmission(request: Partial<RequestRecord>) {
         if (!item.productForm || !surplusForms.includes(item.productForm)) return 'Select a valid Form for each surplus entry.';
         if (item.expirationDate && !/^\d{4}-\d{2}-\d{2}$/.test(item.expirationDate)) return 'Enter a valid surplus expiration date.';
     }
+    const shippingError=validateShipping(request.shipping);
+    if(shippingError)return shippingError;
     return validateAgencyFields({
         formulaName: isOther ? 'Other' : request.productName,
         familyId: request.participantFamilyId ? String(request.participantFamilyId) : '',

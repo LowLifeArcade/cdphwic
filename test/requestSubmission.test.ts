@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { validateRequestSubmission } from '../shared/requestSubmission';
 import type { RequestRecord } from '../shared/domain';
 const complete: Partial<RequestRecord> = {
+    shipping:{clinicName:'Test Clinic',addressLine1:'123 Test St',addressLine2:'',city:'Ukiah',state:'CA',postalCode:'95482',attention:'Maria'},
     participantFirstName: 'Ana', participantLastName: 'Example', participantDob: '2020-01-01',
     participantFamilyId: 123, wicIndividualId: '456', benefitsStartDate: '2026-10-22', requestKind: 'new',
     medicalStatus: 'no', productName: 'Fortini', productForm: 'ready-to-feed', ouncesPrescribed: 24, durationMonths: 3,
@@ -13,7 +14,7 @@ const complete: Partial<RequestRecord> = {
 describe('submission requirements', () => {
     it('accepts a complete request and rejects omissions even outside the browser', () => {
         expect(validateRequestSubmission(complete)).toBe('');
-        for (const key of ['participantFirstName', 'participantLastName', 'participantDob', 'participantFamilyId', 'wicIndividualId', 'benefitsStartDate', 'requestKind', 'medicalStatus', 'productName', 'productForm', 'ouncesPrescribed', 'durationMonths', 'diagnosis', 'wicFoodRestrictions', 'doctorPrintedName', 'doctorHasSignedOff', 'doctorOfficeName', 'doctorOfficeAddress', 'doctorOfficePhone', 'prescriptionSignedDate']) {
+        for (const key of ['participantFirstName', 'participantLastName', 'participantDob', 'participantFamilyId', 'wicIndividualId', 'benefitsStartDate', 'requestKind', 'medicalStatus', 'productName', 'productForm', 'ouncesPrescribed', 'durationMonths', 'diagnosis', 'wicFoodRestrictions', 'doctorPrintedName', 'doctorHasSignedOff', 'doctorOfficeName', 'doctorOfficeAddress', 'doctorOfficePhone', 'prescriptionSignedDate', 'shipping']) {
             expect(validateRequestSubmission({ ...complete, [key]: undefined }), key).not.toBe('');
         }
     });

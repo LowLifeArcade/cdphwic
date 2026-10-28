@@ -53,3 +53,27 @@ it('deletes only accessible incomplete requests and their temporary upload', asy
  expect(await bucket.get('temporary/dev/draft.pdf')).toBeNull();
  await expect(deleteAccessibleRequestDraft(bucket,'dev',user,123)).rejects.toThrow('not found');
 });
+
+it('includes the saved Family ID and formula form in incomplete request list rows',async()=>{
+ const bucket=storage(); const user=getDemoUser('agency');
+ await saveRequestDraft(bucket,'dev',user,{form:{familyId:'98765',formulaName:'Nutramigen',productForm:'concentrate'}});
+ const rows=await listRequestDrafts(bucket,'dev',user);
+ expect(rows[0]?.participantFamilyId).toBe(98765);
+ expect(rows[0]?.productForm).toBe('concentrate');
+});
+it('allows Admin to move an incomplete draft to an agency without representatives',async()=>{
+ const bucket=storage();const user=getDemoUser('admin');
+ const draft=await saveRequestDraft(bucket,'dev',user,{agencyId:10,agencyMemberId:100,form:{}});
+ const moved=await saveRequestDraft(bucket,'dev',user,{id:draft.request.id,agencyId:12,form:{}});
+ expect(moved.request).toMatchObject({agencyId:12,agencyMemberId:0,status:'incomplete'});
+});
+it('uses saved Shipping for Clinic list rows and clears it when the draft is cleared',async()=>{
+ const bucket=storage();const user=getDemoUser('agency');
+ const shipping={clinicName:'Saved Clinic',addressLine1:'456 Clinic St',addressLine2:'Suite 2',city:'Ukiah',state:'CA',postalCode:'95482',attention:'Maria'};
+ const draft=await saveRequestDraft(bucket,'dev',user,{form:{_shipping:JSON.stringify(shipping)}});
+ expect((await listRequestDrafts(bucket,'dev',user))[0]?.shipping).toEqual(shipping);
+ await saveRequestDraft(bucket,'dev',user,{id:draft.request.id,form:{_shipping:''}});
+ expect((await listRequestDrafts(bucket,'dev',user))[0]?.shipping).toBeUndefined();
+ await saveRequestDraft(bucket,'dev',user,{id:draft.request.id,form:{_shipping:'invalid JSON'}});
+ expect((await listRequestDrafts(bucket,'dev',user))[0]?.shipping).toBeUndefined();
+});

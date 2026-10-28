@@ -1,6 +1,7 @@
 <script setup lang="ts">
+import {formatShippingAddress} from '~/../shared/shipping';
 import {canEditSubmission} from '~/../shared/requestEditing';
-import type { ProductRecord, RequestRecord } from '~/../shared/domain';
+import type { ProductForm, ProductRecord, RequestRecord } from '~/../shared/domain';
 const props = defineProps<{ requests: RequestRecord[]; products: ProductRecord[] }>();
 const identity = useState<'admin' | 'agency' | 'internal'>('demo-identity', () => 'admin');
 const selected = ref<RequestRecord | null>(null);
@@ -12,6 +13,10 @@ const { data: agencyData } = await useFetch('/api/agencies');
 const agencies = computed(() => agencyData.value?.agencies ?? []);
 const members = computed(() => agencyData.value?.members ?? []);
 
+function formatForm(form?: ProductForm) {
+    return form ? {powder:'Powder', concentrate:'Liquid Concentrate', 'ready-to-feed':'Ready-to-Feed'}[form] ?? '—' : '—';
+}
+
 function formatDate(value?: string) {
     if (!value) {
         return '—';
@@ -22,9 +27,6 @@ function formatDate(value?: string) {
 
 const selectedAgency = computed(() => agencies.value.find((agency) => agency.id === selected.value?.agencyId));
 const selectedRep = computed(() => members.value.find((member) => member.id === selected.value?.agencyMemberId));
-function agencyFor(request: RequestRecord) {
-    return agencies.value.find((agency) => agency.id === request.agencyId);
-}
 
 async function openRequest(request: RequestRecord) {
     if (request.status === 'incomplete') {
@@ -49,7 +51,7 @@ async function openRequest(request: RequestRecord) {
     <p v-if="openError" role="alert">{{openError}}</p>
     <div class="request-table-wrap">
         <div class="request-table-head">
-            <span>Participant</span><span>Agency</span><span>Product</span><span>Status</span><span>ETA</span><span />
+            <span>Participant</span><span>Clinic</span><span>Product</span><span>Status</span><span>ETA</span><span />
         </div>
         <div v-for="request in requests" :key="request.id" class="request-row-shell">
         <button
@@ -59,23 +61,17 @@ async function openRequest(request: RequestRecord) {
             <span
                 ><strong>{{ request.participantName }}</strong
                 ><small
-                    >{{ request.requestKind === 'extension' ? 'Extension' : 'New' }} · family
+                    >{{ request.requestKind === 'extension' ? 'Extension' : 'New' }} ·
                     {{ request.participantFamilyId ?? '—' }}</small
                 ></span
             >
-            <span
-                ><strong>{{
-                    request.agencyId === 10
-                        ? 'Mendocino County'
-                        : request.agencyId === 11
-                          ? 'Lake County'
-                          : 'Sonoma County'
-                }}</strong
-                ><small>{{ agencyFor(request)?.shippingAddress ?? 'Local agency' }}</small></span
+            <span :title="formatShippingAddress(request.shipping)"
+                ><strong>{{ agencies.find(agency => agency.id === request.agencyId)?.name || '—' }}</strong
+                ><small>{{ formatShippingAddress(request.shipping) }}</small></span
             >
             <span
                 ><strong>{{ request.productName }}</strong
-                ><small>{{ request.unitsRequested ?? '—' }} units</small></span
+                ><small>{{ formatForm(request.productForm ?? request.requestedFormulas?.[0]?.productForm) }}</small></span
             >
             <span
                 ><span class="request-status-tags">

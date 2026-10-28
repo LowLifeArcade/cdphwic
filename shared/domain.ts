@@ -1,3 +1,4 @@
+import type {RequestShipping} from './shipping';
 export type UserRole = 'admin' | 'member';
 export type MemberType = 'internal' | 'agency';
 export type RequestStatus =
@@ -43,6 +44,7 @@ export interface RequestedFormula {
 }
 
 export interface RequestRecord {
+    shipping?: RequestShipping;
     openedAt?: string;
     revision?: number;
     submissionId?: string;

@@ -1,5 +1,8 @@
 <script setup lang="ts">
+const identity=useState<'admin'|'agency'|'internal'>('demo-identity',()=> 'admin');
 const { data } = await useFetch('/api/agencies');
+const {data:profile}=await useFetch('/api/profile',{headers:computed(()=>({'x-demo-user':identity.value}))});
+const visibleAgencies=computed(()=> (data.value?.agencies??[]).filter(a=>identity.value==='admin'||identity.value==='agency'&&a.id===profile.value?.user?.agencyId||identity.value==='internal'&&(profile.value?.handledAgencyIds??[]).includes(a.id)));
 </script>
 <template>
     <div class="page-heading">
@@ -12,7 +15,7 @@ const { data } = await useFetch('/api/agencies');
     </div>
     <div class="detail-page-grid">
         <article
-            v-for="agency in data?.agencies ?? []"
+            v-for="agency in visibleAgencies"
             :key="agency.id"
             class="data-card"
         >
@@ -33,6 +36,7 @@ const { data } = await useFetch('/api/agencies');
                     ><strong>{{ data?.members?.filter((member) => member.agencyId === agency.id).length ?? 0 }}</strong>
                 </div>
             </div>
+            <ClinicAddressBook :key="`${identity}-${agency.id}`" :agency-id="agency.id" />
         </article>
     </div>
 </template>

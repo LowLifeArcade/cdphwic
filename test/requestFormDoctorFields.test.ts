@@ -41,6 +41,7 @@ describe('new request doctor fields', () => {
             'WIC Food Restrictions',
             'Health Care Provider',
             'Surplus Formula',
+            'Shipping',
             'Additional Information',
         ]);
         const providerFields = ['doctor-name', 'doctor-signed-off', 'prescription-signed-date', 'doctor-office', 'doctor-address', 'doctor-phone'];
