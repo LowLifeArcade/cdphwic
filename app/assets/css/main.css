@@ -2261,3 +2261,7 @@ label {
 ) {
     font-size: var(--form-label-size);
 }
+
+.detail-drawer .formula-edit-card .form-field > label {
+    font-weight: 400;
+}
