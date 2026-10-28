@@ -78,10 +78,20 @@ it('keeps custom formula edits synchronized and preserves the second formula', (
     expect(insuranceLabel('pending')).toBe('Pending');
 });
 
-it('combines Medi-Cal status and formats requested months like New Request',async()=>{
- const {insuranceDetails,requestedMonthLabels}=await import('../shared/requestPresentation');
- expect(insuranceDetails({medicalStatus:'yes',mediCalStatus:'Pending PA'})).toBe('Medi-Cal — Pending PA');
- expect(insuranceDetails({medicalStatus:'no',mediCalStatus:'Denied'})).toBe('Private Insurance');
- expect(requestedMonthLabels(['2026-01','2026-03','2026-12'])).toBe('JAN, MAR, DEC');
- expect(requestedMonthLabels([])).toBe('—');
+it('combines Medi-Cal status and formats requested months like New Request', async () => {
+    const { insuranceDetails, requestedMonthLabels } = await import('../shared/requestPresentation');
+    expect(insuranceDetails({ medicalStatus: 'yes', mediCalStatus: 'Pending PA' })).toBe('Medi-Cal (Pending PA)');
+    expect(insuranceDetails({ medicalStatus: 'no', mediCalStatus: 'Denied' })).toBe('Private Insurance');
+    expect(requestedMonthLabels(['2026-01', '2026-03', '2026-12'])).toBe('JAN, MAR, DEC');
+    expect(requestedMonthLabels([])).toBe('—');
+});
+it('formats Medi-Cal status in parentheses and puts city/state/ZIP on the second address line', async () => {
+    const { insuranceDetails, providerAddressLines } = await import('../shared/requestPresentation');
+    expect(insuranceDetails({ medicalStatus: 'yes', mediCalStatus: 'Denied' })).toBe('Medi-Cal (Denied)');
+    expect(providerAddressLines('123 Main Street, Suite 2, San Luis Obispo, CA 93401')).toEqual([
+        '123 Main Street, Suite 2',
+        'San Luis Obispo, CA 93401',
+    ]);
+    expect(providerAddressLines('123 Main Street\nUkiah CA 95482')).toEqual(['123 Main Street', 'Ukiah, CA 95482']);
+    expect(providerAddressLines('123 Main Street')).toEqual(['123 Main Street']);
 });

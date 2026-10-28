@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import {requestFormulas,participantNames,insuranceDetails,requestedMonthLabels,foodRestrictionLabel,formulaFormLabel,formulaOverviewUpdates} from '~/../shared/requestPresentation';
+import {requestFormulas,participantNames,insuranceDetails,requestedMonthLabels,foodRestrictionLabel,formulaFormLabel,formulaOverviewUpdates,providerAddressLines} from '~/../shared/requestPresentation';
 import {canEditSubmission} from '~/../shared/requestEditing';
 import type { ProductRecord, RequestRecord, RequestStatus } from '~/../shared/domain';
 import { getNextBenefitMonth, validateBenefitIssuances, canGenerateAuthorizationForm, getApprovalStatus, canSelectShippedStatus } from '~/../shared/requestOperations';
@@ -29,6 +29,8 @@ const emit = defineEmits<{ close: []; previous: []; next: [] }>();
 const identity = useState<'admin' | 'agency' | 'internal'>('demo-identity', () => 'admin');
 const draft = reactive<Partial<RequestRecord>>({});
 const saving = ref(false);
+const documentOpen=ref(false);
+watch(()=>[props.request?.id,props.request?.prescriptionAttachment?.storageKey,identity.value],()=>{documentOpen.value=false;});
 const error = ref('');
 const staffSaveStatus = ref<'idle' | 'saving' | 'saved' | 'failed'>('idle');
 const photoNames = ref<string[]>([]);
@@ -236,6 +238,7 @@ function saveFormSection() {
     } else if (editingSection.value === 'prescription') {
         Object.assign(updates, {
             doctorPrintedName: draft.doctorPrintedName,
+            doctorHasSignedOff: draft.doctorHasSignedOff,
             prescriptionSignedDate: draft.prescriptionSignedDate,
             doctorOfficeName: draft.doctorOfficeName,
             doctorOfficeAddress: draft.doctorOfficeAddress,
@@ -456,9 +459,14 @@ function handlePhotos(event: Event) {
 </script>
 
 <template>
+    <section v-if="request?.prescriptionAttachment&&documentOpen" id="request-document-panel" class="request-document-pane" aria-label="Uploaded medical documentation" @click.stop>
+        <div class="document-pane-header"><strong>{{request.prescriptionAttachment.fileName}}</strong><button type="button" class="button button-ghost" @click="documentOpen=false">Close document</button></div>
+        <RequestDocumentPreview :key="`${request.id}-${request.prescriptionAttachment.storageKey}-${identity}`" :request-id="request.id" :attachment="request.prescriptionAttachment" />
+    </section>
     <aside
         v-if="request"
         class="detail-drawer"
+        :class="{'document-visible':documentOpen}"
         @click.stop
     >
         <div class="drawer-header">
@@ -466,6 +474,8 @@ function handlePhotos(event: Event) {
                 <span class="eyebrow">Request #{{ request.id }}</span>
                 <h2>{{ request.participantName }}</h2>
             </div>
+            <div class="drawer-header-tools">
+            <button v-if="request.prescriptionAttachment" type="button" class="button button-secondary attachment-toggle" :title="request.prescriptionAttachment.fileName" :aria-expanded="documentOpen" aria-controls="request-document-panel" @click="documentOpen=!documentOpen">{{request.prescriptionAttachment.fileName}}</button>
             <div class="drawer-header-actions">
                 <button
                     class="button button-ghost"
@@ -494,6 +504,7 @@ function handlePhotos(event: Event) {
                     ×
                 </button>
             </div>
+            </div>
         </div>
         <div v-if="identity === 'agency' && canEditOriginal && request" class="form-actions"><NuxtLink class="button button-secondary" :to="{path:'/requests/new',query:{request:request.id}}">Edit submission</NuxtLink><small>Editable until Admin/FPU opens the submission.</small></div>
         <div class="drawer-status">
@@ -514,7 +525,7 @@ function handlePhotos(event: Event) {
         <section class="detail-section participant-summary">
             <div class="section-heading">
                 <h3>Participant</h3>
-                <button v-if="canStaffEdit && editingSection !== 'participant'" class="text-button" type="button" @click="startEditing('participant')">Edit fields</button>
+                <button v-if="canStaffEdit && editingSection !== 'participant'" class="text-button" type="button" @click="startEditing('participant')">Edit</button>
             </div>
             <div v-if="editingSection === 'participant'" class="form-grid compact-form-grid">
                 <label class="field-label">WIC Family ID<input v-model.number="draft.participantFamilyId" class="form-input" /></label>
@@ -560,7 +571,7 @@ function handlePhotos(event: Event) {
         <section class="detail-section">
             <div class="section-heading">
                 <h3>Prescription</h3>
-                <button v-if="canStaffEdit && editingSection !== 'overview'" class="text-button" type="button" @click="startEditing('overview')">Edit fields</button>
+                <button v-if="canStaffEdit && editingSection !== 'overview'" class="text-button" type="button" @click="startEditing('overview')">Edit</button>
             </div>
             <div v-if="editingSection === 'overview'" class="form-grid compact-form-grid">
                 <label class="field-label">Formula Name<input v-model="draft.productName" class="form-input" /></label>
@@ -573,7 +584,7 @@ function handlePhotos(event: Event) {
             </div>
             <div v-else class="submitted-formula-details">
                 <section v-for="(formula,index) in requestFormulas(request)" :key="index" class="submitted-formula-card">
-                    <h4>Formula {{index+1}}</h4>
+                    <h4 v-if="requestFormulas(request).length>1">Formula {{index+1}}</h4>
                     <div class="detail-grid">
                         <div><span>Formula Name</span><strong>{{formula.otherFormulaName || formula.productName || '—'}}</strong></div>
                         <div><span>Form</span><strong>{{formulaFormLabel(formula.productForm)}}</strong></div>
@@ -589,36 +600,6 @@ function handlePhotos(event: Event) {
                 <button class="button button-ghost" type="button" @click="cancelEditing">Cancel</button>
                 <button class="button button-secondary" type="button" :disabled="saving" @click="saveFormSection">Save fields</button>
             </div>
-            <div class="submitted-prescription">
-                <div class="panel-heading">
-                    <div>
-                        <h4>Submitted prescription form</h4>
-                        <span v-if="request.prescriptionAttachment">{{ request.prescriptionAttachment.fileName }}</span>
-                        <span v-else>No prescription form uploaded.</span>
-                    </div>
-                    <a
-                        v-if="request.prescriptionAttachment"
-                        class="text-button"
-                        :href="`/api/requests/${request.id}/prescription`"
-                        target="_blank"
-                        rel="noreferrer"
-                    >
-                        Open form
-                    </a>
-                </div>
-                <iframe
-                    v-if="request.prescriptionAttachment?.contentType === 'application/pdf'"
-                    class="prescription-preview"
-                    :src="`/api/requests/${request.id}/prescription`"
-                    title="Submitted prescription form"
-                />
-                <img
-                    v-else-if="request.prescriptionAttachment"
-                    class="prescription-preview prescription-image-preview"
-                    :src="`/api/requests/${request.id}/prescription`"
-                    alt="Submitted prescription form"
-                />
-            </div>
         </section>
         <section class="detail-section">
             <h3>WIC Food Restrictions</h3>
@@ -633,42 +614,23 @@ function handlePhotos(event: Event) {
             </div>
         </section>
         <section class="detail-section">
-            <h3>Local Agency</h3>
-            <div class="detail-grid">
-                <div>
-                    <span>Local Agency</span><strong>{{ agency?.name ?? '—' }}</strong>
-                </div>
-                <div>
-                    <span>Shipping Address</span><strong>{{ agency ? `${agency.shippingAddress}, ${agency.city}, ${agency.state} ${agency.postalCode}` : '—' }}</strong>
-                </div>
-                <div>
-                    <span>Contact</span><strong>{{ rep?.name ?? '—' }}</strong>
-                </div>
-                <div>
-                    <span>Email</span><strong>{{ rep?.email ?? '—' }}</strong>
-                </div>
-                <div>
-                    <span>Phone</span><strong>{{ rep?.phone ?? '—' }}</strong>
-                </div>
-            </div>
-        </section>
-        <section class="detail-section">
             <div class="section-heading">
                 <h3>Health Care Provider</h3>
-                <button v-if="canStaffEdit && editingSection !== 'prescription'" class="text-button" type="button" @click="startEditing('prescription')">Edit fields</button>
+                <button v-if="canStaffEdit && editingSection !== 'prescription'" class="text-button" type="button" @click="startEditing('prescription')">Edit</button>
             </div>
             <div v-if="editingSection === 'prescription'" class="form-grid compact-form-grid">
-                <label class="field-label">Doctor<input v-model="draft.doctorPrintedName" class="form-input" /></label>
-                <label class="field-label">Signed Date<input v-model="draft.prescriptionSignedDate" class="form-input" type="date" /></label>
-                <label class="field-label">Office<input v-model="draft.doctorOfficeName" class="form-input" /></label>
-                <label class="field-label">Office Address<input v-model="draft.doctorOfficeAddress" class="form-input" /></label>
+                <label class="field-label">Provider Name<input v-model="draft.doctorPrintedName" class="form-input" /></label>
+                <label class="field-label checkbox-control">Provider Signature<input v-model="draft.doctorHasSignedOff" type="checkbox" /></label>
+                <label class="field-label">Date Signed<input v-model="draft.prescriptionSignedDate" class="form-input" type="date" /></label>
+                <label class="field-label">Medical Office/Clinic Name<input v-model="draft.doctorOfficeName" class="form-input" /></label>
+                <label class="field-label">Medical Office/Clinic Address<input v-model="draft.doctorOfficeAddress" class="form-input" /></label>
                 <label class="field-label">Office Phone<input v-model="draft.doctorOfficePhone" class="form-input" type="tel" @input="formatDoctorPhone" /></label>
             </div>
             <div v-else class="detail-grid">
-                <div><span>Doctor</span><strong>{{ request.doctorPrintedName ?? '—' }}</strong></div>
-                <div><span>Signed Date</span><strong>{{ formatDisplayDate(request.prescriptionSignedDate) }}</strong></div>
-                <div><span>Office</span><strong>{{ request.doctorOfficeName ?? '—' }}</strong></div>
-                <div><span>Office Address</span><strong>{{ request.doctorOfficeAddress ?? '—' }}</strong></div>
+                <div><span>Provider Name</span><strong>{{ request.doctorPrintedName ?? '—' }}</strong></div>
+                <div><span>Provider Signature</span><strong>{{request.doctorHasSignedOff?'Verified on medical documentation':'Not verified'}}</strong></div>
+                <div><span>Date Signed</span><strong>{{ formatDisplayDate(request.prescriptionSignedDate) }}</strong></div>
+                <div class="detail-field-wide"><span>Medical Office/Clinic</span><strong>{{ request.doctorOfficeName || '—' }}<template v-for="(line,index) in providerAddressLines(request.doctorOfficeAddress)" :key="index"><br />{{line}}</template></strong></div>
                 <div><span>Office Phone</span><strong>{{ request.doctorOfficePhone ? formatPhoneNumber(request.doctorOfficePhone) : '—' }}</strong></div>
             </div>
             <div v-if="editingSection === 'prescription'" class="form-actions">
@@ -831,6 +793,11 @@ function handlePhotos(event: Event) {
 
         <section class="detail-section">
             <h3>Shipping Info</h3>
+            <div class="detail-grid shipping-contact-details">
+                <div><span>Contact</span><strong>{{rep?.name || '—'}}</strong></div>
+                <div><span>Phone Number</span><strong>{{rep?.phone?formatPhoneNumber(rep.phone):'—'}}</strong></div>
+                <div class="detail-field-wide"><span>Email</span><strong>{{rep?.email || '—'}}</strong></div>
+            </div>
             <address v-if="request.shipping" class="shipping-preview shipping-destination"><strong>{{request.shipping.clinicName}}</strong><br />Attention: {{request.shipping.attention}}<br />{{request.shipping.addressLine1}}<template v-if="request.shipping.addressLine2"><br />{{request.shipping.addressLine2}}</template><br />{{request.shipping.city}}, {{request.shipping.state}} {{request.shipping.postalCode}}</address>
             <div v-if="canStaffEdit" class="form-grid compact-form-grid">
                 <label class="field-label">

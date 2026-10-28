@@ -1,4 +1,4 @@
-import {benefitMonthLabels} from './requestMonthSelection';
+import { benefitMonthLabels } from './requestMonthSelection';
 import { findFormula } from './formulaCatalog';
 import type { RequestRecord, RequestedFormula } from './domain';
 export function requestFormulas(request: Partial<RequestRecord>): RequestedFormula[] {
@@ -65,10 +65,36 @@ export function formulaOverviewUpdates(draft: Partial<RequestRecord>): Partial<R
     };
 }
 
-export function insuranceDetails(request:Partial<RequestRecord>):string {
- const label=insuranceLabel(request.medicalStatus);
- return request.medicalStatus==='yes'&&request.mediCalStatus?`${label} — ${request.mediCalStatus}`:label;
+export function insuranceDetails(request: Partial<RequestRecord>): string {
+    const label = insuranceLabel(request.medicalStatus);
+    return request.medicalStatus === 'yes' && request.mediCalStatus ? `${label} (${request.mediCalStatus})` : label;
 }
-export function requestedMonthLabels(months?:string[]):string {
- return (months??[]).map(month=>/^\d{4}-(0[1-9]|1[0-2])$/.test(month)?benefitMonthLabels[Number(month.slice(-2))-1]:undefined).filter(Boolean).join(', ')||'—';
+export function requestedMonthLabels(months?: string[]): string {
+    return (
+        (months ?? [])
+            .map((month) =>
+                /^\d{4}-(0[1-9]|1[0-2])$/.test(month) ? benefitMonthLabels[Number(month.slice(-2)) - 1] : undefined,
+            )
+            .filter(Boolean)
+            .join(', ') || '—'
+    );
+}
+
+export function providerAddressLines(value?: string): string[] {
+    const address = (value ?? '').trim();
+    if (!address) return ['—'];
+    const locality = /(?:,|\n)\s*([^,\n]+?)(?:,\s*|\s+)([A-Za-z]{2})\s+(\d{5}(?:-\d{4})?)\s*$/.exec(address);
+    if (locality) {
+        const street = address
+            .slice(0, locality.index)
+            .split(/\r?\n/)
+            .map((line) => line.trim())
+            .filter(Boolean)
+            .join(', ');
+        return [street, `${locality[1]!.trim()}, ${locality[2]!.toUpperCase()} ${locality[3]}`].filter(Boolean);
+    }
+    return address
+        .split(/\r?\n/)
+        .map((line) => line.trim())
+        .filter(Boolean);
 }

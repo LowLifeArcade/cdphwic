@@ -907,7 +907,7 @@ select.form-input {
 .detail-section h3 {
     margin: 0 0 14px;
     color: var(--green);
-    font-size: 0.83rem;
+    font-size: calc(0.83rem + 4px);
 }
 .section-heading {
     display: flex;
@@ -1039,7 +1039,7 @@ select.form-input {
     font-size: 0.66rem;
 }
 .detail-grid strong {
-    font-size: 0.78rem;
+    font-size: calc(0.78rem + 2px);
 }
 .muted-copy {
     color: var(--muted);
@@ -2149,6 +2149,21 @@ label {
 .submitted-formula-details { display: grid; gap: 16px; }
 .submitted-formula-card { padding: 14px; border: 1px solid var(--line); border-radius: 8px; }
 .submitted-formula-card h4 { margin: 0 0 12px; }
-.detail-field-heading { color: var(--muted); font-size: 0.875rem; }
+.detail-field-heading { display: block; margin-bottom: 4px; color: var(--muted); font-size: 0.66rem; }
 .detail-field-wide { grid-column: 1 / -1; }
 .preserve-lines { white-space: pre-wrap; }
+
+.drawer-header-tools { display: grid; justify-items: end; gap: 8px; min-width: 0; max-width: 58%; }
+.attachment-toggle { display: block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.request-document-pane { position: fixed; z-index: 40; inset: 0 min(470px, 100vw) 0 0; display: flex; flex-direction: column; background: var(--surface); border-right: 1px solid var(--line); }
+.document-pane-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 16px; border-bottom: 1px solid var(--line); }
+.document-pane-header strong { min-width: 0; overflow-wrap: anywhere; }
+.document-pane-header .button { flex-shrink: 0; }
+.shipping-contact-details { margin-bottom: 16px; overflow-wrap: anywhere; }
+@media (max-width: 800px) {
+    .request-document-pane { inset: 0 0 auto; height: 42dvh; }
+    .detail-drawer.document-visible { top: 42dvh; width: 100vw; height: 58dvh; }
+}
+
+.detail-drawer .diagnosis-list li { font-size: calc(0.875rem + 2px); }
+.detail-drawer .shipping-destination { font-size: calc(1rem + 2px); }

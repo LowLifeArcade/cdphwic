@@ -20,27 +20,33 @@ describe('request operations UI', () => {
         expect(drawer).toContain('Add issuance month');
         expect(drawer).toContain('v-if="draft.status === \'denied\'"');
         expect(drawer).toContain('authorization-form.pdf');
-        expect(drawer).toContain('agency.shippingAddress');
+        expect(drawer).toContain('request.shipping.addressLine1');
         expect(drawer).toContain('rep?.email');
     });
 
     it('keeps request-form fields read-only until section editing and isolates issuance months to staff processing', () => {
-        expect(drawer).toContain('Edit fields');
+        expect(drawer).toContain('>Edit</button>');
+        expect(drawer).not.toContain('>Edit fields</button>');
+        expect(drawer).toContain('<span>Medical Office/Clinic</span>');
         expect(drawer).toContain('Prescription');
         expect(drawer).toContain('+ Add issuance month');
         expect(drawer).not.toContain('+ Add benefit month');
         expect(drawer).toContain('month-select');
     });
 
-    it('shows the submitted prescription and uses the requested section order', () => {
-        expect(drawer).toContain('Submitted prescription form');
-        expect(drawer).toContain('/api/requests/${request.id}/prescription');
-        expect(drawer).toContain('<h3>Prescription</h3>');
-        expect(drawer).toContain('<h3>Local Agency</h3>');
-        expect(drawer).toContain('<h3>Health Care Provider</h3>');
+    it('opens uploaded documentation beside the request and uses the requested section order', () => {
+        expect(drawer).toContain('attachment-toggle');
+        expect(drawer).toContain('RequestDocumentPreview');
+        expect(drawer).toContain('request-document-pane');
+        expect(drawer).not.toContain('Submitted prescription form');
+        expect(drawer).not.toContain('<h3>Local Agency</h3>');
+        const preview=readFileSync(new URL('../app/components/RequestDocumentPreview.vue', import.meta.url),'utf8');
+        expect(preview).toMatch(/'x-demo-user':\s*identity.value/);
+        expect(preview).toContain('URL.revokeObjectURL');
         expect(drawer.indexOf('<h3>Participant</h3>')).toBeLessThan(drawer.indexOf('<h3>Prescription</h3>'));
-        expect(drawer.indexOf('<h3>Prescription</h3>')).toBeLessThan(drawer.indexOf('<h3>Local Agency</h3>'));
-        expect(drawer.indexOf('<h3>Local Agency</h3>')).toBeLessThan(drawer.indexOf('<h3>Health Care Provider</h3>'));
+        expect(drawer.indexOf('<h3>Prescription</h3>')).toBeLessThan(drawer.indexOf('<h3>WIC Food Restrictions</h3>'));
+        expect(drawer.indexOf('<h3>WIC Food Restrictions</h3>')).toBeLessThan(drawer.indexOf('<h3>Health Care Provider</h3>'));
+        expect(drawer.indexOf('rep?.email')).toBeGreaterThan(drawer.indexOf('<h3>Shipping Info</h3>'));
     });
 
     it('keeps CDPH decisions and shipment together', () => {
