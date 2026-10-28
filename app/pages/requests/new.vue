@@ -129,7 +129,7 @@ const form = reactive({
     mediCalStatus: '',
     diagnosis: '',
     ouncesPrescribed: '',
-    durationMonths: '1',
+    durationMonths: '',
     doctorPrintedName: '',
     doctorHasSignedOff: false,
     doctorOfficeName: '',
@@ -168,6 +168,15 @@ function addSurplus() {
     const entry: typeof surplusEntries.value[number] = { productName: requestedFormulaNames.value[0] ?? '', productForm: '', flavor: '', units: '', expirationDate: '' };
     initializeSurplus(entry);
     surplusEntries.value.push(entry);
+}
+const benefitMonthOptions = computed(() => benefitMonthLabels.map((label, index) => {
+    const month = String(index + 1).padStart(2, '0');
+    const saved = requestedMonths.value.find(value => value.length === 7 && value.slice(5) === month);
+    const value = saved || serializeRequestedMonths([month], form.benefitsStartDate, new Date().getFullYear())[0]!;
+    return {label, value, selected: requestedMonths.value.includes(value) || requestedMonths.value.includes(month)};
+}));
+function toggleBenefitMonth(value: string) {
+    requestedMonths.value = toggleRequestedMonth(selectedBenefitMonths(), value);
 }
 function selectedBenefitMonths() {
     return serializeRequestedMonths(requestedMonths.value, form.benefitsStartDate, new Date().getFullYear());
@@ -797,11 +806,11 @@ async function submitRequest() {
                     <legend>Benefit Month(s) Requested</legend>
                     <small>Select up to 3 months.</small>
                     <div class="benefit-month-options">
-                        <label v-for="(month, index) in benefitMonthLabels" :key="month" class="benefit-month-option" :class="{ 'month-selected': requestedMonths.includes(String(index + 1).padStart(2, '0')) }">
-                            <input type="checkbox" :checked="requestedMonths.includes(String(index + 1).padStart(2, '0'))"
-                                :disabled="requestedMonths.length >= 3 && !requestedMonths.includes(String(index + 1).padStart(2, '0'))"
-                                @change="requestedMonths = toggleRequestedMonth(requestedMonths, String(index + 1).padStart(2, '0'))" />
-                            {{ month }}
+                        <label v-for="month in benefitMonthOptions" :key="month.value" class="benefit-month-option" :class="{ 'month-selected': month.selected }">
+                            <input type="checkbox" :checked="month.selected"
+                                :disabled="requestedMonths.length >= 3 && !month.selected"
+                                @change="toggleBenefitMonth(month.value)" />
+                            {{ month.label }}
                         </label>
                     </div>
                 </fieldset>
@@ -917,6 +926,7 @@ async function submitRequest() {
                         required
                         class="form-input"
                     >
+                        <option value="" disabled>Select</option>
                         <option v-for="month in 6" :key="month" :value="String(month)">{{ month }}</option>
                     </select>
                 </div>

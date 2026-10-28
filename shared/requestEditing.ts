@@ -100,6 +100,6 @@ export function restoreSubmittedForm(request: RequestRecord) {
             flavor: e.flavor ?? '',
             expirationDate: e.expirationDate ?? '',
         })),
-        requestedMonths: (request.benefitMonthsRequested ?? []).map((m) => m.slice(5, 7)),
+        requestedMonths: [...(request.benefitMonthsRequested ?? [])],
     };
 }
