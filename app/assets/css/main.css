@@ -2265,3 +2265,41 @@ label {
 .detail-drawer .formula-edit-card .form-field > label {
     font-weight: 400;
 }
+
+.detail-drawer .participant-summary .form-input {
+    font-size: 1rem;
+}
+
+.requested-months-field > div { grid-column: 1 / -1; min-width: 0; }
+.requested-months-field .month-list { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.requested-months-field .month-row { grid-template-columns: 72px 24px; gap: 3px; max-width: none; }
+.requested-months-field .month-row select { padding-left: 8px; padding-right: 24px; background-position: right 7px center; }
+.requested-months-field .month-row .icon-button { width: 24px; height: 28px; padding: 0; }
+.requested-months-field .month-list > .text-button { flex-basis: 100%; text-align: left; }
+
+.detail-drawer .submitted-formula-card {
+    margin: 0;
+    padding: 1rem;
+    border: 1px solid var(--border, #dce3e9);
+    border-radius: 0.75rem;
+    min-width: 0;
+}
+.detail-drawer .submitted-formula-card > legend {
+    padding: 0 0.5rem;
+    color: var(--text);
+    font-size: calc(1rem + 2px);
+    font-weight: 600;
+}
+
+.participant-age-alert {
+    margin-bottom: 16px;
+    padding: 12px 14px;
+    border: 1px solid var(--warning-border, #80652f);
+    border-left: 3px solid #eaab33;
+    border-radius: 6px;
+    background: var(--warning-bg, #3b3020);
+    color: var(--warning-text, #ffe9a8);
+    font-size: var(--form-label-size);
+    line-height: 1.5;
+}
+.participant-age-alert p { margin: 4px 0 0; }

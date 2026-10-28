@@ -913,7 +913,7 @@ async function submitRequest() {
                     <legend>Formula {{ index + 2 }}</legend>
                     <AdditionalFormulaFields v-model="additionalFormulas[index]!" :index="index + 2" />
                     <p v-if="formulaSelectionError" class="field-error" role="alert">{{ formulaSelectionError }}</p>
-                    <button class="text-button" type="button" @click="additionalFormulas.splice(index, 1)">Remove formula {{ index + 2 }}</button>
+                    <button class="text-button" type="button" @click="additionalFormulas.splice(index, 1)">Remove Formula {{ index + 2 }}</button>
                 </fieldset>
                 <div v-if="!additionalFormulas.length" class="form-field full add-formula-action">
                     <button class="button button-ghost add-formula-button" type="button" @click="addAdditionalFormula">Add another formula</button>

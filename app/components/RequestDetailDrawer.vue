@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import {participantAgeAlerts} from '~/../shared/participantAgeAlerts';
+import {localDate} from '~/../shared/surplus';
 import {validateRequestedMonths} from '~/../shared/requestMonthSelection';
 import {editableRequestFormulas,requestFormulaUpdates} from '~/../shared/requestFormulaEditing';
 import {blankFormula,formulaEntryName,validateFormulaEntry,validateFormulaSelection,type FormulaEntry} from '~/../shared/formulaEntries';
@@ -56,6 +58,9 @@ const pendingDecision = ref<'denied' | null>(null);
 const sendingEtaIndex = ref<number | null>(null);
 const shippingSaveStatus = ref<'idle' | 'saving' | 'saved' | 'failed'>('idle');
 const canStaffEdit = computed(() => identity.value === 'admin' || identity.value === 'internal');
+const reviewerOpenDate = ref(localDate());
+watch(() => props.request?.id, () => { reviewerOpenDate.value = localDate(); });
+const ageMilestoneAlerts = computed(() => participantAgeAlerts(props.request?.participantDob,reviewerOpenDate.value,30));
 const canEditOriginal= computed(()=>!!props.request&&canEditSubmission(props.request));
 const canRepEdit = computed(() => identity.value === 'admin' || identity.value === 'agency');
 const selectedProduct = computed(() => props.products?.find((product) => product.id === props.request?.productId));
@@ -543,6 +548,10 @@ function handlePhotos(event: Event) {
                 <h3>Participant</h3>
                 <button v-if="canStaffEdit && editingSection !== 'participant'" class="text-button" type="button" @click="startEditing('participant')">Edit</button>
             </div>
+            <div v-if="canStaffEdit && ageMilestoneAlerts.length" class="participant-age-alert" role="alert">
+                <strong>Upcoming age milestone</strong>
+                <p v-for="alert in ageMilestoneAlerts" :key="alert.milestone">Participant turns {{alert.milestone}} {{alert.daysUntil === 0 ? 'today' : `in ${alert.daysUntil} ${alert.daysUntil === 1 ? 'day' : 'days'}`}} ({{alert.date.slice(5,7)}}/{{alert.date.slice(8,10)}}/{{alert.date.slice(0,4)}}).</p>
+            </div>
             <div v-if="editingSection === 'participant'" class="form-grid compact-form-grid">
                 <label class="field-label">WIC Family ID<input v-model.number="draft.participantFamilyId" class="form-input" /></label>
                 <label class="field-label">WIC Individual ID<input v-model="draft.wicIndividualId" class="form-input" /></label>
@@ -595,30 +604,30 @@ function handlePhotos(event: Event) {
                 <fieldset v-for="(formula,index) in editableFormulas" :key="index" class="detail-field-wide submitted-formula-card formula-edit-card">
                     <legend v-if="editableFormulas.length > 1">Formula {{index + 1}}</legend>
                     <AdditionalFormulaFields v-model="editableFormulas[index]" :index="index + 1" auto-fit-justification />
-                    <button v-if="index > 0" class="text-button" type="button" @click="editableFormulas.splice(index,1)">Remove formula {{index + 1}}</button>
+                    <button v-if="index > 0" class="text-button" type="button" @click="editableFormulas.splice(index,1)">Remove Formula {{index + 1}}</button>
                 </fieldset>
                 <div v-if="editableFormulas.length < 2" class="detail-field-wide add-formula-action"><button class="button button-ghost add-formula-button" type="button" @click="editableFormulas.push(blankFormula())">Add another formula</button></div>
-                <label class="field-label duration-field">Duration (in months)<input v-model.number="draft.durationMonths" class="form-input" type="number" min="1" max="6" /></label>
+                <label class="field-label duration-field">Duration (in months) *<input required v-model.number="draft.durationMonths" class="form-input" type="number" min="1" max="6" /></label>
                 <fieldset class="detail-field-wide diagnosis-editor">
-                    <legend>Qualifying Diagnosis(es)</legend>
+                    <legend>Qualifying Diagnosis(es) *</legend>
                     <div v-for="(_, index) in editableDiagnoses" :key="index" class="diagnosis-edit-row">
                         <RequestDiagnosisEditor v-model="editableDiagnoses[index]" :index="index" />
                         <button type="button" class="text-button" :aria-label="`Remove diagnosis ${index + 1}`" @click="editableDiagnoses.splice(index, 1)">Remove</button>
                     </div>
-                    <button type="button" class="text-button" @click="editableDiagnoses.push('')">Add diagnosis</button>
+                    <button type="button" class="text-button" @click="editableDiagnoses.push('')">Add Diagnosis</button>
                 </fieldset>
             </div>
             <div v-else class="submitted-formula-details">
-                <section v-for="(formula,index) in requestFormulas(request)" :key="index" class="submitted-formula-card">
-                    <h4 v-if="requestFormulas(request).length>1">Formula {{index+1}}</h4>
+                <fieldset v-for="(formula,index) in requestFormulas(request)" :key="index" class="submitted-formula-card">
+                    <legend v-if="requestFormulas(request).length>1">Formula {{index+1}}</legend>
                     <div class="detail-grid">
                         <div><span>Formula Name</span><strong>{{formula.otherFormulaName || formula.productName || '—'}}</strong></div>
                         <div><span>Form</span><strong>{{formulaFormLabel(formula.productForm)}}</strong></div>
                         <div v-if="formula.flavor"><span>Flavor</span><strong>{{formula.flavor}}</strong></div>
-                        <div><span>Amount (in ounces/day) *</span><strong>{{formula.ouncesPrescribed ?? '—'}}</strong></div>
+                        <div><span>Amount (in ounces/day)</span><strong>{{formula.ouncesPrescribed ?? '—'}}</strong></div>
                         <div v-if="formula.readyToFeedJustification"><span>Justification</span><strong>{{formula.readyToFeedJustification}}</strong></div>
                     </div>
-                </section>
+                </fieldset>
                 <div class="detail-grid"><div><span>Duration (in months)</span><strong>{{request.durationMonths ?? '—'}}</strong></div></div>
                 <div><span class="detail-field-heading">Qualifying Diagnosis(es)</span><ul v-if="request.diagnosis?.trim()" class="diagnosis-list"><li v-for="(diagnosis,index) in request.diagnosis.split(/[\n;]/).map(value=>value.trim()).filter(Boolean)" :key="index">{{diagnosis}}</li></ul><strong v-else>—</strong></div>
             </div>
