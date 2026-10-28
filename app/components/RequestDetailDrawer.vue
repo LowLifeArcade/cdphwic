@@ -39,6 +39,15 @@ const photoNames = ref<string[]>([]);
 const surplusRemovalIndex = ref<number | null>(null);
 const editingSection = ref<'participant' | 'overview' | 'prescription' | 'food' | null>(null);
 const editableDiagnoses = ref<string[]>([]);
+const justificationInput = ref<HTMLTextAreaElement>();
+function fitJustification() {
+    const input = justificationInput.value;
+    if (!input) return;
+    input.style.height = 'auto';
+    const borders = input.offsetHeight - input.clientHeight;
+    input.style.height = `${input.scrollHeight + borders}px`;
+}
+watch([justificationInput, () => draft.genericFields?.readyToFeedJustification], () => nextTick(fitJustification), {flush:'post'});
 const trackingCarrierFallback = ref<'fedex' | 'dhl' | 'ups'>('fedex');
 const agencyAlertSaving = ref(false);
 const agencyAlertMessage = ref('');
@@ -215,6 +224,10 @@ function removeRequestedMonth(index: number) {
 
 function startEditing(section: 'participant' | 'overview' | 'prescription' | 'food') {
     if (section === 'overview') editableDiagnoses.value = (draft.diagnosis ?? '').split(/[\n;]/).map(value => value.trim()).filter(Boolean);
+    if (section === 'prescription') {
+        draft.doctorOfficePhone = formatPhoneNumber(draft.doctorOfficePhone ?? '');
+        draft.doctorOfficeAddress = providerAddressLines(draft.doctorOfficeAddress).filter(line => line !== '—').join('\n');
+    }
     editingSection.value = section;
     error.value = '';
 }
@@ -552,7 +565,7 @@ function handlePhotos(event: Event) {
                 <label class="field-label">WIC Individual ID<input v-model="draft.wicIndividualId" class="form-input" /></label>
                 <label class="field-label">Date of Birth<input v-model="draft.participantDob" class="form-input" type="date" /></label>
                 <label class="field-label">Benefits Start Date<input v-model="draft.benefitsStartDate" class="form-input" type="date" /></label>
-                <label class="field-label">Age at Benefits Start Date<input class="form-input" :value="participantAgeAtBenefitsStart(draft.participantDob, draft.benefitsStartDate)" readonly /></label>
+                <div class="field-label calculated-age-field"><span>Age at Benefits Start Date</span><strong>{{ participantAgeAtBenefitsStart(draft.participantDob, draft.benefitsStartDate) }}</strong></div>
                 <label class="field-label">Health Insurance<select v-model="draft.medicalStatus" class="form-input"><option disabled value="">Select Health Insurance</option><option v-if="draft.medicalStatus==='pending'" value="pending">Pending</option><option value="yes">Medi-Cal</option><option value="no">Private Insurance</option></select></label>
                 <label v-if="draft.medicalStatus==='yes'" class="field-label participant-insurance-status">Medi-Cal Status<select v-model="draft.mediCalStatus" class="form-input"><option>Denied</option><option>Pending PA</option><option>Product Not Covered</option></select></label>
             </div>
@@ -595,13 +608,13 @@ function handlePhotos(event: Event) {
                 <h3>Prescription</h3>
                 <button v-if="canStaffEdit && editingSection !== 'overview'" class="text-button" type="button" @click="startEditing('overview')">Edit</button>
             </div>
-            <div v-if="editingSection === 'overview'" class="form-grid compact-form-grid">
+            <div v-if="editingSection === 'overview'" class="form-grid compact-form-grid prescription-editor">
                 <label class="field-label">Formula Name<input v-model="draft.productName" class="form-input" /></label>
                 <label class="field-label">Form<select v-model="draft.productForm" class="form-input"><option value="powder">Powder</option><option value="concentrate">Liquid Concentrate</option><option value="ready-to-feed">Ready-to-Feed</option></select></label>
                 <label class="field-label">Amount (in ounces per day)<input v-model.number="draft.ouncesPrescribed" class="form-input" type="number" min="1" /></label>
                 <label class="field-label">Flavor<input v-model="draft.formulaFlavor" class="form-input" /></label>
-                <label v-if="draft.genericFields" class="field-label">Justification<textarea v-model="draft.genericFields.readyToFeedJustification" class="form-textarea" /></label>
-                <label class="field-label">Duration (in months)<input v-model.number="draft.durationMonths" class="form-input" type="number" min="1" max="6" /></label>
+                <label v-if="draft.genericFields" class="field-label">Justification<textarea ref="justificationInput" v-model="draft.genericFields.readyToFeedJustification" rows="1" class="form-textarea justification-input" @input="fitJustification" /></label>
+                <label class="field-label duration-field">Duration (in months)<input v-model.number="draft.durationMonths" class="form-input" type="number" min="1" max="6" /></label>
                 <fieldset class="detail-field-wide diagnosis-editor">
                     <legend>Qualifying Diagnosis(es)</legend>
                     <div v-for="(_, index) in editableDiagnoses" :key="index" class="diagnosis-edit-row">
@@ -671,15 +684,15 @@ function handlePhotos(event: Event) {
                 <h3>Health Care Provider</h3>
                 <button v-if="canStaffEdit && editingSection !== 'prescription'" class="text-button" type="button" @click="startEditing('prescription')">Edit</button>
             </div>
-            <div v-if="editingSection === 'prescription'" class="form-grid compact-form-grid">
+            <div v-if="editingSection === 'prescription'" class="form-grid compact-form-grid provider-editor">
                 <label class="field-label">Provider Name<input v-model="draft.doctorPrintedName" class="form-input" /></label>
-                <label class="field-label checkbox-control">Provider Signature<input v-model="draft.doctorHasSignedOff" type="checkbox" /></label>
+                <label class="field-label checkbox-control provider-signature-control">Provider Signature<input v-model="draft.doctorHasSignedOff" type="checkbox" /></label>
                 <label class="field-label provider-date-signed">Date Signed<input v-model="draft.prescriptionSignedDate" class="form-input" type="date" /></label>
                 <fieldset class="provider-clinic clinic-editor">
                     <legend>Medical Office/Clinic</legend>
                     <label class="field-label">Name<input v-model="draft.doctorOfficeName" class="form-input" /></label>
-                    <label class="field-label">Address<input v-model="draft.doctorOfficeAddress" class="form-input" /></label>
-                    <label class="field-label">Phone Number<input v-model="draft.doctorOfficePhone" class="form-input" type="tel" @input="formatDoctorPhone" /></label>
+                    <label class="field-label">Address<textarea v-model="draft.doctorOfficeAddress" class="form-textarea provider-address-input" rows="2" @blur="draft.doctorOfficeAddress = providerAddressLines(draft.doctorOfficeAddress).filter(line => line !== '—').join('\n')" /></label>
+                    <label class="field-label">Phone Number<input v-model="draft.doctorOfficePhone" class="form-input" type="tel" placeholder="(XXX) XXX-XXXX" @input="formatDoctorPhone" /></label>
                 </fieldset>
             </div>
             <div v-else class="detail-grid">
