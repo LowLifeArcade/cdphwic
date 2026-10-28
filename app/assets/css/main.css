@@ -2303,3 +2303,15 @@ label {
     line-height: 1.5;
 }
 .participant-age-alert p { margin: 4px 0 0; }
+
+.detail-drawer .diagnosis-readonly { gap: 6px; }
+.detail-drawer .diagnosis-readonly li {
+    display: block;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    color: var(--text);
+    font-weight: 700;
+}
+:root[data-theme='light'] .detail-drawer .diagnosis-readonly li { color: #000; }
