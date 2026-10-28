@@ -2,7 +2,7 @@
 import { formulaCatalog, findFormula, availableFormulaForms, defaultFormulaForm, requiresReadyToFeedReason } from '~/../shared/formulaCatalog';
 import { validateOtherFormulaName } from '~/../shared/formulaEntries';
 import type { FormulaEntry } from '~/../shared/formulaEntries';
-const props = defineProps<{ modelValue: FormulaEntry; index: number; autoFitJustification?: boolean }>();
+const props = defineProps<{ modelValue: FormulaEntry; index: number; autoFitJustification?: boolean; hideRequiredMarkers?: boolean }>();
 const emit = defineEmits<{ 'update:modelValue': [value: FormulaEntry] }>();
 const focused = ref(false);
 const justificationInput = ref<HTMLTextAreaElement>();
@@ -35,7 +35,7 @@ function nameChanged(value: string) {
 <template>
     <div class="form-grid formula-entry-grid" :class="{'has-formula-details': other || selected?.hasFlavor, 'has-other-formula': other}">
         <div class="form-field formula-name-field">
-            <label :for="prefix">Formula Name *</label>
+            <label :for="prefix">Formula Name{{ hideRequiredMarkers ? '' : ' *' }}</label>
             <div class="formula-autocomplete">
                 <input :id="prefix" :value="modelValue.formulaName" class="form-input" required autocomplete="off"
                     placeholder="Start typing a formula name or type Other"
@@ -55,7 +55,7 @@ function nameChanged(value: string) {
             </div>
         </div>
         <div v-if="other" class="form-field formula-detail-field">
-            <label :for="`${prefix}-other`">Other Formula Name *</label>
+            <label :for="`${prefix}-other`">Other Formula Name{{ hideRequiredMarkers ? '' : ' *' }}</label>
             <input :id="`${prefix}-other`" :value="modelValue.otherFormulaName" class="form-input" required @input="update('otherFormulaName', ($event.target as HTMLInputElement).value)" />
             <small v-if="modelValue.otherFormulaName.trim() && validateOtherFormulaName(modelValue.otherFormulaName)" class="field-error" role="alert">{{ validateOtherFormulaName(modelValue.otherFormulaName) }}</small>
         </div>
@@ -64,18 +64,18 @@ function nameChanged(value: string) {
             <input :id="`${prefix}-flavor`" :value="modelValue.formulaFlavor" class="form-input" @input="update('formulaFlavor', ($event.target as HTMLInputElement).value)" />
         </div>
         <div class="form-field formula-form-field">
-            <label :for="`${prefix}-form`">Form *</label>
+            <label :for="`${prefix}-form`">Form{{ hideRequiredMarkers ? '' : ' *' }}</label>
             <select :id="`${prefix}-form`" :value="modelValue.productForm" class="form-input" required @change="update('productForm', ($event.target as HTMLSelectElement).value as FormulaEntry['productForm'])">
                 <option disabled value="">Select Form</option>
                 <option v-for="item in forms" :key="item" :value="item">{{ { powder: 'Powder', concentrate: 'Liquid Concentrate', 'ready-to-feed': 'Ready-to-Feed' }[item] }}</option>
             </select>
         </div>
         <div class="form-field formula-amount-field">
-            <label :for="`${prefix}-amount`">Amount (in ounces/day) *</label>
+            <label :for="`${prefix}-amount`">Amount (in ounces/day){{ hideRequiredMarkers ? '' : ' *' }}</label>
             <input :id="`${prefix}-amount`" :value="modelValue.ouncesPrescribed" class="form-input" type="text" inputmode="decimal" pattern="(?:[0-9]+(?:\.[0-9]+)?|\.[0-9]+)" required @input="update('ouncesPrescribed', ($event.target as HTMLInputElement).value)" />
         </div>
         <div v-if="requiresReadyToFeedReason(modelValue.formulaName, modelValue.productForm)" class="form-field formula-justification-field">
-            <label :for="`${prefix}-reason`">Justification *</label>
+            <label :for="`${prefix}-reason`">Justification{{ hideRequiredMarkers ? '' : ' *' }}</label>
             <textarea ref="justificationInput" :id="`${prefix}-reason`" :class="{'justification-input': autoFitJustification}" :value="modelValue.readyToFeedJustification" placeholder='List reason(s) why ready-to-feed is needed. Otherwise, type "Only form available"'  class="form-textarea rtf-reason" rows="1" required @input="update('readyToFeedJustification', ($event.target as HTMLTextAreaElement).value)" />
         </div>
     </div>

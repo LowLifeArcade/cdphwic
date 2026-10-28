@@ -612,13 +612,13 @@ function handlePhotos(event: Event) {
             <div v-if="editingSection === 'overview'" class="form-grid compact-form-grid prescription-editor">
                 <fieldset v-for="(formula,index) in editableFormulas" :key="index" class="detail-field-wide submitted-formula-card formula-edit-card">
                     <legend v-if="editableFormulas.length > 1">Formula {{index + 1}}</legend>
-                    <AdditionalFormulaFields v-model="editableFormulas[index]" :index="index + 1" auto-fit-justification />
+                    <AdditionalFormulaFields v-model="editableFormulas[index]" :index="index + 1" auto-fit-justification hide-required-markers />
                     <button v-if="index > 0" class="text-button" type="button" @click="editableFormulas.splice(index,1)">Remove Formula {{index + 1}}</button>
                 </fieldset>
                 <div v-if="editableFormulas.length < 2" class="detail-field-wide add-formula-action"><button class="button button-ghost add-formula-button" type="button" @click="editableFormulas.push(blankFormula())">Add another formula</button></div>
-                <label class="field-label duration-field">Duration (in months) *<input required v-model.number="draft.durationMonths" class="form-input" type="number" min="1" max="6" /></label>
+                <label class="field-label duration-field">Duration (in months)<input required v-model.number="draft.durationMonths" class="form-input" type="number" min="1" max="6" /></label>
                 <fieldset class="detail-field-wide diagnosis-editor">
-                    <legend>Qualifying Diagnosis(es) *</legend>
+                    <legend>Qualifying Diagnosis(es)</legend>
                     <div v-for="(_, index) in editableDiagnoses" :key="index" class="diagnosis-edit-row">
                         <RequestDiagnosisEditor v-model="editableDiagnoses[index]" :index="index" />
                         <button type="button" class="text-button" :aria-label="`Remove diagnosis ${index + 1}`" @click="editableDiagnoses.splice(index, 1)">Remove</button>
@@ -650,7 +650,7 @@ function handlePhotos(event: Event) {
                 <h3>WIC Food Restrictions</h3>
                 <button v-if="canStaffEdit && editingSection !== 'food'" class="text-button" type="button" @click="startEditing('food')">Edit</button>
             </div>
-            <div v-if="editingSection === 'food'" class="form-grid compact-form-grid">
+            <div v-if="editingSection === 'food'" class="form-grid compact-form-grid food-restrictions-editor">
                 <label class="field-label detail-field-wide">Health Care Provider Selection
                     <select v-model="draft.wicFoodRestrictions" class="form-input">
                         <option value="under-6-months">Participant is under 6 months</option>
@@ -709,8 +709,8 @@ function handlePhotos(event: Event) {
             </div>
         </section>
         <hr class="cdph-section-divider" />
-        <section class="cdph-workspace" aria-label="CDPH/WIC Use Only">
-            <header class="cdph-workspace-header"><h3>CDPH/WIC Use Only</h3></header>
+        <section class="cdph-workspace" aria-label="State-Issued Formula Authorization">
+            <header class="cdph-workspace-header"><h3>State-Issued Formula Authorization</h3></header>
         <section
             v-if="canStaffEdit"
             class="detail-section cdph-review-section"

@@ -67,7 +67,7 @@ describe('request operations UI', () => {
         expect(drawer).toContain('v-else class="decision-buttons"');
         expect(drawer).toContain('Next Steps');
         expect(drawer).toContain('class="cdph-fields" :disabled="draft.status === \'denied\'"');
-        expect(drawer.indexOf('CDPH/WIC Use Only')).toBeLessThan(drawer.indexOf('<h3>Shipping Info</h3>'));
+        expect(drawer.indexOf('State-Issued Formula Authorization')).toBeLessThan(drawer.indexOf('<h3>Shipping Info</h3>'));
     });
 
     it('shows product metadata and combined approval quantities in CDPH processing', () => {

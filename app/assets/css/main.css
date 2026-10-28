@@ -2477,3 +2477,15 @@ button:focus-visible, .button:focus-visible { outline: 2px solid #0077cf; outlin
 .requests-brand-page .confirmation-backdrop { background: rgb(0 0 0 / 60%); }
 .requests-brand-page :is(.form-input, .form-textarea):focus { box-shadow: 0 0 0 3px rgb(144 42 146 / 14%); }
 :root[data-theme='light'] .requests-brand-page .cdph-workspace { background: var(--surface-raised); }
+
+.detail-drawer :is(.food-restrictions-editor, .provider-editor) :is(.field-label, legend) {
+    font-size: var(--form-label-size);
+}
+.detail-drawer :is(.food-restrictions-editor, .provider-editor) :is(.form-input, .form-textarea) {
+    font-size: 1rem;
+}
+
+.provider-editor .clinic-editor > legend {
+    padding-inline: 0;
+    margin-inline: 0;
+}

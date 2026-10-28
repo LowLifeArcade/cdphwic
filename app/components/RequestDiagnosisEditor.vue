@@ -40,7 +40,7 @@ function enter() {
                 :class="{ 'suggestion-active': itemIndex === matchIndex }"
                 @pointerdown.prevent @click="selectName(item.name)">{{ item.name }}</button>
         </div>
-        <label v-if="choice?.detail || details" class="field-label diagnosis-details-field" :for="`edit-diagnosis-details-${index}`">Details for {{ choice?.name || name }}{{ choice?.detail ? ' *' : '' }}
+        <label v-if="choice?.detail || details" class="field-label diagnosis-details-field" :for="`edit-diagnosis-details-${index}`">Details for {{ choice?.name || name }}
             <input :id="`edit-diagnosis-details-${index}`" ref="detailsInput" :value="details" :required="choice?.detail" class="form-input"
                 @input="emit('update:modelValue', `${choice?.name || name}: ${($event.target as HTMLInputElement).value}`)" />
         </label>
