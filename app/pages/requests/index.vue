@@ -1,4 +1,5 @@
 <script setup lang="ts">
+useHead({bodyAttrs:{class:'requests-brand-page'}});
 import type { ProductRecord } from '~/../shared/domain';
 const route = useRoute();
 const identity = useState<'admin' | 'agency' | 'internal'>('demo-identity', () => 'admin');

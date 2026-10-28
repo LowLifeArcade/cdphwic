@@ -481,7 +481,7 @@ select.filter-select,
 select.form-input {
     appearance: none;
     padding-right: 36px;
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 14 14' fill='none'%3E%3Cpath d='m3.5 5.25 3.5 3.5 3.5-3.5' stroke='%238e9ab0' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 14 14' fill='none'%3E%3Cpath d='m3.5 5.25 3.5 3.5 3.5-3.5' stroke='%236a7073' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
     background-repeat: no-repeat;
     background-position: right 12px center;
     background-size: 14px;
@@ -2286,8 +2286,8 @@ label {
 }
 .detail-drawer .submitted-formula-card > legend {
     padding: 0 0.5rem;
-    color: var(--text);
-    font-size: calc(1rem + 2px);
+    color: var(--muted);
+    font-size: 1rem;
     font-weight: 600;
 }
 
@@ -2394,3 +2394,86 @@ button:focus-visible, .button:focus-visible { outline: 2px solid #0077cf; outlin
 
 :root { --button-tag-text: #eaab33; --button-tag-bg: color-mix(in srgb, #eaab33 12%, #151e28); }
 :root[data-theme='light'] { --button-tag-text: #151e28; --button-tag-bg: color-mix(in srgb, #eaab33 20%, #fff); }
+
+/* Scope the supplied brand palette to the Requests page and its drawer. */
+.requests-brand-page {
+    --canvas: #151e28;
+    --sidebar: color-mix(in srgb, #000 15%, #151e28);
+    --surface: #151e28;
+    --surface-raised: color-mix(in srgb, #fff 5%, #151e28);
+    --surface-hover: color-mix(in srgb, #fff 9%, #151e28);
+    --line: color-mix(in srgb, #6a7073 55%, #151e28);
+    --border: var(--line);
+    --text: #fff;
+    --muted: color-mix(in srgb, #6a7073 60%, #fff);
+    --primary-text: var(--text);
+    --secondary-text: var(--muted);
+    --purple: #df76b8;
+    --purple-light: #df76b8;
+    --purple-deep: #421263;
+    --nav-active: color-mix(in srgb, #902a92 22%, #151e28);
+    --nav-text: #df76b8;
+    --blue-accent: #0077cf;
+    --red: #e2742f;
+    --green: #a9d3ca;
+    --yellow: #eaab33;
+    --panel-bg: var(--surface);
+    --control-bg: var(--surface);
+    --input-bg: var(--surface);
+    --topbar-bg: color-mix(in srgb, #151e28 95%, transparent);
+    --neutral-bg: var(--surface-raised);
+    --accent-text: #df76b8;
+    --accent-bg: color-mix(in srgb, #902a92 22%, #151e28);
+    --accent-border: #902a92;
+    --danger-text: #e2742f;
+    --danger-bg: color-mix(in srgb, #ae5018 18%, #151e28);
+    --danger-border: #ae5018;
+    --success-text: #a9d3ca;
+    --success-bg: color-mix(in srgb, #007888 25%, #151e28);
+    --success-border: #007888;
+    --warning-text: #eaab33;
+    --warning-bg: color-mix(in srgb, #eaab33 12%, #151e28);
+    --warning-border: #b56f2c;
+    --info-text: #a9d3ca;
+    --info-bg: color-mix(in srgb, #002595 28%, #151e28);
+    --info-border: #0077cf;
+    color: var(--text);
+    background: var(--canvas);
+}
+:root[data-theme='light'] .requests-brand-page {
+    --canvas: color-mix(in srgb, #6a7073 5%, #fff);
+    --sidebar: #fff;
+    --surface: #fff;
+    --surface-raised: color-mix(in srgb, #6a7073 3%, #fff);
+    --surface-hover: color-mix(in srgb, #6a7073 8%, #fff);
+    --line: color-mix(in srgb, #6a7073 30%, #fff);
+    --text: #151e28;
+    --muted: #6a7073;
+    --purple: #902a92;
+    --purple-light: #902a92;
+    --purple-deep: color-mix(in srgb, #421263 8%, #fff);
+    --nav-active: color-mix(in srgb, #902a92 8%, #fff);
+    --nav-text: #421263;
+    --red: #ae5018;
+    --green: #007888;
+    --yellow: #ae5018;
+    --topbar-bg: color-mix(in srgb, #fff 95%, transparent);
+    --accent-text: #902a92;
+    --accent-bg: color-mix(in srgb, #902a92 7%, #fff);
+    --danger-text: #ae5018;
+    --danger-bg: color-mix(in srgb, #ae5018 7%, #fff);
+    --success-text: #007888;
+    --success-bg: color-mix(in srgb, #007888 6%, #fff);
+    --warning-text: #151e28;
+    --warning-bg: color-mix(in srgb, #eaab33 14%, #fff);
+    --info-text: #002595;
+    --info-bg: color-mix(in srgb, #0077cf 8%, #fff);
+}
+.requests-brand-page :is(.brand-mark, .avatar) { background: #902a92; color: #fff; }
+.requests-brand-page .detail-drawer { box-shadow: -20px 0 60px rgb(0 0 0 / 24%); }
+.requests-brand-page .request-drawer-backdrop { background: rgb(0 0 0 / 42%); }
+.requests-brand-page .decision-selected-approved { border-color: #007888; }
+.requests-brand-page .decision-selected-denied { border-color: #ae5018; }
+.requests-brand-page .confirmation-backdrop { background: rgb(0 0 0 / 60%); }
+.requests-brand-page :is(.form-input, .form-textarea):focus { box-shadow: 0 0 0 3px rgb(144 42 146 / 14%); }
+:root[data-theme='light'] .requests-brand-page .cdph-workspace { background: var(--surface-raised); }

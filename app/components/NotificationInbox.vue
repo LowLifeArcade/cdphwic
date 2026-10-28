@@ -120,14 +120,14 @@ async function download(kind: string) {
     overflow: auto;
     background: var(--surface);
     color: var(--text, #253044);
-    border: 1px solid #aaa;
+    border: 1px solid var(--border, #6a7073);
     border-radius: 12px;
     padding: 20px;
     box-shadow: 0 8px 32px #0003;
 }
 .notice-panel article {
     padding: 16px 0;
-    border-top: 1px solid #aaa;
+    border-top: 1px solid var(--border, #6a7073);
 }
 .notice-panel p {
     font-size: 14px;
