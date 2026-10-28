@@ -106,3 +106,27 @@ export function submissionDateOnly(value?: string): string {
     if (Number.isNaN(date.getTime())) return '';
     return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Los_Angeles', year: 'numeric', month: '2-digit', day: '2-digit' }).format(date);
 }
+
+export function participantAgeAtBenefitsStart(dob?: string, benefitsStart?: string): string {
+    const parse = (value?: string) => {
+        if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return undefined;
+        const date = new Date(`${value}T00:00:00Z`);
+        return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value ? date : undefined;
+    };
+    const birth = parse(dob);
+    const start = parse(benefitsStart);
+    if (!birth || !start || start < birth) return '—';
+    let months = (start.getUTCFullYear() - birth.getUTCFullYear()) * 12 + start.getUTCMonth() - birth.getUTCMonth();
+    const anniversary = (count: number) => {
+        const date = new Date(Date.UTC(birth.getUTCFullYear(), birth.getUTCMonth() + count, 1));
+        const lastDay = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + 1, 0)).getUTCDate();
+        date.setUTCDate(Math.min(birth.getUTCDate(), lastDay));
+        return date;
+    };
+    if (anniversary(months) > start) months--;
+    const years = Math.floor(months / 12);
+    const remainder = months % 12;
+    const days = Math.round((start.getTime() - anniversary(months).getTime()) / 86400000);
+    const parts = [[years, 'year'], [remainder, 'month'], [days, 'day']] as const;
+    return parts.filter(([count]) => count > 0).map(([count, unit]) => `${count} ${unit}${count === 1 ? '' : 's'}`).join(', ') || '0 days';
+}

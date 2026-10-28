@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import {requestFormulas,participantNames,insuranceDetails,requestedMonthLabels,foodRestrictionLabel,formulaFormLabel,formulaOverviewUpdates,providerAddressLines,submissionDateOnly} from '~/../shared/requestPresentation';
+import {requestFormulas,participantNames,insuranceDetails,requestedMonthLabels,foodRestrictionLabel,formulaFormLabel,formulaOverviewUpdates,providerAddressLines,submissionDateOnly,participantAgeAtBenefitsStart} from '~/../shared/requestPresentation';
 import { validateDiagnoses } from '~/../shared/diagnosisCatalog';
 import {canEditSubmission} from '~/../shared/requestEditing';
 import type { ProductRecord, RequestRecord, RequestStatus } from '~/../shared/domain';
@@ -552,14 +552,16 @@ function handlePhotos(event: Event) {
                 <label class="field-label">WIC Individual ID<input v-model="draft.wicIndividualId" class="form-input" /></label>
                 <label class="field-label">Date of Birth<input v-model="draft.participantDob" class="form-input" type="date" /></label>
                 <label class="field-label">Benefits Start Date<input v-model="draft.benefitsStartDate" class="form-input" type="date" /></label>
+                <label class="field-label">Age at Benefits Start Date<input class="form-input" :value="participantAgeAtBenefitsStart(draft.participantDob, draft.benefitsStartDate)" readonly /></label>
                 <label class="field-label">Health Insurance<select v-model="draft.medicalStatus" class="form-input"><option disabled value="">Select Health Insurance</option><option v-if="draft.medicalStatus==='pending'" value="pending">Pending</option><option value="yes">Medi-Cal</option><option value="no">Private Insurance</option></select></label>
-                <label v-if="draft.medicalStatus==='yes'" class="field-label">Medi-Cal Status<select v-model="draft.mediCalStatus" class="form-input"><option>Denied</option><option>Pending PA</option><option>Product Not Covered</option></select></label>
+                <label v-if="draft.medicalStatus==='yes'" class="field-label participant-insurance-status">Medi-Cal Status<select v-model="draft.mediCalStatus" class="form-input"><option>Denied</option><option>Pending PA</option><option>Product Not Covered</option></select></label>
             </div>
             <div v-else class="detail-grid">
                 <div><span>WIC Family ID</span><strong>{{ request.participantFamilyId ?? '—' }}</strong></div>
                 <div><span>WIC Individual ID</span><strong>{{ request.wicIndividualId ?? '—' }}</strong></div>
                 <div><span>Date of Birth</span><strong>{{ formatDisplayDate(request.participantDob) }}</strong></div>
                 <div><span>Benefits Start Date</span><strong>{{ formatDisplayDate(request.benefitsStartDate) }}</strong></div>
+                <div><span>Age at Benefits Start Date</span><strong>{{ participantAgeAtBenefitsStart(request.participantDob, request.benefitsStartDate) }}</strong></div>
                 <div><span>Health Insurance</span><strong>{{ insuranceDetails(request) }}</strong></div>
             </div>
             <div class="detail-grid requested-months-field">
@@ -603,7 +605,7 @@ function handlePhotos(event: Event) {
                 <fieldset class="detail-field-wide diagnosis-editor">
                     <legend>Qualifying Diagnosis(es)</legend>
                     <div v-for="(_, index) in editableDiagnoses" :key="index" class="diagnosis-edit-row">
-                        <label class="field-label">Diagnosis {{ index + 1 }}<input v-model="editableDiagnoses[index]" class="form-input" /></label>
+                        <RequestDiagnosisEditor v-model="editableDiagnoses[index]" :index="index" />
                         <button type="button" class="text-button" :aria-label="`Remove diagnosis ${index + 1}`" @click="editableDiagnoses.splice(index, 1)">Remove</button>
                     </div>
                     <button type="button" class="text-button" @click="editableDiagnoses.push('')">Add diagnosis</button>

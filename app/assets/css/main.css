@@ -2177,3 +2177,5 @@ label {
 
 
 .clinic-editor { display: grid; gap: 12px; }
+
+.participant-insurance-status { grid-column: 2; }
