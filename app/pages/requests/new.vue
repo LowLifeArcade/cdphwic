@@ -103,7 +103,7 @@ const products = computed(() => productData.value?.products ?? []);
 const {data:agencyOptions}=await useFetch('/api/agencies');
 const {data:shippingProfile}=await useFetch('/api/profile',{headers:computed(()=>({'x-demo-user':identity.value}))});
 const requestAgencyId=ref(shippingProfile.value?.user?.agencyId??10);
-const shipping=ref<RequestShipping>({...blankClinicAddress(),attention:''});
+const shipping=ref<RequestShipping>({...blankClinicAddress(),email:'',phone:''});
 const selectedAgencyMemberId=ref<number|''>(shippingProfile.value?.user?.agencyMemberId??agencyOptions.value?.members.find(m=>m.agencyId===requestAgencyId.value)?.id??'');
 const agencyMembers=computed(()=>agencyOptions.value?.members.filter(m=>m.agencyId===requestAgencyId.value)??[]);
 const requestAgencyMemberId=computed(()=>identity.value==='agency'?shippingProfile.value?.user?.agencyMemberId:agencyMembers.value.find(m=>m.id===selectedAgencyMemberId.value)?.id);
@@ -253,7 +253,7 @@ if(editingId.value){
  if(request.prescriptionAttachment)selectedPrescription.value=new File([],request.prescriptionAttachment.fileName);
 }
 
-watch(requestAgencyId,()=>{shipping.value={...blankClinicAddress(),attention:shipping.value.attention};selectedAgencyMemberId.value=agencyMembers.value[0]?.id??'';},{flush:'sync'});
+watch(requestAgencyId,()=>{shipping.value={...blankClinicAddress(),email:shipping.value.email,phone:shipping.value.phone};selectedAgencyMemberId.value=agencyMembers.value[0]?.id??'';},{flush:'sync'});
 watch(()=>shippingProfile.value?.user?.agencyId,agencyId=>{if(identity.value==='agency'&&agencyId)requestAgencyId.value=agencyId;});
 
 async function saveRequest() {

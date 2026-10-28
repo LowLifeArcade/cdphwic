@@ -121,7 +121,9 @@ export async function resolveShipping(
     const normalized = {
         ...normalizeClinic(address ?? {}),
         ...(input?.clinicId ? { clinicId: input.clinicId } : {}),
-        attention: typeof input?.attention === 'string' ? input.attention.trim() : '',
+        ...(typeof input?.attention === 'string' ? {attention: input.attention.trim()} : {}),
+        email: typeof input?.email === 'string' ? input.email.trim() : '',
+        phone: typeof input?.phone === 'string' ? input.phone.trim() : '',
     };
     const error = validateShipping(normalized);
     if (error) throw fail(400, error);

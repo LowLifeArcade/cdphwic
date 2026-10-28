@@ -18,7 +18,7 @@ watch(
     () => props.agencyId,
     () => {
         mode.value = '';
-        emit('update:modelValue', { ...blankClinicAddress(), attention: props.modelValue.attention });
+        emit('update:modelValue', { ...blankClinicAddress(), email: props.modelValue.email, phone: props.modelValue.phone });
     },
 );
 const selectedSnapshot = computed(
@@ -40,9 +40,9 @@ function choose(event: Event) {
                   city: clinic.city,
                   state: clinic.state,
                   postalCode: clinic.postalCode,
-                  attention: props.modelValue.attention,
+                  email: props.modelValue.email, phone: props.modelValue.phone,
               }
-            : { ...blankClinicAddress(), attention: props.modelValue.attention },
+            : { ...blankClinicAddress(), email: props.modelValue.email, phone: props.modelValue.phone },
     );
 }
 </script>
@@ -115,7 +115,7 @@ function choose(event: Event) {
             :model-value="modelValue"
             prefix="shipping"
             required
-            @update:model-value="emit('update:modelValue', { ...$event, attention: modelValue.attention })"
+            @update:model-value="emit('update:modelValue', { ...$event, email: modelValue.email, phone: modelValue.phone })"
         />
         <p class="muted-copy">
             This address will be saved with this request. Add it to the agency address book separately to use it on
@@ -132,16 +132,14 @@ function choose(event: Event) {
             >{{ modelValue.addressLine2 }}</template
         ><br />{{ modelValue.city }}, {{ modelValue.state }} {{ modelValue.postalCode }}
     </address>
-    <div class="form-field shipping-attention">
-        <label for="shipping-attention">Attention</label
-        ><input
-            id="shipping-attention"
-            :value="modelValue.attention"
-            class="form-input"
-            required
-            maxlength="150"
-            placeholder="Local agency representative’s name"
-            @input="emit('update:modelValue', { ...modelValue, attention: ($event.target as HTMLInputElement).value })"
-        />
+    <div class="form-field">
+        <label for="shipping-email">E-Mail</label>
+        <input id="shipping-email" :value="modelValue.email" class="form-input" type="email" maxlength="254" autocomplete="email"
+            @input="emit('update:modelValue', { ...modelValue, email: ($event.target as HTMLInputElement).value })" />
+    </div>
+    <div class="form-field">
+        <label for="shipping-phone">Phone Number</label>
+        <input id="shipping-phone" :value="modelValue.phone" class="form-input" type="tel" maxlength="30" autocomplete="tel"
+            @input="emit('update:modelValue', { ...modelValue, phone: ($event.target as HTMLInputElement).value })" />
     </div>
 </template>

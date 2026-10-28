@@ -12,7 +12,9 @@ export interface ClinicRecord extends ClinicAddress {
 }
 export interface RequestShipping extends ClinicAddress {
     clinicId?: string;
-    attention: string;
+    attention?: string;
+    email?: string;
+    phone?: string;
 }
 export const blankClinicAddress = (): ClinicAddress => ({
     clinicName: '',
@@ -44,9 +46,9 @@ export function validateClinic(input?: Partial<ClinicAddress>): string {
 export function validateShipping(input?: Partial<RequestShipping>): string {
     const error = validateClinic(input);
     if (error) return error;
-    if (typeof input?.attention !== 'string' || !input.attention.trim())
-        return 'Enter Attention for the local agency representative.';
-    if (input.attention.length > 150) return 'Attention must be 150 characters or fewer.';
+    if (input?.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(input.email)) return 'Enter a valid Shipping E-Mail.';
+    if (input?.email && input.email.length > 254) return 'Shipping E-Mail must be 254 characters or fewer.';
+    if (input?.phone && !/^(?:1)?\d{10}$/.test(input.phone.replace(/\D/g, ''))) return 'Enter a valid Shipping Phone Number.';
     return '';
 }
 export function formatClinic(address: ClinicAddress) {

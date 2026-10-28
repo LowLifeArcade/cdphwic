@@ -2165,8 +2165,8 @@ label {
     .detail-drawer.document-visible { top: 42dvh; width: 100vw; height: 58dvh; }
 }
 
-.detail-drawer .diagnosis-list li { font-size: calc(0.875rem + 2px); }
-.detail-drawer .shipping-destination { font-size: calc(1rem + 2px); }
+.detail-drawer .diagnosis-list li { font-size: calc(0.78rem + 2px); }
+.detail-drawer .shipping-destination { font-size: calc(0.78rem + 2px); }
 
 .provider-date-signed { grid-column: 2; grid-row: 2; }
 .provider-clinic { grid-column: 1; grid-row: 2; }

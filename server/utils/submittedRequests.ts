@@ -41,6 +41,7 @@ function nextRecord(previous: RequestRecord, updates: Partial<RequestRecord>) {
         ...updates,
         id: previous.id,
         submissionId: previous.submissionId,
+        submissionDate: previous.submissionDate,
         agencyId: previous.agencyId,
         agencyMemberId: previous.agencyMemberId,
         revision: (previous.revision ?? 0) + 1,

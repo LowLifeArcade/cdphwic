@@ -11,9 +11,12 @@ const address = {
     state: 'CA',
     postalCode: '95482',
 };
-it('requires a complete address and Attention for submission', () => {
+it('requires a complete address without requiring Attention', () => {
     expect(validateShipping({ ...address, attention: 'Maria' })).toBe('');
-    expect(validateShipping({ ...address, attention: '' })).toContain('Attention');
+    expect(validateShipping({ ...address })).toBe('');
+    expect(validateShipping({ ...address, email: 'bad' })).toContain('E-Mail');
+    expect(validateShipping({ ...address, phone: '123' })).toContain('Phone');
+    expect(validateShipping({ ...address, email: 'clinic@example.com', phone: '(916) 555-0123' })).toBe('');
     expect(validateShipping({ ...address, attention: 'Maria', postalCode: 'bad' })).toContain('ZIP');
     expect(validateShipping(undefined)).toContain('Shipping');
 });
@@ -28,9 +31,13 @@ it('persists agency clinics and blocks another agency and CDPH/WIC writes', asyn
         ...address,
         clinicId: clinic.id,
         addressLine1: 'Forged address',
+        email: 'clinic@example.com',
+        phone: '(916) 555-0123',
         attention: 'Maria',
     });
     expect(resolved.addressLine1).toBe('123 Test St');
+    expect(resolved.email).toBe('clinic@example.com');
+    expect(resolved.phone).toBe('(916) 555-0123');
     await expect(
         resolveShipping(db, { ...agency, agencyId: 11 }, 11, { ...address, clinicId: clinic.id, attention: 'Maria' }),
     ).rejects.toThrow();

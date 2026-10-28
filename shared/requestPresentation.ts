@@ -98,3 +98,11 @@ export function providerAddressLines(value?: string): string[] {
         .map((line) => line.trim())
         .filter(Boolean);
 }
+
+export function submissionDateOnly(value?: string): string {
+    if (!value) return '';
+    if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return value;
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return '';
+    return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Los_Angeles', year: 'numeric', month: '2-digit', day: '2-digit' }).format(date);
+}

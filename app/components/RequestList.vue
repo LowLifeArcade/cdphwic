@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import {submissionDateOnly} from '~/../shared/requestPresentation';
 import {formatShippingAddress} from '~/../shared/shipping';
 import {canEditSubmission} from '~/../shared/requestEditing';
 import type { ProductForm, ProductRecord, RequestRecord } from '~/../shared/domain';
@@ -21,7 +22,7 @@ function formatDate(value?: string) {
     if (!value) {
         return '—';
     }
-    const [year, month, day] = value.split('-');
+    const [year, month, day] = submissionDateOnly(value).split('-');
     return year && month && day ? `${month}/${day}/${year}` : value;
 }
 

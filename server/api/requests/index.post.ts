@@ -80,6 +80,7 @@ export default defineEventHandler(async (event) => {
             agencyId: membership.agencyId,
             agencyMemberId: membership.agencyMemberId,
             status: 'unopened',
+            submissionDate: new Date().toISOString(),
         },
         1000000 + sequence,
     );

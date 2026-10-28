@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import {requestFormulas,participantNames,insuranceDetails,requestedMonthLabels,foodRestrictionLabel,formulaFormLabel,formulaOverviewUpdates,providerAddressLines} from '~/../shared/requestPresentation';
+import {requestFormulas,participantNames,insuranceDetails,requestedMonthLabels,foodRestrictionLabel,formulaFormLabel,formulaOverviewUpdates,providerAddressLines,submissionDateOnly} from '~/../shared/requestPresentation';
 import { validateDiagnoses } from '~/../shared/diagnosisCatalog';
 import {canEditSubmission} from '~/../shared/requestEditing';
 import type { ProductRecord, RequestRecord, RequestStatus } from '~/../shared/domain';
@@ -14,6 +14,7 @@ function formatSubmittedDate(value?: string) {
     if (!value) {
         return '—';
     }
+    value = submissionDateOnly(value);
     const match = /^(\d{4})-(\d{2})-(\d{2})(?:T.*)?$/.exec(value);
     return match ? `${match[2]}-${match[3]}-${match[1]}` : value;
 }
@@ -847,8 +848,8 @@ function handlePhotos(event: Event) {
             <h3>Shipping Info</h3>
             <div class="detail-grid shipping-contact-details">
                 <div><span>Contact</span><strong>{{rep?.name || '—'}}</strong></div>
-                <div><span>Phone Number</span><strong>{{rep?.phone?formatPhoneNumber(rep.phone):'—'}}</strong></div>
-                <div class="detail-field-wide"><span>Email</span><strong>{{rep?.email || '—'}}</strong></div>
+                <div><span>Phone Number</span><strong>{{(request.shipping?.phone || rep?.phone)?formatPhoneNumber(request.shipping?.phone || rep?.phone || ''):'—'}}</strong></div>
+                <div class="detail-field-wide"><span>Email</span><strong>{{request.shipping?.email || rep?.email || '—'}}</strong></div>
             </div>
             <div v-if="request.shipping" class="shipping-address-field"><span class="detail-field-heading">Shipping Address</span><address class="shipping-preview shipping-destination"><strong>{{request.shipping.clinicName}}</strong><br />{{request.shipping.addressLine1}}<template v-if="request.shipping.addressLine2"><br />{{request.shipping.addressLine2}}</template><br />{{request.shipping.city}}, {{request.shipping.state}} {{request.shipping.postalCode}}</address></div>
             <div v-if="canStaffEdit" class="form-grid compact-form-grid">
