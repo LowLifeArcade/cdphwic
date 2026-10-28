@@ -1,3 +1,6 @@
+import {validateRequestedMonths} from '../../shared/requestMonthSelection';
+import {validateFormulaSelection} from '../../shared/formulaEntries';
+import {shipmentUpdates,validateShipments} from '../../shared/requestShipments';
 import {resolveShipping} from './clinicStore';
 import { canEditSubmission, submissionFields } from '../../shared/requestEditing';
 import { validateRequestSubmission } from '../../shared/requestSubmission';
@@ -84,7 +87,34 @@ export async function updateSubmittedRequest(
     previous: RequestRecord,
     updates: Partial<RequestRecord>,
     requireUnopened = false,
+    sendEtaShipmentIndex?: number,
 ) {
+    if (updates.benefitMonthsRequested !== undefined) {
+        if (!Array.isArray(updates.benefitMonthsRequested)) throw Object.assign(new Error('Select up to 3 distinct Benefit Months Requested.'), {statusCode:400});
+        const monthError = validateRequestedMonths(updates.benefitMonthsRequested);
+        if (monthError) throw Object.assign(new Error(monthError), {statusCode:400,statusMessage:monthError});
+    }
+    if (updates.requestedFormulas !== undefined) {
+        if (!Array.isArray(updates.requestedFormulas) || !updates.requestedFormulas.length)
+            throw Object.assign(new Error('Add at least one formula.'), {statusCode:400});
+        const formulaError = validateFormulaSelection(updates.requestedFormulas.map(formula => ({name:formula.otherFormulaName || formula.productName,form:formula.productForm,flavor:formula.flavor})));
+        if (formulaError) throw Object.assign(new Error(formulaError), {statusCode:400,statusMessage:formulaError});
+    }
+    if (sendEtaShipmentIndex !== undefined) {
+        const rows = updates.shipments;
+        if (!Array.isArray(rows) || !Number.isSafeInteger(sendEtaShipmentIndex) || sendEtaShipmentIndex < 0 || sendEtaShipmentIndex >= rows.length)
+            throw Object.assign(new Error('Select a valid shipment.'), {statusCode:400});
+        const message = validateShipments([rows[sendEtaShipmentIndex]!], true);
+        if (message) throw Object.assign(new Error(message), {statusCode:400,statusMessage:message});
+        updates = {...updates, shipments:rows.map((row,index) => index === sendEtaShipmentIndex ? {...row,etaSentAt:new Date().toISOString()} : {...row})};
+        const allSent = updates.shipments!.every(row => row.etaSentAt);
+        updates.status = allSent ? 'shipped' : previous.status === 'shipped' ? 'in_progress' : previous.status;
+    }
+    if (updates.shipments !== undefined) {
+        const message = validateShipments(updates.shipments, (updates.status ?? previous.status) === 'shipped');
+        if (message) throw Object.assign(new Error(message), {statusCode:400,statusMessage:message});
+        updates = {...updates,...shipmentUpdates(updates.shipments)};
+    }
     return writeRecord(db, previous, nextRecord(previous, updates), requireUnopened);
 }
 export async function editSubmittedRequest(

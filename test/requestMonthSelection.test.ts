@@ -23,3 +23,13 @@ describe('requested benefit months', () => {
         expect(validateRequestedMonths(['2026-01', '2026-02'])).toBe('');
     });
 });
+
+it('rejects a fourth requested month when saving a request item', async () => {
+    const {surplusDb} = await import('./helpers/surplusDb');
+    const {ensureSubmittedRequest,updateSubmittedRequest} = await import('../server/utils/submittedRequests');
+    const {db} = surplusDb();
+    const previous = await ensureSubmittedRequest(db,{id:9030,submissionId:'month-limit-test',agencyId:10,agencyMemberId:100,participantName:'Example',productName:'Example',status:'opened'});
+    await expect(updateSubmittedRequest(db,previous,{benefitMonthsRequested:['2026-10','2026-11','2026-12','2027-01']})).rejects.toMatchObject({statusCode:400});
+    const saved = await updateSubmittedRequest(db,previous,{benefitMonthsRequested:['2026-11','2026-12','2027-01']});
+    expect(saved.benefitMonthsRequested).toEqual(['2026-11','2026-12','2027-01']);
+});

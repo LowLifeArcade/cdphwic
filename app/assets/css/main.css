@@ -1128,8 +1128,8 @@ label {
     align-items: center;
 }
 .requested-months-field .month-row {
-    grid-template-columns: minmax(0, 260px) 32px;
-    max-width: 320px;
+    grid-template-columns: 100px 28px;
+    max-width: 136px;
 }
 .requested-months-field {
     margin-top: 16px;
@@ -2197,3 +2197,67 @@ label {
 
 .requested-months-field .month-list { gap: 6px; }
 .requested-months-field .month-row .form-input { margin-bottom: 0; }
+
+.issuance-row-heading h4 { margin: 0; font-size: var(--form-label-size); font-weight: 400; }
+.shipment-list { display: grid; gap: 16px; margin-bottom: 12px; }
+.shipment-card { border: 1px solid var(--line); border-radius: 8px; padding: 12px; min-width: 0; }
+.shipment-card .panel-heading h4 { margin: 0; }
+.shipment-card .form-grid { align-items: start; }
+.shipment-card .form-input, .shipment-card .form-textarea { margin-bottom: 0; }
+.shipment-card .detail-grid strong { overflow-wrap: anywhere; }
+
+/* Keep staff review and shipping together without competing with the form. */
+.cdph-workspace {
+    --cdph-heading: #a9d3ca;
+    margin: 22px -4px 24px;
+    padding: 0 14px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: color-mix(in srgb, var(--surface) 94%, #007888 6%);
+}
+.cdph-workspace-header {
+    margin: 0 -14px;
+    padding: 16px 14px;
+    border-bottom: 1px solid #002595;
+    border-radius: 7px 7px 0 0;
+    background: #002595;
+}
+.cdph-workspace-header h3 {
+    margin: 0;
+    color: #fff;
+    font-size: 1rem;
+    font-weight: 600;
+    line-height: 1.4;
+}
+.cdph-workspace > .detail-section { border-color: var(--line); }
+.cdph-workspace > .detail-section:first-of-type { border-top: 0; }
+.cdph-workspace .detail-section > h3, .cdph-review-heading { color: var(--text); font-size: 1rem; font-weight: 600; }
+.cdph-review-heading { margin: 0; }
+.cdph-workspace .shipment-card { border-color: var(--line); background: var(--surface); box-shadow: none; }
+.cdph-workspace .shipping-destination { border: 0; border-radius: 0; padding: 0; background: transparent; }
+:root[data-theme='light'] .cdph-workspace {
+    background: #f6f8fa;
+}
+
+.cdph-section-divider { border: 0; border-top: 1px solid var(--muted); opacity: 0.4; margin: 28px 0; }
+.cdph-section-divider + .cdph-workspace { margin-top: 0; }
+.cdph-workspace + .cdph-section-divider { margin-top: 0; }
+
+.formula-edit-card { margin: 0; min-width: 0; }
+.formula-edit-card legend { color: var(--text); font-size: var(--form-label-size); font-weight: 600; }
+.formula-edit-card .formula-entry-grid { align-items: start; }
+
+/* Use one field-title size throughout request details, in view and edit modes. */
+.detail-drawer :is(
+    .detail-grid > div > span,
+    .detail-field-heading,
+    .field-label,
+    .form-field > label,
+    .diagnosis-editor > legend,
+    .clinic-editor > legend,
+    .receipt-status > span,
+    .decision-label,
+    .issuance-row-heading h4
+) {
+    font-size: var(--form-label-size);
+}

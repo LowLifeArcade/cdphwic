@@ -1,5 +1,9 @@
 <script setup lang="ts">
-import {requestFormulas,participantNames,insuranceDetails,requestedMonthLabels,foodRestrictionLabel,formulaFormLabel,formulaOverviewUpdates,providerAddressLines,submissionDateOnly,participantAgeAtBenefitsStart} from '~/../shared/requestPresentation';
+import {validateRequestedMonths} from '~/../shared/requestMonthSelection';
+import {editableRequestFormulas,requestFormulaUpdates} from '~/../shared/requestFormulaEditing';
+import {blankFormula,formulaEntryName,validateFormulaEntry,validateFormulaSelection,type FormulaEntry} from '~/../shared/formulaEntries';
+import {blankShipment,requestShipments,shipmentUpdates,validateShipments,type RequestShipment} from '~/../shared/requestShipments';
+import {requestFormulas,participantNames,insuranceDetails,requestedMonthLabels,foodRestrictionLabel,formulaFormLabel,providerAddressLines,submissionDateOnly,participantAgeAtBenefitsStart} from '~/../shared/requestPresentation';
 import { validateDiagnoses } from '~/../shared/diagnosisCatalog';
 import {canEditSubmission} from '~/../shared/requestEditing';
 import type { ProductRecord, RequestRecord, RequestStatus } from '~/../shared/domain';
@@ -39,16 +43,7 @@ const photoNames = ref<string[]>([]);
 const surplusRemovalIndex = ref<number | null>(null);
 const editingSection = ref<'participant' | 'overview' | 'prescription' | 'food' | null>(null);
 const editableDiagnoses = ref<string[]>([]);
-const justificationInput = ref<HTMLTextAreaElement>();
-function fitJustification() {
-    const input = justificationInput.value;
-    if (!input) return;
-    input.style.height = 'auto';
-    const borders = input.offsetHeight - input.clientHeight;
-    input.style.height = `${input.scrollHeight + borders}px`;
-}
-watch([justificationInput, () => draft.genericFields?.readyToFeedJustification], () => nextTick(fitJustification), {flush:'post'});
-const trackingCarrierFallback = ref<'fedex' | 'dhl' | 'ups'>('fedex');
+const editableFormulas = ref<FormulaEntry[]>([]);
 const agencyAlertSaving = ref(false);
 const agencyAlertMessage = ref('');
 const agencySaveStatus = ref<'idle' | 'saving' | 'saved' | 'failed'>('idle');
@@ -58,28 +53,12 @@ const reportingSurplus = ref(false);
 const originalConfirmation = ref<{ receivedStatus?: RequestRecord['receivedStatus']; status?: RequestRecord['status'] } | null>(null);
 const previousDecision = ref<Partial<Pick<RequestRecord, 'status' | 'approved' | 'staffNotes'>> | null>(null);
 const pendingDecision = ref<'denied' | null>(null);
+const sendingEtaIndex = ref<number | null>(null);
 const shippingSaveStatus = ref<'idle' | 'saving' | 'saved' | 'failed'>('idle');
 const canStaffEdit = computed(() => identity.value === 'admin' || identity.value === 'internal');
 const canEditOriginal= computed(()=>!!props.request&&canEditSubmission(props.request));
 const canRepEdit = computed(() => identity.value === 'admin' || identity.value === 'agency');
 const selectedProduct = computed(() => props.products?.find((product) => product.id === props.request?.productId));
-const trackingCarrier = computed<'fedex' | 'dhl' | 'ups'>({
-    get: () => draft.trackingNumbers?.[0]?.carrier ?? trackingCarrierFallback.value,
-    set: (carrier) => {
-        trackingCarrierFallback.value = carrier;
-        draft.trackingNumbers = (draft.trackingNumbers ?? []).map((tracking) => ({ ...tracking, carrier }));
-    },
-});
-const trackingNumbersText = computed({
-    get: () => draft.trackingNumbers?.map((tracking) => tracking.number).join('\n') ?? '',
-    set: (value: string) => {
-        draft.trackingNumbers = value
-            .split(/\r?\n/)
-            .map((number) => number.trim())
-            .filter(Boolean)
-            .map((number) => ({ number, carrier: trackingCarrier.value }));
-    },
-});
 const receiptStatusLabel = computed(() => {
     if (draft.receivedStatus === 'received') return 'Confirmed receipt';
     if (draft.receivedStatus === 'damaged') return 'Shipment issue reported';
@@ -93,6 +72,7 @@ function copyRequest(request: RequestRecord): Partial<RequestRecord> {
     return {
         ...request,
         genericFields:{...request.genericFields},
+        shipments:requestShipments(request),
         requestedFormulas: request.requestedFormulas?.map(formula=>({...formula})),
         participantFirstName: participantNames(request).first,
         participantLastName: participantNames(request).last,
@@ -143,7 +123,6 @@ watch(
         Object.keys(draft).forEach((key) => delete draft[key as keyof typeof draft]);
         if (request) {
             Object.assign(draft, copyRequest(request));
-            trackingCarrierFallback.value = request.trackingNumbers?.[0]?.carrier ?? 'fedex';
         }
         photoNames.value = request?.receivedPhotos ? [...request.receivedPhotos] : [];
         error.value = '';
@@ -161,7 +140,7 @@ watch(
     { immediate: true },
 );
 
-async function save(updates: Partial<RequestRecord> = draft) {
+async function save(updates: Partial<RequestRecord> & {sendEtaShipmentIndex?:number} = draft) {
     if (!props.request) {
         return;
     }
@@ -191,14 +170,6 @@ async function denyRequest() {
     await save({ status: 'denied', staffNotes: draft.staffNotes });
 }
 
-function addTrackingNumber() {
-    draft.trackingNumbers = [...(draft.trackingNumbers ?? []), { number: '', carrier: 'fedex' }];
-}
-
-function removeTrackingNumber(index: number) {
-    draft.trackingNumbers?.splice(index, 1);
-}
-
 function addBenefitMonth() {
     const issuances = draft.benefitIssuances ?? [];
     const month = getNextBenefitMonth(issuances) || benefitMonths.value[0]?.value || '';
@@ -214,6 +185,7 @@ function removeBenefitMonth(index: number) {
 
 function addRequestedMonth() {
     const selected = normalizeRequestedMonths(draft.benefitMonthsRequested);
+    if (selected.length >= 3) return;
     const month = benefitMonths.value.find((option) => !selected.includes(option.value))?.value;
     if (month) draft.benefitMonthsRequested = [...selected, month].sort();
 }
@@ -223,7 +195,10 @@ function removeRequestedMonth(index: number) {
 }
 
 function startEditing(section: 'participant' | 'overview' | 'prescription' | 'food') {
-    if (section === 'overview') editableDiagnoses.value = (draft.diagnosis ?? '').split(/[\n;]/).map(value => value.trim()).filter(Boolean);
+    if (section === 'overview') {
+        editableDiagnoses.value = (draft.diagnosis ?? '').split(/[\n;]/).map(value => value.trim()).filter(Boolean);
+        editableFormulas.value = editableRequestFormulas(draft);
+    }
     if (section === 'prescription') {
         draft.doctorOfficePhone = formatPhoneNumber(draft.doctorOfficePhone ?? '');
         draft.doctorOfficeAddress = providerAddressLines(draft.doctorOfficeAddress).filter(line => line !== '—').join('\n');
@@ -241,6 +216,9 @@ function cancelEditing() {
 function saveFormSection() {
     const updates: Partial<RequestRecord> = {};
     if (editingSection.value === 'participant') {
+        const monthError = validateRequestedMonths(draft.benefitMonthsRequested);
+        if (monthError) {error.value = monthError; return;}
+
         Object.assign(updates, {
             participantFamilyId: draft.participantFamilyId,
             benefitMonthsRequested: normalizeRequestedMonths(draft.benefitMonthsRequested),
@@ -254,7 +232,14 @@ function saveFormSection() {
         const diagnoses = editableDiagnoses.value.map(value => value.trim()).filter(Boolean).join('\n');
         const diagnosisError = validateDiagnoses(diagnoses);
         if (diagnosisError) { error.value = diagnosisError; return; }
-        Object.assign(updates, formulaOverviewUpdates({...draft, diagnosis: diagnoses}));
+        const duplicateError = validateFormulaSelection(editableFormulas.value.map(entry => ({name:formulaEntryName(entry),form:entry.productForm,flavor:entry.formulaFlavor})));
+        const formulaError = editableFormulas.value.map(validateFormulaEntry).find(Boolean);
+        if (duplicateError || formulaError || !editableFormulas.value.length) { error.value = duplicateError || formulaError || 'Add a formula.'; return; }
+        if (!Number.isInteger(Number(draft.durationMonths)) || Number(draft.durationMonths) < 1 || Number(draft.durationMonths) > 6) {error.value = 'Enter Duration between 1 and 6 months.'; return;}
+        Object.assign(updates, requestFormulaUpdates({...draft, diagnosis: diagnoses},editableFormulas.value));
+        const first = editableFormulas.value[0]!;
+        if (formulaEntryName(first) !== props.request?.productName || first.productForm !== props.request?.productForm)
+            updates.productId = props.products?.find(product => product.name.toLowerCase() === formulaEntryName(first).toLowerCase() && product.form === first.productForm)?.id ?? -1;
     } else if (editingSection.value === 'food') {
         if (!draft.wicFoodRestrictions) { error.value = 'Select WIC Food Restrictions.'; return; }
         if (draft.wicFoodRestrictions === 'not-indicated' && (!draft.wicStaffFoodRestrictions || !draft.wicNutritionStaffName?.trim() || (draft.wicStaffFoodRestrictions === 'restricted' && !draft.wicNutritionStaffNotes?.trim()))) {
@@ -326,9 +311,6 @@ async function saveStaffFields() {
         expectedSurplusUnit: draft.expectedSurplusUnit ?? 'units',
         agencyUnitsOnHand: Number(draft.agencyUnitsOnHand),
         agencyUnitsOnHandUnit: draft.agencyUnitsOnHandUnit ?? 'units',
-        eta: draft.eta,
-        trackingNumbers: draft.trackingNumbers,
-        unitsIssued: Number(draft.unitsIssued),
         staffNotes: draft.staffNotes,
         nextSteps: draft.nextSteps,
     });
@@ -387,22 +369,23 @@ function undoStaffDecision() {
     save(restoredDecision);
 }
 
-async function shipRequest() {
+function setShipmentTracking(shipment: RequestShipment, value: string) {
+    shipment.trackingNumbers = value.split(/\r?\n/);
+}
+async function saveShipments(index?: number) {
     shippingSaveStatus.value = 'saving';
-    const hasEta = Boolean(String(draft.eta ?? '').trim());
-    const hasTrackingNumber = Boolean(draft.trackingNumbers?.some((tracking) => tracking.number.trim()));
-    if (!hasEta || !hasTrackingNumber) {
-        error.value = 'Enter an ETA and at least one tracking number before marking the request as shipped.';
+    sendingEtaIndex.value = index ?? null;
+    const rows = draft.shipments ?? [];
+    const validation = validateShipments(rows) || (index === undefined ? '' : validateShipments([rows[index]!],true));
+    if (validation) {
+        error.value = index === undefined ? validation : `Shipment ${index + 1}: ${validation.replace(/^Shipment 1: /,'')}`;
         shippingSaveStatus.value = 'failed';
+        sendingEtaIndex.value = null;
         return;
     }
-    await save({
-        status: 'shipped',
-        eta: draft.eta,
-        trackingNumbers: draft.trackingNumbers,
-        unitsIssued: Number(draft.unitsIssued),
-    });
+    await save({...shipmentUpdates(rows), ...(index === undefined ? {} : {sendEtaShipmentIndex:index})});
     shippingSaveStatus.value = error.value ? 'failed' : 'saved';
+    sendingEtaIndex.value = null;
 }
 
 async function confirmReceipt() {
@@ -584,11 +567,11 @@ function handlePhotos(event: Event) {
                     <div v-else class="month-list">
                         <div v-for="(month, index) in draft.benefitMonthsRequested" :key="`${month}-${index}`" class="month-row">
                             <select v-model="draft.benefitMonthsRequested[index]" class="form-input">
-                                <option v-for="option in benefitMonths" :key="option.value" :value="option.value">{{ requestedMonthLabels([option.value]) }}</option>
+                                <option v-for="option in benefitMonths" :key="option.value" :value="option.value" :disabled="option.value !== month && draft.benefitMonthsRequested?.includes(option.value)">{{ requestedMonthLabels([option.value]) }}</option>
                             </select>
                             <button class="icon-button" type="button" :aria-label="`Remove ${requestedMonthLabels([month])}`" @click="removeRequestedMonth(index)">×</button>
                         </div>
-                        <button class="text-button" type="button" @click="addRequestedMonth">+ Add requested month</button>
+                        <button v-if="(draft.benefitMonthsRequested?.length ?? 0) < 3" class="text-button" type="button" @click="addRequestedMonth">+ Add requested month</button>
                     </div>
                 </div>
             </div>
@@ -609,11 +592,12 @@ function handlePhotos(event: Event) {
                 <button v-if="canStaffEdit && editingSection !== 'overview'" class="text-button" type="button" @click="startEditing('overview')">Edit</button>
             </div>
             <div v-if="editingSection === 'overview'" class="form-grid compact-form-grid prescription-editor">
-                <label class="field-label">Formula Name<input v-model="draft.productName" class="form-input" /></label>
-                <label class="field-label">Form<select v-model="draft.productForm" class="form-input"><option value="powder">Powder</option><option value="concentrate">Liquid Concentrate</option><option value="ready-to-feed">Ready-to-Feed</option></select></label>
-                <label class="field-label">Amount (in ounces per day)<input v-model.number="draft.ouncesPrescribed" class="form-input" type="number" min="1" /></label>
-                <label class="field-label">Flavor<input v-model="draft.formulaFlavor" class="form-input" /></label>
-                <label v-if="draft.genericFields" class="field-label">Justification<textarea ref="justificationInput" v-model="draft.genericFields.readyToFeedJustification" rows="1" class="form-textarea justification-input" @input="fitJustification" /></label>
+                <fieldset v-for="(formula,index) in editableFormulas" :key="index" class="detail-field-wide submitted-formula-card formula-edit-card">
+                    <legend v-if="editableFormulas.length > 1">Formula {{index + 1}}</legend>
+                    <AdditionalFormulaFields v-model="editableFormulas[index]" :index="index + 1" auto-fit-justification />
+                    <button v-if="index > 0" class="text-button" type="button" @click="editableFormulas.splice(index,1)">Remove formula {{index + 1}}</button>
+                </fieldset>
+                <div v-if="editableFormulas.length < 2" class="detail-field-wide add-formula-action"><button class="button button-ghost add-formula-button" type="button" @click="editableFormulas.push(blankFormula())">Add another formula</button></div>
                 <label class="field-label duration-field">Duration (in months)<input v-model.number="draft.durationMonths" class="form-input" type="number" min="1" max="6" /></label>
                 <fieldset class="detail-field-wide diagnosis-editor">
                     <legend>Qualifying Diagnosis(es)</legend>
@@ -631,7 +615,7 @@ function handlePhotos(event: Event) {
                         <div><span>Formula Name</span><strong>{{formula.otherFormulaName || formula.productName || '—'}}</strong></div>
                         <div><span>Form</span><strong>{{formulaFormLabel(formula.productForm)}}</strong></div>
                         <div v-if="formula.flavor"><span>Flavor</span><strong>{{formula.flavor}}</strong></div>
-                        <div><span>Amount (in ounces per day)</span><strong>{{formula.ouncesPrescribed ?? '—'}}</strong></div>
+                        <div><span>Amount (in ounces/day) *</span><strong>{{formula.ouncesPrescribed ?? '—'}}</strong></div>
                         <div v-if="formula.readyToFeedJustification"><span>Justification</span><strong>{{formula.readyToFeedJustification}}</strong></div>
                     </div>
                 </section>
@@ -706,14 +690,14 @@ function handlePhotos(event: Event) {
                 <button class="button button-secondary" type="button" :disabled="saving" @click="saveFormSection">Save Section</button>
             </div>
         </section>
+        <hr class="cdph-section-divider" />
+        <section class="cdph-workspace" aria-label="CDPH/WIC Use Only">
+            <header class="cdph-workspace-header"><h3>CDPH/WIC Use Only</h3></header>
         <section
             v-if="canStaffEdit"
-            class="detail-section"
+            class="detail-section cdph-review-section"
         >
             <div class="panel-heading">
-                <div>
-                    <h3>CDPH/WIC Use Only</h3>
-                </div>
                 <button
                     class="button button-secondary"
                     type="button"
@@ -799,7 +783,7 @@ function handlePhotos(event: Event) {
             </div>
             <div class="benefit-allocation-editor">
                 <div class="issuance-row-heading">
-                    <span>Select Month and Quantity</span>
+                    <h4>Select Month and Quantity</h4>
                     <button class="text-button" type="button" @click="addBenefitMonth">+ Add issuance month</button>
                 </div>
                 <div v-for="(issuance, index) in draft.benefitIssuances" :key="`${issuance.month}-${index}`" class="month-row">
@@ -866,51 +850,40 @@ function handlePhotos(event: Event) {
                 <div><span>Phone Number</span><strong>{{(request.shipping?.phone || rep?.phone)?formatPhoneNumber(request.shipping?.phone || rep?.phone || ''):'—'}}</strong></div>
                 <div class="detail-field-wide"><span>Email</span><strong>{{request.shipping?.email || rep?.email || '—'}}</strong></div>
             </div>
-            <div v-if="request.shipping" class="shipping-address-field"><span class="detail-field-heading">Shipping Address</span><address class="shipping-preview shipping-destination"><strong>{{request.shipping.clinicName}}</strong><br />{{request.shipping.addressLine1}}<template v-if="request.shipping.addressLine2"><br />{{request.shipping.addressLine2}}</template><br />{{request.shipping.city}}, {{request.shipping.state}} {{request.shipping.postalCode}}</address></div>
-            <div v-if="canStaffEdit" class="form-grid compact-form-grid">
-                <label class="field-label">
-                    ETA
-                    <input v-model="draft.eta" class="form-input" type="date" />
-                </label>
-                <label class="field-label">
-                    Cases Shipped
-                    <input v-model.number="draft.unitsIssued" class="form-input" type="number" min="0" />
-                </label>
+            <div v-if="request.shipping" class="shipping-address-field"><span class="detail-field-heading">Shipping Address</span><address class="shipping-preview shipping-destination"><strong>{{request.shipping.clinicName}}</strong><template v-if="rep?.name"><br />Attn: {{rep.name}}</template><br />{{request.shipping.addressLine1}}<template v-if="request.shipping.addressLine2"><br />{{request.shipping.addressLine2}}</template><br />{{request.shipping.city}}, {{request.shipping.state}} {{request.shipping.postalCode}}</address></div>
+            <div class="shipment-list">
+                <section v-for="(shipment,index) in canStaffEdit ? draft.shipments : requestShipments(request)" :key="index" class="shipment-card">
+                    <div class="panel-heading"><h4>{{ (canStaffEdit ? draft.shipments?.length : requestShipments(request).length)! > 1 ? `Shipment ${index + 1}` : 'Shipment' }}</h4>
+                        <button v-if="canStaffEdit && index > 0" type="button" class="text-button" @click="draft.shipments?.splice(index,1)">Remove shipment {{index + 1}}</button>
+                    </div>
+                    <div v-if="canStaffEdit" class="form-grid compact-form-grid">
+                        <label class="field-label">ETA<input v-model="shipment.eta" class="form-input" type="date" :aria-label="`Shipment ${index + 1} ETA`" /></label>
+                        <label class="field-label">Cases Shipped<input v-model.number="shipment.casesShipped" class="form-input" type="number" min="0" step="1" :aria-label="`Shipment ${index + 1} Cases Shipped`" /></label>
+                        <label class="field-label detail-field-wide">Carrier<select v-model="shipment.carrier" class="form-input" :aria-label="`Shipment ${index + 1} Carrier`"><option value="fedex">FedEx</option><option value="dhl">DHL</option><option value="ups">UPS</option></select></label>
+                        <label class="field-label detail-field-wide">Tracking Numbers<textarea :value="shipment.trackingNumbers.join('\n')" class="form-textarea" placeholder="Enter one tracking number per line." :aria-label="`Shipment ${index + 1} Tracking Numbers`" @input="setShipmentTracking(shipment, ($event.target as HTMLTextAreaElement).value)" /></label>
+                    </div>
+                    <div v-else class="detail-grid">
+                        <div><span>ETA</span><strong>{{formatDisplayDate(shipment.eta)}}</strong></div>
+                        <div><span>Cases Shipped</span><strong>{{shipment.casesShipped}}</strong></div>
+                        <div><span>Carrier</span><strong>{{shipment.carrier.toUpperCase()}}</strong></div>
+                        <div class="detail-field-wide"><span>Tracking Numbers</span><strong>{{shipment.trackingNumbers.join(', ') || 'N/A'}}</strong></div>
+                    </div>
+                    <div v-if="canStaffEdit" class="shipping-save-action">
+                        <button class="button button-secondary" type="button" :disabled="saving" :aria-label="`Send ETA for shipment ${index + 1}`" @click="saveShipments(index)">{{ sendingEtaIndex === index ? 'Sending…' : 'Send ETA' }}</button>
+                        <span v-if="shipment.etaSentAt" class="save-feedback save-feedback-saved">ETA sent</span>
+                    </div>
+                </section>
             </div>
-            <div v-if="canStaffEdit" class="tracking-editor">
-                <div class="panel-heading">
-                    <h4>Tracking</h4>
-                </div>
-                <label class="field-label">
-                    Carrier
-                    <select v-model="trackingCarrier" class="form-input">
-                        <option value="fedex">FedEx</option>
-                        <option value="dhl">DHL</option>
-                        <option value="ups">UPS</option>
-                    </select>
-                </label>
-                <label class="field-label">
-                    Tracking Numbers
-                    <textarea v-model="trackingNumbersText" class="form-textarea" placeholder="Enter one tracking number per line." />
-                </label>
+            <template v-if="canStaffEdit">
+                <button class="text-button" type="button" @click="draft.shipments = [...(draft.shipments ?? []), blankShipment()]">+ Add another shipment</button>
                 <div class="shipping-save-action">
-                    <button class="button button-secondary" type="button" :disabled="saving" @click="shipRequest">
-                        {{ shippingSaveStatus === 'saving' ? 'SAVING…' : 'Shipped' }}
-                    </button>
-                    <span v-if="shippingSaveStatus !== 'idle'" class="save-feedback" :class="`save-feedback-${shippingSaveStatus}`" role="status">
-                        {{ shippingSaveStatus === 'saving' ? 'Saving…' : shippingSaveStatus === 'saved' ? 'Saved' : 'Save failed' }}
-                    </span>
+                    <button class="button button-ghost" type="button" :disabled="saving" @click="saveShipments()">Save Shipments</button>
+                    <span v-if="shippingSaveStatus !== 'idle'" class="save-feedback" :class="`save-feedback-${shippingSaveStatus}`" role="status">{{ shippingSaveStatus === 'saving' ? 'Saving…' : shippingSaveStatus === 'saved' ? 'Saved' : 'Save failed' }}</span>
                 </div>
-            </div>
-            <div v-else class="detail-grid">
-                <div>
-                    <span>ETA</span><strong>{{ formatDisplayDate(request.eta) === '—' ? 'Not set' : formatDisplayDate(request.eta) }}</strong>
-                </div>
-                <div>
-                    <span>Tracking</span><strong>{{ request.trackingNumbers?.length ? request.trackingNumbers.map((item) => `${item.number} (${item.carrier.toUpperCase()})`).join(', ') : 'N/A' }}</strong>
-                </div>
-            </div>
+            </template>
         </section>
+        </section>
+        <hr class="cdph-section-divider" />
 
         <section
             v-if="canRepEdit || canStaffEdit"

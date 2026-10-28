@@ -98,6 +98,13 @@ export interface RequestRecord {
     comments?: string;
     internalComments?: string;
     trackingNumber?: string;
+    shipments?: Array<{
+        eta: string;
+        casesShipped: number;
+        etaSentAt?: string;
+        carrier: 'fedex' | 'dhl' | 'ups';
+        trackingNumbers: string[];
+    }>;
     trackingNumbers?: Array<{ number: string; carrier: 'fedex' | 'dhl' | 'ups' }>;
     deliveryStatus?: string;
     specialOrder?: boolean;

@@ -6,7 +6,7 @@ import { canSeeAgency, isReviewer } from '../../../shared/surplus';
 import { submissionFields } from '../../../shared/requestEditing';
 export default defineEventHandler(async (event) => {
     const id = Number(getRouterParam(event, 'id'));
-    const updates = await readBody<Partial<RequestRecord>>(event);
+    const updates = await readBody<Partial<RequestRecord> & {sendEtaShipmentIndex?:number}>(event);
     const user = getSessionFromHeaders({ 'x-demo-user': getHeader(event, 'x-demo-user') });
     const env = event.context.cloudflare?.env as Partial<Env> | undefined;
     if (!env?.CDPHWIC) throw createError({ statusCode: 503, statusMessage: 'Request database unavailable.' });
@@ -23,8 +23,9 @@ export default defineEventHandler(async (event) => {
             statusCode: 409,
             statusMessage: 'Use Edit submission to update the complete form before Admin/FPU opens it.',
         });
-    const { prescriptionAttachment, openedAt, revision, ...safe } = updates;
-    const request = await updateSubmittedRequest(env.CDPHWIC, previous, safe, !isReviewer(user) && changesForm);
+    const { prescriptionAttachment, openedAt, revision, sendEtaShipmentIndex, ...safe } = updates;
+    if (sendEtaShipmentIndex !== undefined && !isReviewer(user)) throw createError({statusCode:403,statusMessage:'Only Admin or CDPH/WIC can send shipment ETAs.'});
+    const request = await updateSubmittedRequest(env.CDPHWIC, previous, safe, !isReviewer(user) && changesForm, sendEtaShipmentIndex);
     updateRequestRecord(id, request);
     return { request, demo: true };
 });

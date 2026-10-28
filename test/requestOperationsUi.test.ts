@@ -15,7 +15,8 @@ describe('request operations UI', () => {
     });
 
     it('supports staff editing, monthly allocations, and denial-only reasons', () => {
-        expect(drawer).toContain('v-model.number="draft.ouncesPrescribed"');
+        expect(drawer).toContain('v-model="editableFormulas[index]"');
+        expect(drawer).toContain('AdditionalFormulaFields');
         expect(drawer).toContain('v-model="issuance.month"');
         expect(drawer).toContain('Add issuance month');
         expect(drawer).toContain('v-if="draft.status === \'denied\'"');

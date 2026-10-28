@@ -882,7 +882,7 @@ async function submitRequest() {
                             </select>
                         </div>
                         <div class="form-field formula-amount-field">
-                            <label for="ounces">Amount (in ounces per day)</label>
+                            <label for="ounces">Amount (in ounces/day) *</label>
                             <input
                                 id="ounces"
                                 v-model="form.ouncesPrescribed"
