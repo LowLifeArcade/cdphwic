@@ -2145,3 +2145,10 @@ label {
 .shipping-new-address { display: grid; gap: 8px; }
 
 .shipping-destination { margin-bottom: 16px; }
+
+.submitted-formula-details { display: grid; gap: 16px; }
+.submitted-formula-card { padding: 14px; border: 1px solid var(--line); border-radius: 8px; }
+.submitted-formula-card h4 { margin: 0 0 12px; }
+.detail-field-heading { color: var(--muted); font-size: 0.875rem; }
+.detail-field-wide { grid-column: 1 / -1; }
+.preserve-lines { white-space: pre-wrap; }

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import {requestFormulas,participantNames,insuranceDetails,requestedMonthLabels,foodRestrictionLabel,formulaFormLabel,formulaOverviewUpdates} from '~/../shared/requestPresentation';
 import {canEditSubmission} from '~/../shared/requestEditing';
 import type { ProductRecord, RequestRecord, RequestStatus } from '~/../shared/domain';
 import { getNextBenefitMonth, validateBenefitIssuances, canGenerateAuthorizationForm, getApprovalStatus, canSelectShippedStatus } from '~/../shared/requestOperations';
@@ -77,6 +78,10 @@ function copyRequest(request: RequestRecord): Partial<RequestRecord> {
     const requestedMonths = normalizeRequestedMonths(request.benefitMonthsRequested);
     return {
         ...request,
+        genericFields:{...request.genericFields},
+        requestedFormulas: request.requestedFormulas?.map(formula=>({...formula})),
+        participantFirstName: participantNames(request).first,
+        participantLastName: participantNames(request).last,
         trackingNumbers: request.trackingNumbers?.map((tracking) => ({ ...tracking })),
         receivedPhotos: request.receivedPhotos ? [...request.receivedPhotos] : undefined,
         benefitIssuances:
@@ -218,20 +223,16 @@ function saveFormSection() {
     const updates: Partial<RequestRecord> = {};
     if (editingSection.value === 'participant') {
         Object.assign(updates, {
+            participantFamilyId: draft.participantFamilyId,
+            benefitMonthsRequested: normalizeRequestedMonths(draft.benefitMonthsRequested),
+            mediCalStatus: draft.medicalStatus==='yes'?draft.mediCalStatus:undefined,
             participantDob: draft.participantDob,
             benefitsStartDate: draft.benefitsStartDate,
             wicIndividualId: draft.wicIndividualId,
             medicalStatus: draft.medicalStatus,
         });
     } else if (editingSection.value === 'overview') {
-        Object.assign(updates, {
-            productName: draft.productName,
-            productForm: draft.productForm,
-            ouncesPrescribed: Number(draft.ouncesPrescribed),
-            durationMonths: Number(draft.durationMonths),
-            diagnosis: draft.diagnosis,
-            benefitMonthsRequested: normalizeRequestedMonths(draft.benefitMonthsRequested),
-        });
+        Object.assign(updates, formulaOverviewUpdates(draft));
     } else if (editingSection.value === 'prescription') {
         Object.assign(updates, {
             doctorPrintedName: draft.doctorPrintedName,
@@ -497,8 +498,8 @@ function handlePhotos(event: Event) {
         <div v-if="identity === 'agency' && canEditOriginal && request" class="form-actions"><NuxtLink class="button button-secondary" :to="{path:'/requests/new',query:{request:request.id}}">Edit submission</NuxtLink><small>Editable until Admin/FPU opens the submission.</small></div>
         <div class="drawer-status">
             <div class="request-status-tags">
-                <StatusBadge :status="draft.status ?? request.status" />
                 <span class="request-tag">{{ request.requestKind === 'extension' ? 'Extension' : 'New' }}</span>
+                <StatusBadge :status="draft.status ?? request.status" />
                 <span
                     v-if="request.specialOrder"
                     class="request-tag"
@@ -516,17 +517,34 @@ function handlePhotos(event: Event) {
                 <button v-if="canStaffEdit && editingSection !== 'participant'" class="text-button" type="button" @click="startEditing('participant')">Edit fields</button>
             </div>
             <div v-if="editingSection === 'participant'" class="form-grid compact-form-grid">
+                <label class="field-label">WIC Family ID<input v-model.number="draft.participantFamilyId" class="form-input" /></label>
                 <label class="field-label">WIC Individual ID<input v-model="draft.wicIndividualId" class="form-input" /></label>
                 <label class="field-label">Date of Birth<input v-model="draft.participantDob" class="form-input" type="date" /></label>
-                <label class="field-label">Medi-Cal<select v-model="draft.medicalStatus" class="form-input"><option value="pending">Pending</option><option value="yes">Yes</option><option value="no">No</option></select></label>
                 <label class="field-label">Benefits Start Date<input v-model="draft.benefitsStartDate" class="form-input" type="date" /></label>
+                <label class="field-label">Health Insurance<select v-model="draft.medicalStatus" class="form-input"><option disabled value="">Select Health Insurance</option><option v-if="draft.medicalStatus==='pending'" value="pending">Pending</option><option value="yes">Medi-Cal</option><option value="no">Private Insurance</option></select></label>
+                <label v-if="draft.medicalStatus==='yes'" class="field-label">Medi-Cal Status<select v-model="draft.mediCalStatus" class="form-input"><option>Denied</option><option>Pending PA</option><option>Product Not Covered</option></select></label>
             </div>
             <div v-else class="detail-grid">
                 <div><span>WIC Family ID</span><strong>{{ request.participantFamilyId ?? '—' }}</strong></div>
                 <div><span>WIC Individual ID</span><strong>{{ request.wicIndividualId ?? '—' }}</strong></div>
                 <div><span>Date of Birth</span><strong>{{ formatDisplayDate(request.participantDob) }}</strong></div>
-                <div><span>Medi-Cal</span><strong>{{ formatTitleCase(request.medicalStatus) }}</strong></div>
                 <div><span>Benefits Start Date</span><strong>{{ formatDisplayDate(request.benefitsStartDate) }}</strong></div>
+                <div><span>Health Insurance</span><strong>{{ insuranceDetails(request) }}</strong></div>
+            </div>
+            <div class="detail-grid requested-months-field">
+                <div>
+                    <span>Benefit Month(s) Requested</span>
+                    <strong v-if="editingSection !== 'participant'">{{ requestedMonthLabels(request.benefitMonthsRequested) }}</strong>
+                    <div v-else class="month-list">
+                        <div v-for="(month, index) in draft.benefitMonthsRequested" :key="`${month}-${index}`" class="month-row">
+                            <select v-model="draft.benefitMonthsRequested[index]" class="form-input">
+                                <option v-for="option in benefitMonths" :key="option.value" :value="option.value">{{ option.label }}</option>
+                            </select>
+                            <button class="icon-button" type="button" :aria-label="`Remove ${month}`" @click="removeRequestedMonth(index)">×</button>
+                        </div>
+                        <button class="text-button" type="button" @click="addRequestedMonth">+ Add requested month</button>
+                    </div>
+                </div>
             </div>
             <div v-if="editingSection === 'participant'" class="form-actions">
                 <button class="button button-ghost" type="button" @click="cancelEditing">Cancel</button>
@@ -545,33 +563,27 @@ function handlePhotos(event: Event) {
                 <button v-if="canStaffEdit && editingSection !== 'overview'" class="text-button" type="button" @click="startEditing('overview')">Edit fields</button>
             </div>
             <div v-if="editingSection === 'overview'" class="form-grid compact-form-grid">
-                <label class="field-label">Formula<input v-model="draft.productName" class="form-input" /></label>
-                <label class="field-label">Form<select v-model="draft.productForm" class="form-input"><option value="powder">Powder</option><option value="concentrate">Concentrate</option><option value="ready-to-feed">Ready to feed</option></select></label>
-                <label class="field-label">Amount Prescribed<input v-model.number="draft.ouncesPrescribed" class="form-input" type="number" min="1" /></label>
-                <label class="field-label">Duration (Months)<input v-model.number="draft.durationMonths" class="form-input" type="number" min="1" max="6" /></label>
-                <label class="field-label">Diagnosis<input v-model="draft.diagnosis" class="form-input" /></label>
+                <label class="field-label">Formula Name<input v-model="draft.productName" class="form-input" /></label>
+                <label class="field-label">Form<select v-model="draft.productForm" class="form-input"><option value="powder">Powder</option><option value="concentrate">Liquid Concentrate</option><option value="ready-to-feed">Ready-to-Feed</option></select></label>
+                <label class="field-label">Amount (in ounces per day)<input v-model.number="draft.ouncesPrescribed" class="form-input" type="number" min="1" /></label>
+                <label class="field-label">Flavor<input v-model="draft.formulaFlavor" class="form-input" /></label>
+                <label v-if="draft.genericFields" class="field-label">Justification<textarea v-model="draft.genericFields.readyToFeedJustification" class="form-textarea" /></label>
+                <label class="field-label">Duration (in months)<input v-model.number="draft.durationMonths" class="form-input" type="number" min="1" max="6" /></label>
+                <label class="field-label">Qualifying Diagnosis(es)<input v-model="draft.diagnosis" class="form-input" /></label>
             </div>
-            <div v-else class="detail-grid">
-                <div><span>Formula</span><strong>{{ request.productName }}</strong></div>
-                <div><span>Form</span><strong>{{ formatTitleCase(request.productForm) }}</strong></div>
-                <div><span>Amount Prescribed</span><strong>{{ request.ouncesPrescribed ?? '—' }} oz</strong></div>
-                <div><span>Duration</span><strong>{{ request.durationMonths ?? '—' }} months</strong></div>
-                <div><span>Diagnosis</span><strong>{{ request.diagnosis ?? '—' }}</strong></div>
-            </div>
-            <div class="detail-grid requested-months-field">
-                <div>
-                    <span>Benefit Month(s) Requested</span>
-                    <strong v-if="editingSection !== 'overview'">{{ (draft.benefitMonthsRequested ?? []).map((month) => benefitMonths.find((option) => option.value === month)?.label ?? month).join(', ') || '—' }}</strong>
-                    <div v-else class="month-list">
-                        <div v-for="(month, index) in draft.benefitMonthsRequested" :key="`${month}-${index}`" class="month-row">
-                            <select v-model="draft.benefitMonthsRequested[index]" class="form-input">
-                                <option v-for="option in benefitMonths" :key="option.value" :value="option.value">{{ option.label }}</option>
-                            </select>
-                            <button class="icon-button" type="button" :aria-label="`Remove ${month}`" @click="removeRequestedMonth(index)">×</button>
-                        </div>
-                        <button class="text-button" type="button" @click="addRequestedMonth">+ Add requested month</button>
+            <div v-else class="submitted-formula-details">
+                <section v-for="(formula,index) in requestFormulas(request)" :key="index" class="submitted-formula-card">
+                    <h4>Formula {{index+1}}</h4>
+                    <div class="detail-grid">
+                        <div><span>Formula Name</span><strong>{{formula.otherFormulaName || formula.productName || '—'}}</strong></div>
+                        <div><span>Form</span><strong>{{formulaFormLabel(formula.productForm)}}</strong></div>
+                        <div v-if="formula.flavor"><span>Flavor</span><strong>{{formula.flavor}}</strong></div>
+                        <div><span>Amount (in ounces per day)</span><strong>{{formula.ouncesPrescribed ?? '—'}}</strong></div>
+                        <div v-if="formula.readyToFeedJustification"><span>Justification</span><strong>{{formula.readyToFeedJustification}}</strong></div>
                     </div>
-                </div>
+                </section>
+                <div class="detail-grid"><div><span>Duration (in months)</span><strong>{{request.durationMonths ?? '—'}}</strong></div></div>
+                <div><span class="detail-field-heading">Qualifying Diagnosis(es)</span><ul v-if="request.diagnosis?.trim()" class="diagnosis-list"><li v-for="(diagnosis,index) in request.diagnosis.split(/[\n;]/).map(value=>value.trim()).filter(Boolean)" :key="index">{{diagnosis}}</li></ul><strong v-else>—</strong></div>
             </div>
             <div v-if="editingSection === 'overview'" class="form-actions">
                 <button class="button button-ghost" type="button" @click="cancelEditing">Cancel</button>
@@ -606,6 +618,18 @@ function handlePhotos(event: Event) {
                     :src="`/api/requests/${request.id}/prescription`"
                     alt="Submitted prescription form"
                 />
+            </div>
+        </section>
+        <section class="detail-section">
+            <h3>WIC Food Restrictions</h3>
+            <div class="detail-grid">
+                <div class="detail-field-wide"><span>Health Care Provider Selection</span><strong>{{foodRestrictionLabel(request.wicFoodRestrictions)}}</strong></div>
+                <div v-if="request.wicFoodRestrictionDetails"><span>Food Restriction Details</span><strong>{{request.wicFoodRestrictionDetails}}</strong></div>
+                <template v-if="request.wicFoodRestrictions==='not-indicated'">
+                    <div class="detail-field-wide"><span>WIC Nutrition Staff Selection</span><strong>{{request.wicStaffFoodRestrictions==='none'?'No food restrictions (all WIC foods allowed)':request.wicStaffFoodRestrictions==='restricted'?'Food restrictions (listed below)':'—'}}</strong></div>
+                    <div v-if="request.wicStaffFoodRestrictions==='restricted'" class="detail-field-wide"><span>WIC Nutrition Staff Notes</span><strong class="preserve-lines">{{request.wicNutritionStaffNotes || '—'}}</strong></div>
+                    <div><span>WIC Nutrition Staff Name</span><strong>{{request.wicNutritionStaffName || '—'}}</strong></div>
+                </template>
             </div>
         </section>
         <section class="detail-section">
