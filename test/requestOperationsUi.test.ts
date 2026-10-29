@@ -71,7 +71,7 @@ describe('request operations UI', () => {
     });
 
     it('shows product metadata and combined approval quantities in CDPH processing', () => {
-        expect(drawer).toContain('Formula Requested');
+        expect(drawer).toContain('<span>Formula Name</span>');
         expect(drawer).toContain('Product Number');
         expect(drawer).toContain('Units Per Case');
         expect(drawer).toContain('Yield');

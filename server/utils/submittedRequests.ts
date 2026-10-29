@@ -1,3 +1,4 @@
+import {validateBreastfeeding} from '../../shared/breastfeeding';
 import {validateRequestedMonths} from '../../shared/requestMonthSelection';
 import {validateFormulaSelection} from '../../shared/formulaEntries';
 import {shipmentUpdates,validateShipments} from '../../shared/requestShipments';
@@ -89,6 +90,12 @@ export async function updateSubmittedRequest(
     requireUnopened = false,
     sendEtaShipmentIndex?: number,
 ) {
+    if ('breastfeedingStatus' in updates || 'breastfeedingDiscontinuedDate' in updates) {
+        const combined = {...previous,...updates};
+        const breastfeedingError = validateBreastfeeding(combined);
+        if (breastfeedingError) throw Object.assign(new Error(breastfeedingError), {statusCode:400,statusMessage:breastfeedingError});
+        if (combined.breastfeedingStatus !== 'Discontinued BF') updates.breastfeedingDiscontinuedDate = '';
+    }
     if (updates.benefitMonthsRequested !== undefined) {
         if (!Array.isArray(updates.benefitMonthsRequested)) throw Object.assign(new Error('Select up to 3 distinct Benefit Months Requested.'), {statusCode:400});
         const monthError = validateRequestedMonths(updates.benefitMonthsRequested);

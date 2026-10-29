@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import {breastfeedingOptions,type BreastfeedingStatus,validateBreastfeeding} from '~/../shared/breastfeeding';
 import { hasMedicalDocumentation, medicalDocumentationRequiredMessage } from '~/../shared/medicalDocumentation';
 import {blankClinicAddress,validateShipping,type RequestShipping} from '~/../shared/shipping';
 import {canEditSubmission,restoreSubmittedForm} from '~/../shared/requestEditing';
@@ -115,6 +116,8 @@ const form = reactive({
     individualId: '',
     benefitsStartDate: '',
     requestKind: '' as '' | 'new' | 'extension',
+    breastfeedingStatus: '' as '' | BreastfeedingStatus,
+    breastfeedingDiscontinuedDate: '',
     formulaName: '',
     otherFormulaName: '',
     formulaFlavor: '',
@@ -488,6 +491,7 @@ async function submitRequest() {
     if (!submissionError.value && surplusEntries.value.some((entry) => !requestedFormulaNames.value.includes(entry.productName) || !Number.isFinite(Number(entry.units)) || Number(entry.units) <= 0)) {
         submissionError.value = 'Select a requested formula and enter a positive surplus quantity.';
     }
+    if (!submissionError.value) submissionError.value = validateBreastfeeding(form);
     if (!submissionError.value) submissionError.value = validateShipping(shipping.value);
     if (!submissionError.value) submissionError.value = validateRequestedMonths(selectedBenefitMonths());
     if (!submissionError.value && surplusEntries.value.some((entry) => !entry.productForm || !surplusForms(entry.productName).includes(entry.productForm))) submissionError.value = 'Select a valid Form for each surplus entry.';
@@ -515,6 +519,8 @@ async function submitRequest() {
                 benefitsStartDate: form.benefitsStartDate,
                 benefitMonthsRequested: selectedBenefitMonths(),
                 requestKind: form.requestKind,
+                breastfeedingStatus: form.breastfeedingStatus,
+                breastfeedingDiscontinuedDate: form.breastfeedingStatus === 'Discontinued BF' ? form.breastfeedingDiscontinuedDate : '',
                 productId: selectedProduct.value?.id ?? -1,
                 productName: productName.value,
                 requestedFormulas: serializedFormulas(),
@@ -606,7 +612,7 @@ async function submitRequest() {
             >
                 <template v-if="!selectedPrescription">
                     <strong>Drag and drop medical documentation here</strong>
-                    <span>Choose a PDF or photo.<br />PDFs populate matching form fields; photos require manual entry.</span>
+                    <span>Choose a PDF or image.<br />PDFs populate matching form fields; images require manual entry.</span>
                     <input
                         ref="fileInput"
                         type="file"
@@ -800,6 +806,17 @@ async function submitRequest() {
                             <option value="new">New</option>
                             <option value="extension">Extension</option>
                         </select>
+                    </div>
+                    <div class="form-field">
+                        <label for="breastfeeding">Breastfeeding</label>
+                        <select id="breastfeeding" v-model="form.breastfeedingStatus" class="form-input" @change="form.breastfeedingDiscontinuedDate = ''">
+                            <option value="">Select</option>
+                            <option v-for="option in breastfeedingOptions" :key="option" :value="option">{{option}}</option>
+                        </select>
+                    </div>
+                    <div v-if="form.breastfeedingStatus === 'Discontinued BF'" class="form-field">
+                        <label for="breastfeeding-discontinued-date">Date Discontinued</label>
+                        <input id="breastfeeding-discontinued-date" v-model="form.breastfeedingDiscontinuedDate" type="date" class="form-input" required />
                     </div>
                 </div>
                 <fieldset class="benefit-month-picker">

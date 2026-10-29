@@ -1,3 +1,4 @@
+import type {BreastfeedingStatus} from './breastfeeding';
 import type {RequestShipping} from './shipping';
 export type UserRole = 'admin' | 'member';
 export type MemberType = 'internal' | 'agency';
@@ -130,6 +131,8 @@ export interface RequestRecord {
     receivedPhotos?: string[];
     replacementRequested?: boolean;
     requestKind?: 'new' | 'extension';
+    breastfeedingStatus?: BreastfeedingStatus | '';
+    breastfeedingDiscontinuedDate?: string;
     dateGivenToReview?: string;
     dateOrdered?: string;
     company?: string;

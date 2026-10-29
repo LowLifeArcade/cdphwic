@@ -1,3 +1,4 @@
+import {validateBreastfeeding} from './breastfeeding';
 import {validateShipping} from './shipping';
 import { validateRequestedMonths } from './requestMonthSelection';
 import type { RequestRecord } from './domain';
@@ -7,6 +8,8 @@ import { availableFormulaForms, findFormula } from './formulaCatalog';
 import { normalizePhoneNumber } from './phone';
 
 export function validateRequestSubmission(request: Partial<RequestRecord>) {
+    const breastfeedingError = validateBreastfeeding(request);
+    if (breastfeedingError) return breastfeedingError;
     if (!request.participantFirstName?.trim() || !request.participantLastName?.trim() || !request.participantDob) return 'Complete the patient name and Date of Birth.';
     if (!request.doctorPrintedName?.trim() || !request.doctorOfficeName?.trim() || !request.doctorOfficeAddress?.trim()) return 'Complete Health Care Provider information.';
     if (!normalizePhoneNumber(request.doctorOfficePhone ?? '')) return 'Enter a valid Phone Number.';

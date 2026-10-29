@@ -4,10 +4,10 @@ import { describe, expect, it } from 'vitest';
 const requestForm = readFileSync(new URL('../app/pages/requests/new.vue', import.meta.url), 'utf8');
 
 describe('new request doctor fields', () => {
-    it('does not present uploads as AI review and explains photo manual entry', () => {
+    it('does not present uploads as AI review and explains image manual entry', () => {
         expect(requestForm).not.toContain('AI review');
         expect(requestForm).not.toContain('AI extraction');
-        expect(requestForm).toContain('Choose a PDF or photo.<br />PDFs populate matching form fields; photos require manual entry.');
+        expect(requestForm).toContain('Choose a PDF or image.<br />PDFs populate matching form fields; images require manual entry.');
         expect(requestForm).toContain('@change="handleFileSelection"');
         expect(requestForm).toContain(':aria-invalid="validationAttempted && !hasRequiredDocumentation"');
         expect(requestForm).toContain('@drop.prevent="handleDrop"');

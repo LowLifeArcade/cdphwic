@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import {breastfeedingOptions,validateBreastfeeding} from '~/../shared/breastfeeding';
 import {participantAgeAlerts} from '~/../shared/participantAgeAlerts';
 import {localDate} from '~/../shared/surplus';
 import {validateRequestedMonths} from '~/../shared/requestMonthSelection';
@@ -224,6 +225,9 @@ function saveFormSection() {
     const savedRequestId = props.request?.id;
     const updates: Partial<RequestRecord> = {};
     if (editingSection.value === 'participant') {
+        const breastfeedingError = validateBreastfeeding(draft);
+        if (breastfeedingError) {error.value = breastfeedingError; return;}
+
         const monthError = validateRequestedMonths(draft.benefitMonthsRequested);
         if (monthError) {error.value = monthError; return;}
 
@@ -234,6 +238,8 @@ function saveFormSection() {
             participantDob: draft.participantDob,
             benefitsStartDate: draft.benefitsStartDate,
             wicIndividualId: draft.wicIndividualId,
+            breastfeedingStatus: draft.breastfeedingStatus,
+            breastfeedingDiscontinuedDate: draft.breastfeedingStatus === 'Discontinued BF' ? draft.breastfeedingDiscontinuedDate : '',
             medicalStatus: draft.medicalStatus,
         });
     } else if (editingSection.value === 'overview') {
@@ -569,6 +575,8 @@ function handlePhotos(event: Event) {
                 <div class="field-label calculated-age-field"><span>Age at Benefits Start Date</span><strong>{{ participantAgeAtBenefitsStart(draft.participantDob, draft.benefitsStartDate) }}</strong></div>
                 <label class="field-label">Health Insurance<select v-model="draft.medicalStatus" class="form-input"><option disabled value="">Select Health Insurance</option><option v-if="draft.medicalStatus==='pending'" value="pending">Pending</option><option value="yes">Medi-Cal</option><option value="no">Private Insurance</option></select></label>
                 <label v-if="draft.medicalStatus==='yes'" class="field-label participant-insurance-status">Medi-Cal Status<select v-model="draft.mediCalStatus" class="form-input"><option>Denied</option><option>Pending PA</option><option>Product Not Covered</option></select></label>
+                <label class="field-label">Breastfeeding<select v-model="draft.breastfeedingStatus" class="form-input" @change="draft.breastfeedingDiscontinuedDate = ''"><option value="">Select</option><option v-for="option in breastfeedingOptions" :key="option" :value="option">{{option}}</option></select></label>
+                <label v-if="draft.breastfeedingStatus === 'Discontinued BF'" class="field-label">Date Discontinued<input v-model="draft.breastfeedingDiscontinuedDate" class="form-input" type="date" required /></label>
             </div>
             <div v-else class="detail-grid">
                 <div><span>WIC Family ID</span><strong>{{ request.participantFamilyId ?? '—' }}</strong></div>
@@ -577,6 +585,8 @@ function handlePhotos(event: Event) {
                 <div><span>Benefits Start Date</span><strong>{{ formatDisplayDate(request.benefitsStartDate) }}</strong></div>
                 <div><span>Age at Benefits Start Date</span><strong>{{ participantAgeAtBenefitsStart(request.participantDob, request.benefitsStartDate) }}</strong></div>
                 <div><span>Health Insurance</span><strong>{{ insuranceDetails(request) }}</strong></div>
+                <div><span>Breastfeeding</span><strong>{{request.breastfeedingStatus || '—'}}</strong></div>
+                <div v-if="request.breastfeedingStatus === 'Discontinued BF'"><span>Date Discontinued</span><strong>{{formatDisplayDate(request.breastfeedingDiscontinuedDate)}}</strong></div>
             </div>
             <div class="detail-grid requested-months-field">
                 <div>
@@ -760,7 +770,7 @@ function handlePhotos(event: Event) {
             </div>
             <fieldset class="cdph-fields" :disabled="draft.status === 'denied'">
             <div class="detail-grid cdph-product-details">
-                <div><span>Formula Requested</span><strong>{{ request.productName }}</strong></div>
+                <div><span>Formula Name</span><strong>{{ request.productName }}</strong></div>
                 <div><span>Product Number</span><strong>{{ selectedProduct?.productCode ?? '—' }}</strong></div>
                 <div><span>Units Per Case</span><strong>{{ selectedProduct?.unitsPerCase ?? '—' }}</strong></div>
                 <div><span>Yield</span><strong>{{ selectedProduct?.yield !== undefined ? `${selectedProduct.yield} fl oz` : '—' }}</strong></div>
