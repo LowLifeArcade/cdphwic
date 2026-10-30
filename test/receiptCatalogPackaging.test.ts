@@ -19,3 +19,11 @@ it('uses catalog packaging when resolving an issue and preserves the original CA
  const saved=await updateSubmittedShipmentIssue(db,request,{index:0,key:shipmentReceiptKey(row),expectedIssue:shipmentIssueKey(row),expectedReceipt:receiptQuantityKey(row),action:'resolve-received',catalogUnitsPerCase:6,receivedCases:1,damagedCases:0,damagedLooseUnits:0},100);
  expect(saved.shipments![0]).toMatchObject({unitsPerCase:6,receivedUnits:6});expect(saved.status).toBe('complete');
 });
+it('uses the selected second formula packaging for a multi-formula shipment',async()=>{
+ const {db}=surplusDb();
+ const formula={productName:'Enfamil Infant',productForm:'powder' as const};
+ const request=await ensureSubmittedRequest(db,{id:9980,submissionId:'second-formula-receipt',agencyId:10,agencyMemberId:100,participantName:'Example',productName:'EleCare',productId:302,requestedFormulas:[{productName:'EleCare',productForm:'powder',ouncesPrescribed:10},{...formula,ouncesPrescribed:10}],status:'shipped',shipments:[{eta:'2026-11-01',carrier:'ups',casesShipped:2,trackingNumbers:['SECOND'],shipmentFormula:formula}]});
+ const row=request.shipments![0]!;
+ const saved=await updateSubmittedShipmentReceipt(db,request,[{index:0,key:shipmentReceiptKey(row),expectedReceipt:receiptQuantityKey(row),catalogUnitsPerCase:12,receivedCases:1,receivedLooseUnits:2,damagedCases:0,damagedLooseUnits:0} as never],100);
+ expect(saved.shipments![0]).toMatchObject({unitsPerCase:12,receivedUnits:14});
+});

@@ -1,6 +1,8 @@
+import {requireShipmentFormula,shipmentFormulaKey} from '../../shared/shipmentFormulas';
+import {listProducts} from './productStore';
 import type {RequestRecord} from '../../shared/domain';
 import type {RequestShipment} from '../../shared/requestShipments';
-import {matchingTransferLot,type RequestAgencyTransfer} from '../../shared/requestTransfers';
+import {transferCatalogUnitsPerCase,matchingTransferLot,type RequestAgencyTransfer} from '../../shared/requestTransfers';
 import {localDate,type SurplusLot} from '../../shared/surplus';
 import {shipmentQuantities} from '../../shared/shipmentQuantities';
 import {SEED_AGENCIES} from '../data/seed';
@@ -13,10 +15,13 @@ function audit(db:D1Database,lotId:string,requestId:number,actor:number,kind:str
 }
 export async function reserveTransferInventory(db:D1Database,request:RequestRecord,row:RequestShipment,actor:number){
  const lot=await db.prepare('SELECT id,agency_id AS agencyId,formula_name AS formulaName,form,flavor,expiration_date AS expirationDate,on_hand AS onHand,reserved,expired_units AS expiredUnits,version FROM surplus_lots WHERE id=?').bind(row.sourceLotId??'').first<SurplusLot>();
- const quantity=row.casesShipped*(row.unitsPerCase??0)+(row.looseUnitsShipped??0);
+ if(lot && row.unitsPerCase===undefined)row={...row,unitsPerCase:transferCatalogUnitsPerCase(lot,listProducts())};
+ const quantity=row.unitsToTransfer??row.casesShipped*(row.unitsPerCase??0)+(row.looseUnitsShipped??0);
  if(!lot||row.sourceAgencyId!==lot.agencyId||!matchingTransferLot(request,lot)||lot.expirationDate<localDate()||lot.expiredUnits>0||!Number.isSafeInteger(quantity)||quantity<=0||!Number.isSafeInteger(row.unitsPerCase)||row.unitsPerCase!<1||lot.onHand-lot.reserved<quantity)throw transferError('Select matching, unexpired agency surplus and a quantity within the available balance.');
+ const formula=requireShipmentFormula(request,{transferFormulaName:lot.formulaName,transferForm:lot.form,transferFlavor:lot.flavor});
+ if(row.shipmentFormula && shipmentFormulaKey(formula)!==shipmentFormulaKey(row.shipmentFormula))throw transferError('Selected surplus does not match the shipment formula.');
  const id=crypto.randomUUID();
- const trusted:RequestShipment={...row,shipmentSource:'agency',sourceAgencyId:lot.agencyId,sourceAgencyName:SEED_AGENCIES.find(a=>a.id===lot.agencyId)!.name,sourceLotId:lot.id,transferId:id,transferStatus:'reserved',transferQuantity:quantity,transferFormulaName:lot.formulaName,transferForm:lot.form,transferFlavor:lot.flavor,transferExpiration:lot.expirationDate,distributorId:undefined,distributorPolicy:undefined,supplier:undefined,eta:'',etaSentAt:undefined,dispatched:false,trackingNumbers:[]};
+ const trusted:RequestShipment={...row,shipmentFormula:formula,carrier:'gso',unitsToTransfer:quantity,casesShipped:Math.floor(quantity/row.unitsPerCase!),looseUnitsShipped:quantity%row.unitsPerCase!,shipmentSource:'agency',sourceAgencyId:lot.agencyId,sourceAgencyName:SEED_AGENCIES.find(a=>a.id===lot.agencyId)!.name,sourceLotId:lot.id,transferId:id,transferStatus:'reserved',transferQuantity:quantity,transferFormulaName:lot.formulaName,transferForm:lot.form,transferFlavor:lot.flavor,transferExpiration:lot.expirationDate,distributorId:undefined,distributorPolicy:undefined,supplier:undefined,eta:'',etaSentAt:undefined,dispatched:false,trackingNumbers:[]};
  const steps=[guard(db,'EXISTS(SELECT 1 FROM surplus_lots WHERE id=? AND version=? AND expiration_date>=? AND on_hand-reserved>=?)',[lot.id,lot.version,localDate(),quantity]),
  db.prepare('UPDATE surplus_lots SET reserved=reserved+?,version=version+1 WHERE id=?').bind(quantity,lot.id),
  db.prepare("INSERT INTO surplus_transfers(id,source_lot_id,source_agency_id,destination_agency_id,formula_name,form,flavor,expiration_date,quantity,request_ref,status,request_id,units_per_case,destination_shipping) VALUES(?,?,?,?,?,?,?,?,?,?,'reserved',?,?,?)").bind(id,lot.id,lot.agencyId,request.agencyId,lot.formulaName,lot.form,lot.flavor,lot.expirationDate,quantity,String(request.id),request.id,row.unitsPerCase,JSON.stringify(request.shipping??null)),

@@ -15,7 +15,7 @@ export function validateShipments(rows: RequestShipment[], requireComplete = fal
         if (row?.unitsPerCase!==undefined && (!Number.isSafeInteger(row.unitsPerCase) || row.unitsPerCase<1)) return prefix+'Enter a positive whole number for Units per Case.';
         if (row?.looseUnitsShipped!==undefined && (!Number.isSafeInteger(row.looseUnitsShipped)||row.looseUnitsShipped<0||!row.unitsPerCase||row.looseUnitsShipped>=row.unitsPerCase)) return prefix+'Loose Units Shipped must be fewer than Units per Case.';
         if (row?.replacementBasis==='cases' && row.looseUnitsShipped) return prefix+'This distributor requires whole-case replacements.';
-        if (!row || !['fedex','dhl','ups','agency'].includes(row.carrier)) return prefix + 'Select a valid Carrier.';
+        if (!row || !['fedex','dhl','ups','agency','gso'].includes(row.carrier)) return prefix + 'Select a valid Carrier.';
         if (!Number.isInteger(row.casesShipped) || row.casesShipped < 0) return prefix + 'Cases Shipped must be a nonnegative whole number.';
         if (typeof row.eta !== 'string' || (row.eta && (!/^\d{4}-\d{2}-\d{2}$/.test(row.eta) || Number.isNaN(Date.parse(row.eta)) || new Date(row.eta).toISOString().slice(0,10) !== row.eta))) return prefix + 'Enter a valid ETA.';
         if (!Array.isArray(row.trackingNumbers) || row.trackingNumbers.some(number => typeof number !== 'string')) return prefix + 'Enter valid Tracking Numbers.';

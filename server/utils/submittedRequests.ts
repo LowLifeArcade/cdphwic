@@ -1,3 +1,4 @@
+import {resolveShipmentFormula,requireShipmentFormula,shipmentFormulaKey} from '../../shared/shipmentFormulas';
 import {confirmSimpleShipmentReceipt,type SimpleShipmentReceiptCommand} from '../../shared/simpleShipmentReceipts';
 import {cancelTransferInventory,transferReceiptSteps,transferError} from './requestTransferInventory';
 import {applyShipmentDeletion} from '../../shared/shipmentDeletion';
@@ -5,7 +6,8 @@ import {shipmentPlan} from '../../shared/shipmentPublishing';
 import {getDistributor} from './distributors';
 import {snapshotDistributor} from '../../shared/distributors';
 import {applyShipmentPolicy,type ShipmentPolicyCommand} from '../../shared/shipmentPolicy';
-import {getProduct} from './productStore';
+import {getProduct,listProducts} from './productStore';
+import {transferCatalogUnitsPerCase} from '../../shared/requestTransfers';
 import {validUnitSize} from '../../shared/shipmentQuantities';
 import {confirmShipmentReceipts,shipmentReceiptKey,type ShipmentReceiptSelection} from '../../shared/shipmentReceipts';
 import {applyShipmentCaseCommand,originalCaseApproval,type ShipmentCaseCommand} from '../../shared/shipmentCaseTracking';
@@ -107,10 +109,18 @@ export async function updateSubmittedRequest(
     quantityTracking=true,
 ) {
     const incomingPlans=updates.shipmentDrafts??updates.shipments;
+    for(const [index,row] of (Array.isArray(incomingPlans)?incomingPlans:[]).entries()){
+        if(!row)continue;
+        const old=previous.shipments?.[index];
+        if(old?.shipmentFormula && (old.etaSentAt||old.receivedAt||old.receiptConfirmed||old.issue||old.deletedIssues?.length) && shipmentFormulaKey(row.shipmentFormula)!==shipmentFormulaKey(old.shipmentFormula))throw conflict('The formula cannot be changed after this shipment has been sent.');
+        if(row.shipmentFormula && !(old?.shipmentFormula && (old.etaSentAt||old.receivedAt||old.receiptConfirmed||old.issue||old.deletedIssues?.length)))requireShipmentFormula(previous,row);
+    }
+
     if(incomingPlans && Array.isArray(incomingPlans))for(const [index,old] of (previous.shipments??[]).entries()){
         if(!old.transferId)continue;
         const row=incomingPlans[index];
-        if(!row || JSON.stringify(shipmentPlan({...old,...row}))!==JSON.stringify(shipmentPlan(old)))throw transferError('Authorized agency transfers are locked to their reserved quantity and source.');
+        const compared=row && updates.shipmentDrafts && old.transferStatus==='reserved'?{...old,...row,eta:old.eta,carrier:old.carrier,trackingNumbers:old.trackingNumbers}:row&&({...old,...row});
+        if(!compared || JSON.stringify(shipmentPlan(compared))!==JSON.stringify(shipmentPlan(old)))throw transferError('Authorized agency transfers are locked to their reserved quantity and source.');
         if(sendEtaShipmentIndex===index)throw transferError('The sending agency must confirm this transfer shipment.');
     }
     if (updates.shipmentDrafts !== undefined) {
@@ -120,7 +130,7 @@ export async function updateSubmittedRequest(
         const published = previous.shipments ?? (previous.eta || previous.trackingNumbers?.length ? requestShipments(previous) : []);
         // Published rows retain stable indexes used by receipt and issue commands.
         if (drafts.length < published.length) throw conflict('Published shipments cannot be removed.');
-        const protectedDrafts = preserveShipmentReceipts({...previous,shipments:published},drafts.map((row,index)=>published[index]?.transferId?{...published[index]!}:({...published[index],...shipmentPlan(row),etaSentAt:published[index]?.etaSentAt,replacementFor:published[index]?.replacementFor})));
+        const protectedDrafts = preserveShipmentReceipts({...previous,shipments:published},drafts.map((row,index)=>published[index]?.transferId?{...published[index]!,...(published[index]!.transferStatus==='reserved'?{eta:row.eta,trackingNumbers:[...row.trackingNumbers]}:{})}:({...published[index],...shipmentPlan(row),etaSentAt:published[index]?.etaSentAt,replacementFor:published[index]?.replacementFor})));
         const {shipmentDrafts:_drafts,shipments:_rows,eta:_eta,unitsIssued:_units,trackingNumbers:_tracking,...other} = updates;
         if (sendEtaShipmentIndex === undefined) {
             return writeRecord(db,previous,nextRecord(previous,{...other,shipmentDrafts:protectedDrafts}),requireUnopened);
@@ -169,8 +179,9 @@ export async function updateSubmittedRequest(
         if(rows?.[sendEtaShipmentIndex]?.shipmentSource==='agency')throw transferError('Authorize and reserve the agency transfer before shipping.');
         if (!Array.isArray(rows) || !Number.isSafeInteger(sendEtaShipmentIndex) || sendEtaShipmentIndex < 0 || sendEtaShipmentIndex >= rows.length)
             throw Object.assign(new Error('Select a valid shipment.'), {statusCode:400});
+        rows[sendEtaShipmentIndex]={...rows[sendEtaShipmentIndex]!,shipmentFormula:previous.shipments?.[sendEtaShipmentIndex]?.etaSentAt && previous.shipments[sendEtaShipmentIndex]?.shipmentFormula ? previous.shipments[sendEtaShipmentIndex]!.shipmentFormula : requireShipmentFormula(previous,rows[sendEtaShipmentIndex]!)};
         let size=rows[sendEtaShipmentIndex]!.unitsPerCase;
-        if (!validUnitSize(size) && previous.productId && (previous.requestedFormulas?.length ?? 1)<=1) {try {size=getProduct(previous.productId).unitsPerCase;} catch {}}
+        if (!validUnitSize(size)) size=shipmentCatalogPackaging(previous,rows[sendEtaShipmentIndex]!);
         if (quantityTracking && !validUnitSize(size)) throw Object.assign(new Error('Enter Units per Case before sending ETA.'),{statusCode:400,statusMessage:'Enter Units per Case before sending ETA.'});
         rows[sendEtaShipmentIndex]={...rows[sendEtaShipmentIndex]!,unitsPerCase:size};
         const message = validateShipments([rows[sendEtaShipmentIndex]!], true);
@@ -321,13 +332,20 @@ export async function persistShipmentEvidence(db:D1Database,previous:RequestReco
  return writeRecord(db,previous,nextRecord(previous,{shipments:rows}),false);
 }
 
+function shipmentCatalogPackaging(request:RequestRecord,row:NonNullable<RequestRecord['shipments']>[number]){
+ const formula=row.shipmentFormula??resolveShipmentFormula(request,row);
+ const matched=formula?transferCatalogUnitsPerCase({formulaName:formula.productName,form:formula.productForm??'',flavor:formula.flavor},listProducts()):undefined;
+ if(validUnitSize(matched))return matched;
+ if((request.requestedFormulas?.length??1)<=1&&request.productId){try{return getProduct(request.productId).unitsPerCase;}catch{}}
+ return undefined;
+}
 function prepareCatalogReceiptPackaging(previous:RequestRecord,selections:ShipmentReceiptSelection[]){
  const rows=requestShipments(previous);let changed=false;
  const fail=():never=>{throw Object.assign(new Error('Shipment packaging changed or cannot be matched to one catalog product. Refresh the request; CDPH/WIC must confirm Units per Case if it is still missing.'),{statusCode:409,statusMessage:'Shipment packaging changed or cannot be matched to one catalog product. Refresh the request; CDPH/WIC must confirm Units per Case if it is still missing.'});};
  const normalized=selections.map(selection=>{
   if(selection.catalogUnitsPerCase===undefined)return selection;
-  const row=rows[selection.index];if(!row||shipmentReceiptKey(row)!==selection.key||validUnitSize(row.unitsPerCase)||(previous.requestedFormulas?.length??1)>1||!previous.productId)fail();
-  let size:number|undefined;try{size=getProduct(previous.productId!).unitsPerCase;}catch{fail();}
+  const row=rows[selection.index];if(!row||shipmentReceiptKey(row)!==selection.key||validUnitSize(row.unitsPerCase))fail();
+  const size=shipmentCatalogPackaging(previous,row!);
   if(!validUnitSize(size)||size!==selection.catalogUnitsPerCase)fail();
   rows[selection.index]={...row!,unitsPerCase:size};changed=true;return {...selection,key:shipmentReceiptKey(rows[selection.index]!)};
  });

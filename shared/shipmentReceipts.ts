@@ -1,9 +1,10 @@
+import {shipmentFormulaKey} from './shipmentFormulas';
 import {shipmentQuantities,inputShipmentUnits,receiptQuantityKey,validUnitSize} from './shipmentQuantities';
 import type {RequestRecord} from './domain';
 import {requestShipments,type RequestShipment} from './requestShipments';
 export interface ShipmentReceiptSelection {index:number; key:string;catalogUnitsPerCase?:number;receivedCases?:number;receivedLooseUnits?:number;damagedCases?:number;damagedLooseUnits?:number;expectedReceipt?:string;expectedIssue?:string;issueNotes?:string}
 export function shipmentReceiptKey(row:RequestShipment):string {
-    return JSON.stringify([row.eta,row.carrier,row.casesShipped,row.trackingNumbers,row.etaSentAt ?? '',row.supplier ?? '',row.unitsPerCase ?? null,row.looseUnitsShipped??0]);
+    return JSON.stringify([row.eta,row.carrier,row.casesShipped,row.trackingNumbers,row.etaSentAt ?? '',row.supplier ?? '',row.unitsPerCase ?? null,row.looseUnitsShipped??0,shipmentFormulaKey(row.shipmentFormula)]);
 }
 export function shipmentReceived(request:Partial<RequestRecord>,row:RequestShipment):boolean {
     const confirmed=!!row.receivedAt || !!row.receiptConfirmed || (request.receivedStatus==='received' && !request.shipments?.some(r=>r.receivedAt || r.receiptConfirmed || r.receivedUnits!==undefined));
@@ -61,6 +62,10 @@ export function confirmShipmentReceipts(request:RequestRecord,selections:Shipmen
 
 export function preserveShipmentReceipts(previous:RequestRecord,rows:RequestShipment[]):RequestShipment[] {
     const originals=requestShipments(previous);
+    for(const [index,row] of originals.entries()){
+        if(row.shipmentFormula && (row.receivedAt||row.receiptConfirmed||row.receivedCases!==undefined||row.receivedUnits!==undefined||row.issue||row.deletedIssues?.length) && shipmentFormulaKey(rows[index]?.shipmentFormula)!==shipmentFormulaKey(row.shipmentFormula))throw Object.assign(new Error('The formula cannot be changed after receipt or issue history is recorded.'),{statusCode:409});
+    }
+
     const shippingCore=(row:RequestShipment)=>JSON.stringify([row.eta,row.casesShipped,row.carrier,row.trackingNumbers,row.etaSentAt ?? '',row.looseUnitsShipped??0]);
     if (originals.some((row,index)=>(shipmentReceived(previous,row) || row.issue || row.deletedIssues?.length || row.receivedCases!==undefined || row.dispositions?.length) && (!rows[index] || shippingCore(rows[index]!)!==shippingCore(row)))) {
         const message='Received shipments and shipments with reported issues cannot be changed or removed.';

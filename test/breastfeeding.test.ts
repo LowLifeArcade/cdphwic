@@ -6,8 +6,8 @@ it('offers the requested choices and requires a valid date only for discontinued
     expect(breastfeedingOptions).toEqual(['Fully BF','Never BF','Breastmilk + Formula','Discontinued BF']);
     expect(validateBreastfeeding({})).toBe('');
     for (const status of breastfeedingOptions.slice(0,3)) expect(validateBreastfeeding({breastfeedingStatus:status})).toBe('');
-    expect(validateBreastfeeding({breastfeedingStatus:'Discontinued BF'})).toBe('Enter Date Discontinued.');
-    expect(validateBreastfeeding({breastfeedingStatus:'Discontinued BF',breastfeedingDiscontinuedDate:'2026-02-30'})).toBe('Enter a valid Date Discontinued.');
+    expect(validateBreastfeeding({breastfeedingStatus:'Discontinued BF'})).toBe('Enter Date BF Discontinued.');
+    expect(validateBreastfeeding({breastfeedingStatus:'Discontinued BF',breastfeedingDiscontinuedDate:'2026-02-30'})).toBe('Enter a valid Date BF Discontinued.');
     expect(validateBreastfeeding({breastfeedingStatus:'Discontinued BF',breastfeedingDiscontinuedDate:'2026-10-01'})).toBe('');
     expect(validateBreastfeeding({breastfeedingStatus:'invalid'})).not.toBe('');
 });

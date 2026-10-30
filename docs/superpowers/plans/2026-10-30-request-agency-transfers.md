@@ -14,3 +14,12 @@
 Review focus: expiry after reservation; competing reservations; duplicate sends; partial/damaged receipt correction; replacement/reference indexes; stale clients forging or erasing transfer metadata; sender cannot see participant fields.
 
 Verification: 268 tests pass and production build succeeds. Local dev and isolated test migrations applied; no remote migration or deployment. Isolated browser authorized a 12-unit transfer from 48 units on hand, confirmed source shipment (36 on hand, zero reserved), recorded a partial receipt (6 received), then corrected to 12 received on the same transfer. No destination surplus was created. Source user gets transfer logistics only and a 404 for the participant request. Review regressions cover legacy dispatch/history, legacy completed requests, and unrelated private draft preservation.
+
+## Transfer coordination revision
+
+- CDPH/WIC enters **Units to Transfer**. A matching, unambiguous catalog case size prefills Units Per Case; a reviewer may correct it or enter a missing value. The reserved unit total is authoritative and is converted to whole cases plus remaining units for receipt compatibility.
+- After authorization, CDPH/WIC enters ETA, carrier, and tracking in the original shipment fields. Sending those details sets `transferEtaSentAt`, updates the source transfer card, and makes its in-app ready-to-ship notice available. It does not set dispatch/receipt flags or deduct inventory.
+- Only the sending Local Agency can click **Confirm Shipment**. This uses the saved logistics and atomically deducts reserved stock and marks the shipment dispatched. The sending agency cannot change ETA/tracking. The receiving agency can then confirm actual receipt.
+- ETA editing requires the current request revision and a still-reserved transfer; sender confirmation and request publication share the existing atomic request and transfer guards. No additional database migration is required.
+
+Transfer ETA and Carrier appear in the same positions as distributor shipment fields, before or after authorization. Carrier is fixed to **GSO** and enforced on the server. Draft ETA/tracking stays private through reservation and ordinary Save Shipments; CDPH/WIC publishes it explicitly with Send ETA. Existing reserved transfers retain their pending logistics when another transfer is authorized.

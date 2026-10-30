@@ -815,7 +815,7 @@ async function submitRequest() {
                         </select>
                     </div>
                     <div v-if="form.breastfeedingStatus === 'Discontinued BF'" class="form-field">
-                        <label for="breastfeeding-discontinued-date">Date Discontinued</label>
+                        <label for="breastfeeding-discontinued-date">Date BF Discontinued</label>
                         <input id="breastfeeding-discontinued-date" v-model="form.breastfeedingDiscontinuedDate" type="date" class="form-input" required />
                     </div>
                 </div>

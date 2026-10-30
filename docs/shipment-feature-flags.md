@@ -1,6 +1,8 @@
 # Shipment feature flags
 
-Detailed shipment tracking is disabled by default. Set `NUXT_PUBLIC_SHIPMENT_QUANTITY_TRACKING=true` to enable shipment case-count entry and replacement/closure controls.
+Detailed shipment tracking is disabled by default. Set `NUXT_PUBLIC_SHIPMENT_QUANTITY_TRACKING=true` to enable replacement/closure controls and advanced quantity tracking.
+
+Distributor **Cases Shipped** entry and display are controlled independently by `NUXT_PUBLIC_SHIPMENT_CASES_SHIPPED` (default **true**). Turning this on does not enable advanced tracking, reconciliation, or overage alerts. Turning it off hides the field without deleting saved quantities.
 
 Local Agency actual receipt quantities are controlled separately by `NUXT_PUBLIC_SHIPMENT_RECEIPT_QUANTITIES` (default **true**). Local Agencies can enter received cases, loose units, and damaged quantities and still report damage and supply required evidence. Units per Case remains available to reviewers to support accurate receipt entry. Receipt entry does not enable overage alerts or case reconciliation.
 

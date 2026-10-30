@@ -104,12 +104,15 @@ export interface RequestRecord {
     shipmentDrafts?: RequestRecord['shipments'];
     deletedShipments?: Array<{shipment:NonNullable<RequestRecord['shipments']>[number];draft?:NonNullable<RequestRecord['shipments']>[number];deletedAt:string;deletedBy:number}>;
     shipments?: Array<{
+        shipmentFormula?:import('./shipmentFormulas').ShipmentFormula;
         shipmentSource?:'distributor'|'agency';
         sourceAgencyId?:number;
         sourceAgencyName?:string;
         sourceLotId?:string;
         transferId?:string;
         transferStatus?:'reserved'|'shipped'|'received';
+        unitsToTransfer?:number;
+        transferEtaSentAt?:string;
         transferQuantity?:number;
         transferFormulaName?:string;
         transferForm?:string;
@@ -142,10 +145,10 @@ export interface RequestRecord {
         receiptCountHistory?: Array<{cases:number;looseUnits?:number;units?:number;damagedUnits?:number;unitsPerCase?:number;notes:string;recordedAt:string;recordedBy:number}>;
         deletedIssues?: Array<{issue:NonNullable<NonNullable<RequestRecord['shipments']>[number]['issue']>;deletedAt:string;deletedBy:number}>;
         issue?: {id?:string;labelsSent?:{date:string;reference:string;recordedAt:string;recordedBy:number};images?:DamageImage[];source?:'receipt-quantity'|'receipt-confirmation';type:'damaged'|'missing'|'incomplete';notes:string;reportedAt:string;reportedBy:number;resolvedAt?:string;resolvedBy?:number;updatedAt?:string;updatedBy?:number;reopenedAt?:string;reopenedBy?:number;responses?:Array<{notes:string;createdAt:string;createdBy:number}>};
-        carrier: 'fedex' | 'dhl' | 'ups' | 'agency';
+        carrier: 'fedex' | 'dhl' | 'ups' | 'agency' | 'gso';
         trackingNumbers: string[];
     }>;
-    trackingNumbers?: Array<{ number: string; carrier: 'fedex' | 'dhl' | 'ups' | 'agency' }>;
+    trackingNumbers?: Array<{ number: string; carrier: 'fedex' | 'dhl' | 'ups' | 'agency' | 'gso' }>;
     deliveryStatus?: string;
     specialOrder?: boolean;
     approved?: boolean;

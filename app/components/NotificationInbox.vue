@@ -2,10 +2,15 @@
 const identity = useState<'admin' | 'agency' | 'internal'>('demo-identity', () => 'admin');
 const open = ref(false);
 const message = ref('');
-const { data, refresh } = await useFetch('/api/surplus/notices', {
+const { data, refresh, clear } = await useFetch('/api/surplus/notices', {
     headers: computed(() => ({ 'x-demo-user': identity.value })),
     server: false,
 });
+watch(identity,()=>{open.value=false;message.value='';clear();refresh();});
+let noticeTimer:ReturnType<typeof setInterval>|undefined;
+function refreshVisibleNotices(){if(!document.hidden)void refresh();}
+onMounted(()=>{noticeTimer=setInterval(refreshVisibleNotices,60000);window.addEventListener('focus',refreshVisibleNotices);});
+onBeforeUnmount(()=>{if(noticeTimer)clearInterval(noticeTimer);window.removeEventListener('focus',refreshVisibleNotices);});
 const unread = computed(() => data.value?.notices.filter((n) => !n.is_read).length ?? 0);
 async function read(id: string) {
     await $fetch('/api/surplus/notices', {
@@ -56,19 +61,25 @@ async function download(kind: string) {
                 {{ message }}
             </p>
             <p v-if="!data">Unable to load notifications.</p>
-            <p v-else-if="!data.notices.length">No active surplus notices.</p>
+            <p v-else-if="!data.notices.length">No active notifications.</p>
             <article
                 v-for="n in data?.notices"
                 :key="n.id"
             >
                 <strong>{{
-                    n.kind === 'forecast'
+                    n.kind === 'transfer'
+                        ? n.title
+                        : n.kind === 'forecast'
                         ? 'Confirm anticipated surplus'
                         : n.kind === 'donation'
                           ? 'Formula available for donation'
                           : 'Expired formula — destruction required'
                 }}</strong>
-                <p v-if="n.kind === 'forecast'">
+                <template v-if="n.kind==='transfer'">
+                    <p>{{n.formula_name}} · {{n.form}}<template v-if="n.flavor"> · {{n.flavor}}</template><br />{{n.quantity}} units to ship · Request #{{n.request_id}}</p>
+                    <NuxtLink class="button button-secondary" :to="{path:'/surplus',query:{transfer:n.transfer_id},hash:`#transfer-${n.transfer_id}`}" @click="open=false">View Transfer</NuxtLink>
+                </template>
+                <p v-else-if="n.kind === 'forecast'">
                     {{ n.expected_units }} anticipated units · confirmation due {{ n.due_date }}. Confirm actual usable,
                     uncommitted units in Formula Surplus.
                 </p>
@@ -77,7 +88,7 @@ async function download(kind: string) {
                     {{ n.expiration_date }} ·
                     {{ n.kind === 'donation' ? n.on_hand - n.reserved : n.expired_units }} units
                 </p>
-                <p v-if="n.kind !== 'forecast'">
+                <p v-if="n.kind === 'donation' || n.kind === 'destruction'">
                     {{
                         n.kind === 'donation'
                             ? 'At least 60 calendar days remain. Arrange donation of surplus. Coordinate with Admin/FPU before donating reserved units.'
@@ -85,7 +96,7 @@ async function download(kind: string) {
                     }}
                 </p>
                 <button
-                    v-if="n.kind !== 'forecast'"
+                    v-if="n.kind === 'donation' || n.kind === 'destruction'"
                     class="button"
                     @click="download(n.kind)"
                 >

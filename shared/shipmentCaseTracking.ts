@@ -41,7 +41,7 @@ export function applyShipmentCaseCommand(request:RequestRecord,command:ShipmentC
         if (command.expectedReplacements!==rows.filter(r=>r.replacementFor===command.index).length) fail('Replacement shipments have changed. Refresh before creating another.');
         if (!row.issue) fail('Report the shipping issue before creating its replacement.');
         shipments=rows.map(r=>({...r,dispatched:shipmentDispatched(request,r),...(shipmentReceived(request,r)?{receiptConfirmed:true}:{})}));
-        shipments.push({...blankShipment(),carrier:row.carrier,supplier:row.supplier,distributorId:row.distributorId,distributorPolicy:row.distributorPolicy,unitsPerCase:row.unitsPerCase,replacementBasis:row.distributorPolicy?.replacementBasis,replacementIssueId:row.issue?.id??`${request.id}:${command.index}:${row.issue!.reportedAt}`,replacementFor:command.index,dispatched:false});
+        shipments.push({...blankShipment(),shipmentFormula:row.shipmentFormula,carrier:row.carrier,supplier:row.supplier,distributorId:row.distributorId,distributorPolicy:row.distributorPolicy,unitsPerCase:row.unitsPerCase,replacementBasis:row.distributorPolicy?.replacementBasis,replacementIssueId:row.issue?.id??`${request.id}:${command.index}:${row.issue!.reportedAt}`,replacementFor:command.index,dispatched:false});
     } else if (command.action==='close-replaced') {
         if (shipmentReceived(request,row) || row.replacedAt) fail('Only an unreceived original shipment can be closed as replaced.');
         if (!rows.some(r=>r.replacementFor===command.index && (r.replacedAt || (shipmentReceived(request,r) && shipmentQuantities(request,r).usableUnits>0)))) fail('Receive a linked replacement before closing the original.');

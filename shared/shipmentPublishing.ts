@@ -2,7 +2,7 @@ import type {RequestRecord} from './domain';
 import {requestShipments,type RequestShipment} from './requestShipments';
 import {shipmentReceived} from './shipmentReceipts';
 export function shipmentPlan(row:RequestShipment) {
- return {shipmentSource:row.shipmentSource,sourceAgencyId:row.sourceAgencyId,sourceLotId:row.sourceLotId,eta:row.eta,casesShipped:row.casesShipped,carrier:row.carrier,trackingNumbers:row.trackingNumbers,unitsPerCase:row.unitsPerCase,distributorId:row.distributorId,supplier:row.supplier,looseUnitsShipped:row.looseUnitsShipped};
+ return {shipmentFormula:row.shipmentFormula,unitsToTransfer:row.unitsToTransfer,shipmentSource:row.shipmentSource,sourceAgencyId:row.sourceAgencyId,sourceLotId:row.sourceLotId,eta:row.eta,casesShipped:row.casesShipped,carrier:row.carrier,trackingNumbers:row.trackingNumbers,unitsPerCase:row.unitsPerCase,distributorId:row.distributorId,supplier:row.supplier,looseUnitsShipped:row.looseUnitsShipped};
 }
 export function shipmentHasUnsentChanges(row:RequestShipment,published?:RequestShipment) {
  return !published?.etaSentAt || JSON.stringify(shipmentPlan(row))!==JSON.stringify(shipmentPlan(published));
