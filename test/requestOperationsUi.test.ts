@@ -47,14 +47,14 @@ describe('request operations UI', () => {
         expect(drawer.indexOf('<h3>Participant</h3>')).toBeLessThan(drawer.indexOf('>Prescription</h3>'));
         expect(drawer.indexOf('>Prescription</h3>')).toBeLessThan(drawer.indexOf('<h3>WIC Food Restrictions</h3>'));
         expect(drawer.indexOf('<h3>WIC Food Restrictions</h3>')).toBeLessThan(drawer.indexOf('<h3>Health Care Provider</h3>'));
-        expect(drawer.indexOf('rep?.email')).toBeGreaterThan(drawer.indexOf('<h3>Shipping Info</h3>'));
+        expect(drawer.slice(drawer.indexOf('<section ref="shippingSection"'))).toContain('rep?.email');
     });
 
     it('keeps CDPH decisions and shipment together', () => {
         expect(drawer).not.toContain('Staff-only fields');
         expect(drawer).toContain('Are you sure you want to deny this request?');
         expect(drawer).toContain('v-if="pendingDecision"');
-        expect(drawer).toContain('Confirm denial');
+        expect(drawer).toContain('Confirm Denial');
         expect(drawer).not.toContain('window.confirm');
         expect(drawer).toContain('decision-selected');
         expect(drawer).toContain('Undo approval or denial');
@@ -67,7 +67,7 @@ describe('request operations UI', () => {
         expect(drawer).toContain('v-else class="decision-buttons"');
         expect(drawer).toContain('Next Steps');
         expect(drawer).toContain('class="cdph-fields" :disabled="draft.status === \'denied\'"');
-        expect(drawer.indexOf('State-Issued Formula Authorization')).toBeLessThan(drawer.indexOf('<h3>Shipping Info</h3>'));
+        expect(drawer.indexOf('State-Issued Formula Authorization')).toBeLessThan(drawer.indexOf('<h3>Shipping</h3>'));
     });
 
     it('shows product metadata and combined approval quantities in CDPH processing', () => {
@@ -82,7 +82,7 @@ describe('request operations UI', () => {
         expect(drawer).toContain('Agency Units On Hand Unit');
         expect(drawer).toContain('Agency Units On Hand');
         expect(drawer).not.toContain('Cases Ordered');
-        expect(drawer).toContain('>Issuance</h4>');
+        expect(drawer).toContain('>Issuance</h3>');
         expect(drawer.indexOf('Issuance')).toBeLessThan(drawer.indexOf('Approved Cases for Approved Months'));
         expect(drawer.indexOf('Issuance')).toBeLessThan(drawer.indexOf('Next Steps'));
     });

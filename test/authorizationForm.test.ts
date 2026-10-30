@@ -47,3 +47,13 @@ describe('authorization form PDF', () => {
         expect(pdf.byteLength).toBeGreaterThan(1000);
     });
 });
+
+it('includes issuance for both formulas and paginates instead of clipping',async()=>{
+ const {PDFPage,PDFDocument}=await import('pdf-lib');const {vi}=await import('vitest');
+ const draw=vi.spyOn(PDFPage.prototype,'drawText');
+ try{
+  const pdf=await createAuthorizationFormPdf({...request,formulaAuthorizations:[{productName:'Nutramigen',productForm:'powder',approvedCases:2,benefitIssuances:[{month:'2026-10',quantity:123}]},{productName:'Second formula',productForm:'ready-to-feed',approvedCases:3,benefitIssuances:[{month:'2026-11',quantity:234}]}]},agency,rep);
+  const text=draw.mock.calls.map(call=>call[0]).join('\n');expect(text).toContain('Second formula');expect(text).toContain('234 units');expect(text).toContain('NOV 2026');
+  expect(draw.mock.calls.every(call=>(call[1]?.y??0)>=40)).toBe(true);expect((await PDFDocument.load(pdf)).getPageCount()).toBeGreaterThan(1);
+ }finally{draw.mockRestore();}
+});

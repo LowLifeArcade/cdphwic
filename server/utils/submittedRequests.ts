@@ -209,7 +209,8 @@ export async function updateSubmittedRequest(
     const baseline=originalCaseApproval(previous) ?? originalCaseApproval({...previous,...updates});
     if (baseline!==undefined && (sendEtaShipmentIndex!==undefined || rows.some(row=>shipmentDispatched(previous,row)))) updates.originalApprovedCases=baseline;
     if (pendingDrafts) updates.shipmentDrafts=pendingDrafts.map((row,index)=>index===sendEtaShipmentIndex?updates.shipments![index]!:row);
-    return writeRecord(db, previous, nextRecord(previous, updates), requireUnopened);
+    const shippingSteps=updates.shipping?[db.prepare("UPDATE surplus_transfers SET destination_shipping=? WHERE request_id=? AND status='reserved'").bind(JSON.stringify(updates.shipping),previous.id)]:[];
+    return writeRecord(db, previous, nextRecord(previous, updates), requireUnopened,shippingSteps);
 }
 export async function deleteSubmittedShipment(db:D1Database,previous:RequestRecord,index:number,actorId:number){
     const row=previous.shipments?.[index];

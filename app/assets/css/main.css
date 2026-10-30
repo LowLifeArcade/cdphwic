@@ -2171,7 +2171,7 @@ label {
 }
 
 .detail-drawer .diagnosis-list li { font-size: calc(0.78rem + 2px); }
-.detail-drawer .shipping-destination { font-size: calc(0.78rem + 2px); }
+.detail-drawer .shipping-destination { font-size: 1rem; }
 
 .provider-date-signed { grid-column: 2; grid-row: 2; }
 .provider-clinic { grid-column: 1; grid-row: 2; }
@@ -2499,3 +2499,48 @@ button:focus-visible, .button:focus-visible { outline: 2px solid #0077cf; outlin
 .shipment-case-summary {padding:14px;border:1px solid var(--line);border-radius:8px;margin-bottom:16px;}
 .shipment-case-summary p {margin:8px 0 0;}
 .shipment-case-warning {color:var(--danger-text);border-left:3px solid #AE5018;padding-left:12px;}
+
+/* Authorization uses the same field scale as the request above it. */
+.detail-drawer .cdph-workspace .issuance-heading h3,
+.detail-drawer .cdph-workspace > .detail-section > h3,
+.detail-drawer .cdph-workspace > .detail-section > .section-heading > h3 {
+    color: #002595;
+    font-size: calc(0.83rem + 4px);
+    font-weight: 700;
+}
+.cdph-workspace .issuance-heading { margin: 18px 0 14px; }
+.authorization-formula { min-width: 0; margin: 0 0 18px; padding: 14px; border: 1px solid var(--line); border-radius: 8px; }
+.authorization-formula > legend,
+.cdph-workspace .shipment-card > legend { padding: 0 0.5rem; color: var(--muted); font-size: 1rem; font-weight: 600; }
+.authorization-formula .cdph-product-details { margin-bottom: 14px; }
+.detail-drawer .cdph-workspace :is(.form-input,.form-textarea,.detail-grid strong) { font-size: 1rem; }
+.detail-drawer .cdph-workspace :is(.field-label,.detail-grid > div > span,.detail-field-heading,.issuance-row-heading h4) { font-size: var(--form-label-size); }
+.cdph-workspace input[type='number'] { appearance: textfield; -moz-appearance: textfield; }
+.cdph-workspace input[type='number']::-webkit-inner-spin-button,
+.cdph-workspace input[type='number']::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+.cdph-workspace .authorization-number { width: 78px; max-width: 100%; }
+.cdph-workspace .case-month-input { flex-wrap: wrap; }
+.cdph-workspace .case-month-input input { width: 64px; flex: 0 0 64px; }
+.cdph-workspace .benefit-allocation-editor .month-row { grid-template-columns: 132px 120px 28px; gap: 8px; max-width: 100%; }
+.cdph-workspace .month-select { width: 132px; }
+.cdph-workspace .month-quantity { width: 76px; }
+.cdph-workspace .quantity-input span { font-size: var(--form-label-size); }
+.cdph-workspace fieldset.shipment-card { margin: 0; padding: 14px; min-width: 0; border: 1px solid var(--line); border-radius: 8px; }
+.cdph-workspace .shipment-card input[type='number'] { width: 96px; max-width: 100%; }
+@media (max-width: 420px) {
+ .cdph-workspace .benefit-allocation-editor .month-row { grid-template-columns: minmax(0,132px) minmax(0,110px) 24px; gap: 5px; }
+ .cdph-workspace .month-select { width: 100%; }
+}
+.cdph-workspace .case-month-input span { font-size: var(--form-label-size); }
+.cdph-workspace .compact-form-grid { align-items: start; }
+.cdph-workspace .approval-quantity-field { grid-column: 1 / -1; }
+.cdph-workspace .surplus-input { align-items: center; display: grid; grid-template-columns: 64px minmax(0,1fr); gap: 6px; }
+.cdph-workspace .surplus-input .form-input:first-child { width: 64px; min-width: 0; }
+.cdph-workspace .surplus-input select { width: 100%; min-width: 0; }
+/* Show every tracking number without a fixed-height scrolling field. */
+.detail-drawer .shipment-tracking-input { max-height: none; overflow-y: hidden; resize: vertical; }
+.detail-drawer .shipping-detail-editor :is(.form-input,.form-textarea) { font-size: 1rem; }
+.shipping-detail-editor { margin-bottom: 18px; }
+.shipping-state-zip { grid-template-columns: 64px minmax(0,1fr); gap: 10px; }
+
+.shipment-sent-status { display: inline-flex; align-items: center; gap: 6px; padding: 5px 10px; border: 1px solid var(--success-text); border-radius: 999px; background: var(--success-bg); color: var(--success-text); font-size: 14px; font-weight: 600; line-height: 1.3; }

@@ -1,14 +1,16 @@
 # Shipment feature flags
 
-Detailed shipment quantity tracking is disabled by default. Set `NUXT_PUBLIC_SHIPMENT_QUANTITY_TRACKING=true` to enable it.
+Detailed shipment tracking is disabled by default. Set `NUXT_PUBLIC_SHIPMENT_QUANTITY_TRACKING=true` to enable shipment case-count entry and replacement/closure controls.
 
-When disabled, shipment case/unit entry, actual receipt counts, quantity summaries, replacement/closure controls, reconciliation and overage alerts are hidden. Numeric receipt and case-tracking API commands are also rejected. Local Agencies can still Confirm Receipt, Edit Receipt, report damage and supply distributor-required evidence. Simple confirmation does not infer actual quantities from the shipment plan. Existing counts and audit history are preserved.
+Local Agency actual receipt quantities are controlled separately by `NUXT_PUBLIC_SHIPMENT_RECEIPT_QUANTITIES` (default **true**). Local Agencies can enter received cases, loose units, and damaged quantities and still report damage and supply required evidence. Units per Case remains available to reviewers to support accurate receipt entry. Receipt entry does not enable overage alerts or case reconciliation.
 
-The master flag also gates these optional features (both default false):
+The master tracking flag also gates these optional features (both default false):
 
 - `NUXT_PUBLIC_SHIPMENT_CASE_RECONCILIATION=true`
 - `NUXT_PUBLIC_SHIPMENT_POTENTIAL_OVER_DELIVERY=true`
 
-Authorization/issuance and surplus inventory quantities remain available. Agency-to-agency transfers retain the quantities needed to reserve and deduct stock. Simple destination receipt marks the transfer received without inventing actual received unit counts or creating destination surplus.
+Set `NUXT_PUBLIC_SHIPMENT_RECEIPT_QUANTITIES=false` for simple Confirm Receipt / Edit Receipt without counts. Numeric receipt API commands are then rejected. Simple confirmation does not infer actual quantities from the shipment plan. Existing counts and audit history are preserved. After re-enabling receipt quantities, use Edit Receipt to enter verified counts for a simple receipt.
 
-Changing a flag does not delete stored data. After re-enabling quantity tracking, a simple confirmation has no new actual count; use Edit Receipt to enter verified quantities.
+Authorization/issuance and surplus inventory quantities remain available. Agency-to-agency transfers retain quantities needed to reserve and deduct stock. Simple destination receipt marks the transfer received without inventing actual received unit counts or creating destination surplus.
+
+Changing flags does not delete stored data.

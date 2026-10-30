@@ -9,7 +9,7 @@ import {shipmentIssueKey} from '~/../shared/shipmentIssues';
 import {formatEtaDate,submissionDateOnly} from '~/../shared/requestPresentation';
 const props=defineProps<{request:RequestRecord;shipment:RequestShipment;index:number;canConfirm:boolean;catalogUnitsPerCase?:number;disabled?:boolean}>();
 const emit=defineEmits<{updated:[request:RequestRecord];editing:[value:boolean]}>();
-const quantityTracking=shipmentFeatureFlags(useRuntimeConfig().public).quantityTracking;
+const receiptQuantities=shipmentFeatureFlags(useRuntimeConfig().public).receiptQuantities;
 const identity=useState<'admin'|'agency'|'internal'>('demo-identity',()=> 'admin');
 const cases=ref<string|number>('');const loose=ref<string|number>(0);const damagedCases=ref<string|number>(0);const damagedLoose=ref<string|number>(0);
 const editing=ref(false);const damage=ref(false);const notes=ref('');const files=ref<File[]>([]);
@@ -22,10 +22,10 @@ const hasReceipt=computed(()=>!!props.shipment.receivedAt||!!props.shipment.rece
 const showEntry=computed(()=>props.canConfirm&&shipmentDispatched(props.request,props.shipment)&&(!hasReceipt.value||editing.value));
 watch(showEntry,value=>emit('editing',value),{immediate:true});
 function reset(){
-    cases.value=hasReceipt.value?Math.floor(quantities.value.receivedUnits/size.value):'';
+    cases.value=hasReceipt.value&&props.shipment.receiptMode!=='simple'?Math.floor(quantities.value.receivedUnits/size.value):'';
     loose.value=hasReceipt.value?quantities.value.receivedUnits%size.value:0;
     damagedCases.value=Math.floor(quantities.value.damagedUnits/size.value);damagedLoose.value=quantities.value.damagedUnits%size.value;
-    damage.value=quantityTracking?quantities.value.damagedUnits>0:!!props.shipment.issue&&!props.shipment.issue.resolvedAt;notes.value=props.shipment.issue?.notes??'';
+    damage.value=receiptQuantities?quantities.value.damagedUnits>0:!!props.shipment.issue&&!props.shipment.issue.resolvedAt;notes.value=props.shipment.issue?.notes??'';
     key.value=shipmentReceiptKey(props.shipment);expected.value=receiptQuantityKey(props.shipment);expectedIssue.value=shipmentIssueKey(props.shipment);
 }
 watch(()=>`${props.request.id}:${receiptQuantityKey(props.shipment)}:${shipmentReceiptKey(props.shipment)}:${receiptShipment.value.unitsPerCase??''}`,reset,{immediate:true});
@@ -49,11 +49,11 @@ const preview=computed(()=>{
         return {received,damaged,missing:Math.max(0,quantities.value.expectedUnits-received)};
     }catch{return null;}
 });
-const hasDamage=computed(()=>quantityTracking?!!preview.value?.damaged:damage.value);
-const discrepancy=computed(()=>quantityTracking?!!preview.value&&(preview.value.missing>0||preview.value.damaged>0):damage.value);
+const hasDamage=computed(()=>receiptQuantities?!!preview.value?.damaged:damage.value);
+const discrepancy=computed(()=>receiptQuantities?!!preview.value&&(preview.value.missing>0||preview.value.damaged>0):damage.value);
 const missingImages=computed(()=>hasDamage.value&&props.shipment.distributorPolicy?.imagesRequired&&!props.shipment.issue?.images?.length&&!files.value.length);
 async function submit(){
-    if(!evidenceRetry.value&&((quantityTracking&&!preview.value)||missingImages.value))return;
+    if(!evidenceRetry.value&&((receiptQuantities&&!preview.value)||missingImages.value))return;
     if(!evidenceRetry.value && !hasDamage.value)files.value=[];
     saving.value=true;editing.value=true;error.value='';feedback.value='';
     try{
@@ -66,7 +66,7 @@ async function submit(){
         }
         if(!record){
             const selection={...(!validUnitSize(props.shipment.unitsPerCase)&&validUnitSize(props.catalogUnitsPerCase)?{catalogUnitsPerCase:props.catalogUnitsPerCase}:{}),index:props.index,key:key.value,expectedReceipt:expected.value,expectedIssue:expectedIssue.value,issueNotes:notes.value,receivedCases:Number(cases.value),receivedLooseUnits:Number(loose.value),damagedCases:Number(damagedCases.value),damagedLooseUnits:Number(damagedLoose.value)};
-            const result=await $fetch<{request:RequestRecord}>(`/api/requests/${props.request.id}`,{method:'PUT',headers:{'x-demo-user':identity.value},body:quantityTracking?{confirmShipmentReceipts:[selection]}:{confirmShipmentReceipt:{index:props.index,key:key.value,expectedReceipt:expected.value,expectedIssue:expectedIssue.value,damaged:damage.value,issueNotes:notes.value}}});
+            const result=await $fetch<{request:RequestRecord}>(`/api/requests/${props.request.id}`,{method:'PUT',headers:{'x-demo-user':identity.value},body:receiptQuantities?{confirmShipmentReceipts:[selection]}:{confirmShipmentReceipt:{index:props.index,key:key.value,expectedReceipt:expected.value,expectedIssue:expectedIssue.value,damaged:damage.value,issueNotes:notes.value}}});
             record=result.request;evidenceRetry.value=record;emit('updated',record);
         }
         while(files.value.length){
@@ -91,27 +91,27 @@ async function submit(){
                 <strong :class="shipmentReceived(request,shipment)?'shipment-received-label':'shipment-partial-label'">{{shipmentReceived(request,shipment)?'Received':'Partially Received'}}<template v-if="shipment.receivedAt"> · {{formatEtaDate(submissionDateOnly(shipment.receivedAt))}}</template></strong>
                 <button v-if="canConfirm && shipmentDispatched(request,shipment)" class="text-button" type="button" :disabled="disabled || saving" :aria-label="`Edit Receipt for shipment ${index+1}`" @click="editReceipt">Edit Receipt</button>
             </div>
-            <p v-if="quantityTracking && shipment.receiptMode!=='simple'">Received: {{formatShipmentUnits(quantities.receivedUnits,size)}}<template v-if="quantities.damagedUnits"> · Damaged: {{formatShipmentUnits(quantities.damagedUnits,size)}}</template><template v-if="quantities.missingUnits"> · Missing: {{formatShipmentUnits(quantities.missingUnits,size)}}</template></p>
+            <p v-if="receiptQuantities && shipment.receiptMode!=='simple'">Received: {{formatShipmentUnits(quantities.receivedUnits,size)}}<template v-if="quantities.damagedUnits"> · Damaged: {{formatShipmentUnits(quantities.damagedUnits,size)}}</template><template v-if="quantities.missingUnits"> · Missing: {{formatShipmentUnits(quantities.missingUnits,size)}}</template></p>
         </div>
         <div v-if="showEntry" class="receipt-entry">
             <strong>{{hasReceipt?'Edit Shipment Receipt':'Confirm Shipment Receipt'}}</strong>
-            <div v-if="quantityTracking" class="form-grid compact-form-grid">
+            <div v-if="receiptQuantities" class="form-grid compact-form-grid">
                 <label class="field-label">Cases Received *<input v-model="cases" type="number" min="0" step="1" required class="form-input" :aria-label="`Shipment ${index+1} cases received`" :disabled="disabled || saving || !!evidenceRetry" /></label>
                 <label class="field-label">Loose Units Received<input v-model="loose" type="number" min="0" :max="size-1" step="1" class="form-input" :aria-label="`Shipment ${index+1} loose units received`" :disabled="disabled || saving || !!evidenceRetry || !validUnitSize(receiptShipment.unitsPerCase)" /></label>
             </div>
-            <label class="receipt-damage-toggle"><input v-model="damage" type="checkbox" :disabled="disabled || saving || !!evidenceRetry || (quantityTracking && !validUnitSize(receiptShipment.unitsPerCase))" @change="toggleDamage" /><span>Some product arrived damaged</span></label>
-            <div v-if="quantityTracking && damage" class="form-grid compact-form-grid">
+            <label class="receipt-damage-toggle"><input v-model="damage" type="checkbox" :disabled="disabled || saving || !!evidenceRetry || (receiptQuantities && !validUnitSize(receiptShipment.unitsPerCase))" @change="toggleDamage" /><span>Some product arrived damaged</span></label>
+            <div v-if="receiptQuantities && damage" class="form-grid compact-form-grid">
                 <label class="field-label">Damaged Cases (included above)<input v-model="damagedCases" type="number" min="0" step="1" class="form-input" :aria-label="`Shipment ${index+1} damaged cases`" :disabled="disabled || saving || !!evidenceRetry" /></label>
                 <label class="field-label">Damaged Loose Units (included above)<input v-model="damagedLoose" type="number" min="0" :max="size-1" step="1" class="form-input" :aria-label="`Shipment ${index+1} damaged loose units`" :disabled="disabled || saving || !!evidenceRetry" /></label>
             </div>
-            <p v-if="quantityTracking && preview" class="receipt-quantity-summary" aria-live="polite">Received: {{formatShipmentUnits(preview.received,size)}} · Missing: {{formatShipmentUnits(preview.missing,size)}}<template v-if="preview.damaged"> · Damaged: {{formatShipmentUnits(preview.damaged,size)}}</template></p>
+            <p v-if="receiptQuantities && preview" class="receipt-quantity-summary" aria-live="polite">Received: {{formatShipmentUnits(preview.received,size)}} · Missing: {{formatShipmentUnits(preview.missing,size)}}<template v-if="preview.damaged"> · Damaged: {{formatShipmentUnits(preview.damaged,size)}}</template></p>
             <label v-if="discrepancy || shipment.issue" class="field-label">Issue Notes<textarea v-model="notes" class="form-textarea" maxlength="4000" :aria-label="`Shipment ${index+1} receipt issue notes`" :disabled="disabled || saving || !!evidenceRetry" /></label>
             <label v-if="hasDamage" class="field-label">Damage Images<template v-if="shipment.distributorPolicy?.imagesRequired"> *</template><input type="file" multiple accept="image/jpeg,image/png,image/webp" :disabled="disabled || saving" :aria-label="`Shipment ${index+1} receipt damage images`" @change="chooseImages" /></label>
             <p v-if="files.length" class="muted-copy">{{files.length}} image(s) ready to upload.</p>
             <p v-if="missingImages" class="receipt-error">Attach at least one damage image as required by this distributor.</p>
-            <p v-if="quantityTracking && String(cases).trim()!=='' && !preview" class="receipt-error">Check the quantities. Damaged product must be included in the received total; documented returns or destruction must remain accounted for.</p>
+            <p v-if="receiptQuantities && String(cases).trim()!=='' && !preview" class="receipt-error">Check the quantities. Damaged product must be included in the received total; documented returns or destruction must remain accounted for.</p>
             <div class="receipt-actions">
-                <button class="button button-secondary" type="button" :disabled="disabled || saving || (!evidenceRetry && ((quantityTracking && !preview) || missingImages))" :aria-label="`${evidenceRetry?'Retry damage images':hasReceipt?'Save Receipt':'Confirm Receipt'} for shipment ${index+1}`" @click="submit">{{saving?'Saving…':evidenceRetry?'Retry Damage Images':hasReceipt?'Save Receipt':'Confirm Receipt'}}</button>
+                <button class="button button-secondary" type="button" :disabled="disabled || saving || (!evidenceRetry && ((receiptQuantities && !preview) || missingImages))" :aria-label="`${evidenceRetry?'Retry damage images':hasReceipt?'Save Receipt':'Confirm Receipt'} for shipment ${index+1}`" @click="submit">{{saving?'Saving…':evidenceRetry?'Retry Damage Images':hasReceipt?'Save Receipt':'Confirm Receipt'}}</button>
                 <button v-if="evidenceRetry" class="button button-ghost" type="button" :disabled="saving" @click="finishLater">Finish Later</button>
                 <button v-if="hasReceipt && !evidenceRetry" class="button button-ghost" type="button" :disabled="saving" @click="cancel">Cancel</button>
             </div>

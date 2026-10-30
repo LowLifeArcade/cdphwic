@@ -1,3 +1,6 @@
+import {normalizeShipping,validateShipping} from '../../../shared/shipping';
+import {resolveShipping} from '../../utils/clinicStore';
+import {validateFormulaAuthorizations} from '../../../shared/formulaAuthorizations';
 import type {SimpleShipmentReceiptCommand} from '../../../shared/simpleShipmentReceipts';
 import {authorizeRequestTransfer} from '../../utils/requestTransfers';
 import {shipmentFeatureFlags,shipmentCaseActionEnabled} from '../../../shared/featureFlags';
@@ -47,7 +50,7 @@ export default defineEventHandler(async (event) => {
         return {request,demo:true};
     }
     if (updates.shipmentIssue !== undefined) {
-        if(updates.shipmentIssue?.action==='resolve-received'&&!shipmentFeatureFlags(useRuntimeConfig(event).public).quantityTracking)throw createError({statusCode:409,statusMessage:'Quantity tracking is currently disabled.'});
+        if(updates.shipmentIssue?.action==='resolve-received'&&!shipmentFeatureFlags(useRuntimeConfig(event).public).receiptQuantities)throw createError({statusCode:409,statusMessage:'Quantity tracking is currently disabled.'});
         if (updates.shipmentIssue?.action==='respond') {
             if (!isReviewer(user)) throw createError({statusCode:403,statusMessage:'Only CDPH/WIC or Admin can respond to a shipment issue.'});
         } else if (['update','reopen'].includes(updates.shipmentIssue?.action)) {
@@ -59,16 +62,20 @@ export default defineEventHandler(async (event) => {
     }
     if(updates.confirmShipmentReceipt!==undefined){
         if(user.memberType!=='agency'&&user.role!=='admin')throw createError({statusCode:403});
-        if(shipmentFeatureFlags(useRuntimeConfig(event).public).quantityTracking)throw createError({statusCode:409,statusMessage:'Use quantity receipt confirmation.'});
+        if(shipmentFeatureFlags(useRuntimeConfig(event).public).receiptQuantities)throw createError({statusCode:409,statusMessage:'Use quantity receipt confirmation.'});
         const request=await updateSubmittedSimpleShipmentReceipt(env.CDPHWIC,previous,updates.confirmShipmentReceipt,user.id);updateRequestRecord(id,request);return {request};
     }
     if (updates.confirmShipmentReceipts !== undefined) {
-        if(!shipmentFeatureFlags(useRuntimeConfig(event).public).quantityTracking)throw createError({statusCode:409,statusMessage:'Quantity tracking is currently disabled.'});
+        if(!shipmentFeatureFlags(useRuntimeConfig(event).public).receiptQuantities)throw createError({statusCode:409,statusMessage:'Quantity tracking is currently disabled.'});
         if (user.memberType !== 'agency' && user.role !== 'admin') throw createError({statusCode:403,statusMessage:'Only Local Agency or Admin can confirm receipt.'});
         if (!Array.isArray(updates.confirmShipmentReceipts) || updates.confirmShipmentReceipts.some(row=>row?.receivedCases===undefined || typeof row?.expectedReceipt!=='string')) throw createError({statusCode:400,statusMessage:'Enter actual quantities received before confirming receipt.'});
         const request=await updateSubmittedShipmentReceipt(env.CDPHWIC,previous,updates.confirmShipmentReceipts,user.id);
         updateRequestRecord(id,request);
         return {request,demo:true};
+    }
+    if(updates.formulaAuthorizations!==undefined){
+        if(!isReviewer(user))throw createError({statusCode:403,statusMessage:'Only CDPH/WIC or Admin can edit issuance.'});
+        const errors=validateFormulaAuthorizations(updates.formulaAuthorizations);if(errors.length)throw createError({statusCode:400,statusMessage:errors[0]});
     }
     if (!isReviewer(user) && (updates.shipmentDrafts!==undefined || updates.shipments!==undefined || updates.approvedCases!==undefined))
         throw createError({statusCode:403,statusMessage:'Only CDPH/WIC or Admin can edit shipment plans or Approved Cases.'});
@@ -89,6 +96,12 @@ export default defineEventHandler(async (event) => {
     // Older clients also save plans through `shipments`; they must not bypass publication.
     if(safe.shipments){safe.shipmentDrafts=safe.shipments;delete safe.shipments;}
     if (sendEtaShipmentIndex !== undefined && !isReviewer(user)) throw createError({statusCode:403,statusMessage:'Only Admin or CDPH/WIC can send shipment ETAs.'});
+    if(safe.shipping!==undefined){
+        if(!safe.shipping || typeof safe.shipping!=='object')throw createError({statusCode:400,statusMessage:'Complete the Shipping address.'});
+        if(updates.revision!==(previous.revision??0))throw createError({statusCode:409,statusMessage:'Request details changed. Reload before saving Shipping.'});
+        if(safe.shipping.clinicId)safe.shipping=await resolveShipping(env.CDPHWIC,user,previous.agencyId,safe.shipping,previous.shipping);
+        else {safe.shipping=normalizeShipping(safe.shipping);const message=validateShipping(safe.shipping);if(message)throw createError({statusCode:400,statusMessage:message});}
+    }
     const request = await updateSubmittedRequest(env.CDPHWIC, previous, safe, !isReviewer(user) && changesForm, sendEtaShipmentIndex, user.id, undefined, shipmentFeatureFlags(useRuntimeConfig(event).public).quantityTracking);
     updateRequestRecord(id, request);
     return { request, demo: true };

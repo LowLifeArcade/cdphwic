@@ -152,6 +152,7 @@ export interface RequestRecord {
     unitsIssued?: number;
     benefitIssuanceStartMonth?: string;
     benefitIssuanceEndMonth?: string;
+    formulaAuthorizations?: import('./formulaAuthorizations').FormulaAuthorization[];
     benefitIssuances?: Array<{ month: string; quantity: number }>;
     benefitMonthsRequested?: string[];
     approvedCases?: number;

@@ -81,6 +81,7 @@ export default defineEventHandler(async (event) => {
             agencyMemberId: membership.agencyMemberId,
             originalApprovedCases: undefined,
             approvedCases: undefined,
+            formulaAuthorizations: undefined,
             shipments: undefined,
             receivedStatus: undefined,
             approved: false,

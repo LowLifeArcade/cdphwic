@@ -207,7 +207,7 @@ it('uses simple receipt confirmation while quantity tracking is disabled',async(
  const before=await submittedRequest(event.db,1000998,getDemoUser('agency'));
  const {updateSubmittedRequest}=await import('../server/utils/submittedRequests');
  const shipped=await updateSubmittedRequest(event.db,before!,{shipments:[{eta:'2026-11-01',casesShipped:5,carrier:'ups',trackingNumbers:['A'],etaSentAt:'2026-10-30'}]});
- vi.stubGlobal('useRuntimeConfig',()=>({public:{shipmentQuantityTracking:false,shipmentCaseReconciliation:true,shipmentPotentialOverDelivery:true}}));
+ vi.stubGlobal('useRuntimeConfig',()=>({public:{shipmentReceiptQuantities:false,shipmentQuantityTracking:false,shipmentCaseReconciliation:true,shipmentPotentialOverDelivery:true}}));
  try{
   event.body={confirmShipmentReceipts:[{index:0,receivedCases:5}]};await expect(put(event as never)).rejects.toMatchObject({statusCode:409});
   for(const action of ['replacement','close-replaced','received-count','returned','destroyed']){event.body={shipmentCases:{index:0,action}};await expect(put(event as never)).rejects.toMatchObject({statusCode:409});}
@@ -225,4 +225,36 @@ it('sends ETA without requiring hidden packaging fields when quantity tracking i
   event.body={revision:before!.revision??0,shipmentDrafts:[{eta:'2026-11-01',casesShipped:0,carrier:'ups',trackingNumbers:['SIMPLE-ETA']}],sendEtaShipmentIndex:0};
   const saved=await put(event as never);expect(saved.request.shipments![0]!.etaSentAt).toBeTruthy();
  }finally{vi.stubGlobal('useRuntimeConfig',()=>({public:{shipmentQuantityTracking:true,shipmentCaseReconciliation:true,shipmentPotentialOverDelivery:true}}));}
+});
+it('persists separate formula issuance values and restricts them to reviewers',async()=>{
+ const event=await fixture();
+ const rows=[{productName:'First',productForm:'powder',approvedCases:2,benefitIssuances:[{month:'2026-09',quantity:100}]},{productName:'Second',productForm:'ready-to-feed',approvedCases:4,benefitIssuances:[{month:'2026-09',quantity:200}]}];
+ event.body={formulaAuthorizations:rows};await expect(put(event as never)).rejects.toMatchObject({statusCode:403});
+ event.identity='internal';const saved=await put(event as never);expect(saved.request.formulaAuthorizations).toEqual(rows);
+ const loaded=await submittedRequest(event.db,1000998,getDemoUser('agency'));expect(loaded!.formulaAuthorizations).toEqual(rows);
+ event.body={formulaAuthorizations:[{...rows[1],approvedCases:-1}]};await expect(put(event as never)).rejects.toMatchObject({statusCode:400});
+});
+it('allows actual receipts with shipment tracking, reconciliation and overage off',async()=>{
+ const event=await fixture();const before=await submittedRequest(event.db,1000998,getDemoUser('agency'));
+ const {updateSubmittedRequest}=await import('../server/utils/submittedRequests');const {shipmentReceiptKey}=await import('../shared/shipmentReceipts');
+ const shipped=await updateSubmittedRequest(event.db,before!,{shipments:[{eta:'2026-11-01',casesShipped:5,unitsPerCase:6,carrier:'ups',trackingNumbers:['ACTUAL-RECEIPT'],etaSentAt:'2026-10-30'}]});
+ vi.stubGlobal('useRuntimeConfig',()=>({public:{shipmentReceiptQuantities:true,shipmentQuantityTracking:false,shipmentCaseReconciliation:false,shipmentPotentialOverDelivery:false}}));
+ try{
+  event.body={confirmShipmentReceipts:[{index:0,key:shipmentReceiptKey(shipped.shipments![0]!),expectedReceipt:receiptQuantityKey(shipped.shipments![0]!),expectedIssue:'null',issueNotes:'',receivedCases:5,receivedLooseUnits:0,damagedCases:0,damagedLooseUnits:0}]};
+  const saved=await put(event as never);expect(saved.request.shipments![0]).toMatchObject({receiptMode:'quantity',receivedUnits:30});
+  event.body={shipmentCases:{index:0,action:'received-count'}};await expect(put(event as never)).rejects.toMatchObject({statusCode:409});
+ }finally{vi.stubGlobal('useRuntimeConfig',()=>({public:{shipmentQuantityTracking:true,shipmentCaseReconciliation:true,shipmentPotentialOverDelivery:true}}));}
+});
+it('lets reviewers save validated shipping snapshots and rejects stale or invalid edits',async()=>{
+ const event=await fixture();event.identity='internal';
+ event.body={revision:0,shipping:{clinicName:'Local agency',addressLine1:'123 Example Street',addressLine2:'Suite 4',city:'Example',state:'CA',postalCode:'90000',attention:'Example Contact',email:'shipping@example.test',phone:'(555) 555-0100'}};
+ const saved=await put(event as never);expect(saved.request.shipping).toMatchObject({addressLine1:'123 Example Street',attention:'Example Contact'});
+ await expect(put(event as never)).rejects.toMatchObject({statusCode:409});
+ event.body={revision:saved.request.revision,shipping:{...saved.request.shipping,postalCode:'invalid'}};await expect(put(event as never)).rejects.toMatchObject({statusCode:400});
+});
+it('lets CDPH/WIC edit manual request shipping outside its assigned clinic address books',async()=>{
+ const event=await fixture();event.identity='internal';
+ await event.db.prepare("UPDATE surplus_submissions SET request_json=json_set(request_json,'$.agencyId',12) WHERE id=?").bind('route-edit-test').run();
+ event.body={revision:0,shipping:{clinicName:'Local Agency',addressLine1:'123 Example Street',addressLine2:'',city:'Example',state:'CA',postalCode:'90000'}};
+ const saved=await put(event as never);expect(saved.request.shipping!.addressLine1).toBe('123 Example Street');
 });

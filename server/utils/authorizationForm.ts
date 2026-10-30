@@ -1,3 +1,4 @@
+import {formatIssuanceMonth} from '../../shared/formulaAuthorizations';
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
 import type { AgencyMemberRecord, AgencyRecord, RequestRecord } from '../../shared/domain';
 
@@ -19,21 +20,25 @@ export async function createAuthorizationFormPdf(
     rep?: AgencyMemberRecord,
 ): Promise<Uint8Array> {
     const document = await PDFDocument.create();
-    const page = document.addPage([612, 792]);
+    let page = document.addPage([612, 792]);
     const regular = await document.embedFont(StandardFonts.Helvetica);
     const bold = await document.embedFont(StandardFonts.HelveticaBold);
     let y = 744;
 
+    const ensureSpace=(height:number)=>{if(y-height<48){page=document.addPage([612,792]);y=744;}};
     const heading = (text: string) => {
+        ensureSpace(28);
         page.drawText(text, { x: 48, y, size: 16, font: bold, color: rgb(0.08, 0.16, 0.24) });
         y -= 28;
     };
     const section = (text: string) => {
+        ensureSpace(58);
         y -= 10;
         page.drawText(text, { x: 48, y, size: 11, font: bold, color: rgb(0.12, 0.35, 0.42) });
         y -= 18;
     };
     const row = (label: string, text: string) => {
+        ensureSpace(15);
         page.drawText(`${label}:`, { x: 52, y, size: 9, font: bold, color: rgb(0.2, 0.24, 0.28) });
         page.drawText(text, { x: 190, y, size: 9, font: regular, color: rgb(0.12, 0.14, 0.16) });
         y -= 15;
@@ -77,12 +82,24 @@ export async function createAuthorizationFormPdf(
     row('Office phone', value(request.doctorOfficePhone));
     row('Signed date', formatDate(request.prescriptionSignedDate));
 
-    section('Benefit issuance');
-    if (request.benefitIssuances?.length) {
-        request.benefitIssuances.forEach((issuance) => row(issuance.month, `${issuance.quantity} units`));
-    } else {
-        row('Allocations', '—');
+    if(request.formulaAuthorizations?.length){
+        for(const [index,authorization] of request.formulaAuthorizations.entries()){
+            section(`Benefit issuance - Formula ${index+1}`);
+            row('Formula',authorization.productName);
+            row('Form',value(authorization.productForm));
+            if(authorization.flavor)row('Flavor',authorization.flavor);
+            row('Approved cases',value(authorization.approvedCases));
+            row('Approved months',value(authorization.approvedMonths));
+            row('Agency on hand',`${value(authorization.agencyUnitsOnHand)} ${authorization.agencyUnitsOnHandUnit??'units'}`);
+            row('Expected surplus',`${value(authorization.expectedSurplus)} ${authorization.expectedSurplusUnit??'units'}`);
+            authorization.benefitIssuances.forEach(issuance=>row(formatIssuanceMonth(issuance.month),`${issuance.quantity} units`));
+        }
+    }else{
+        section('Benefit issuance');
+        if(request.benefitIssuances?.length)request.benefitIssuances.forEach(issuance=>row(formatIssuanceMonth(issuance.month),`${issuance.quantity} units`));
+        else row('Allocations','—');
     }
+    ensureSpace(30);
 
     y -= 12;
     page.drawText('Generated from the approved and ordered request record.', {

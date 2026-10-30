@@ -120,3 +120,13 @@ it('confirms a transfer without inferred quantities and preserves its first rece
  expect(f.sqlite.prepare('SELECT received_date FROM surplus_transfers WHERE id=?').get(id)).toMatchObject({received_date:'2026-10-01'});
  expect(f.sqlite.prepare('SELECT reserved,on_hand FROM surplus_lots WHERE id=?').get(f.lot.id)).toMatchObject({reserved:0,on_hand:36});
 });
+it('keeps reserved transfer destinations in sync with Shipping edits and preserves dispatched destinations',async()=>{
+ const {updateSubmittedRequest}=await import('../server/utils/submittedRequests');const f=await fixture();
+ const reserved=await authorizeRequestTransfer(f.db,f.request,[f.row],0,f.admin);const id=reserved.shipments![0]!.transferId!;
+ const shipping={clinicName:'Agency',addressLine1:'123 Example Lane',addressLine2:'',city:'Example',state:'CA',postalCode:'90000'};
+ await updateSubmittedRequest(f.db,reserved,{shipping});
+ expect(JSON.parse((f.sqlite.prepare('SELECT destination_shipping FROM surplus_transfers WHERE id=?').get(id) as {destination_shipping:string}).destination_shipping)).toEqual(shipping);
+ const shipped=await shipRequestTransfer(f.db,id,{...getDemoUser('agency'),agencyId:11},{eta:'2026-11-10',carrier:'agency',trackingNumbers:['Local delivery']});
+ await updateSubmittedRequest(f.db,shipped.request,{shipping:{...shipping,addressLine1:'456 New Lane'}});
+ expect(JSON.parse((f.sqlite.prepare('SELECT destination_shipping FROM surplus_transfers WHERE id=?').get(id) as {destination_shipping:string}).destination_shipping)).toEqual(shipping);
+});

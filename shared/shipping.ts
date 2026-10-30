@@ -59,3 +59,8 @@ export function formatShippingAddress(address?: Partial<ClinicAddress>): string 
     if (!address) return '—';
     return [address.addressLine1, address.addressLine2, address.city].filter(Boolean).join(', ') || '—';
 }
+
+/** Normalize a request-specific snapshot independently of address-book access. */
+export function normalizeShipping(input:Partial<RequestShipping>):RequestShipping {
+    return {...normalizeClinic(input),...(input.clinicId?{clinicId:input.clinicId}:{}),...(typeof input.attention==='string'?{attention:input.attention.trim()}:{}),email:typeof input.email==='string'?input.email.trim():'',phone:typeof input.phone==='string'?input.phone.trim():''};
+}

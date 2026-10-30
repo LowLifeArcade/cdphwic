@@ -1,4 +1,9 @@
 <script setup lang="ts">
+import type {Directive} from 'vue';
+import {blankClinicAddress,validateShipping} from '~/../shared/shipping';
+const vTrackingSize:Directive<HTMLTextAreaElement>={mounted:fitTrackingNumbers,updated:fitTrackingNumbers};
+function fitTrackingNumbers(input:HTMLTextAreaElement){input.style.height='auto';input.style.height=`${input.scrollHeight+input.offsetHeight-input.clientHeight}px`;}
+import {formulaAuthorizations,formatIssuanceMonth,validateFormulaAuthorizations} from '~/../shared/formulaAuthorizations';
 import {matchingTransferLot} from '~/../shared/requestTransfers';
 import type {SurplusLot} from '~/../shared/surplus';
 import {canDeleteShipment,storedShipmentRows} from '~/../shared/shipmentDeletion';
@@ -18,7 +23,7 @@ import {requestFormulas,participantNames,insuranceDetails,requestedMonthLabels,f
 import { validateDiagnoses } from '~/../shared/diagnosisCatalog';
 import {canEditSubmission} from '~/../shared/requestEditing';
 import type { ProductRecord, RequestRecord, RequestStatus } from '~/../shared/domain';
-import { getNextBenefitMonth, validateBenefitIssuances, canGenerateAuthorizationForm, getApprovalStatus, canSelectShippedStatus } from '~/../shared/requestOperations';
+import { getNextBenefitMonth, canGenerateAuthorizationForm, getApprovalStatus, canSelectShippedStatus } from '~/../shared/requestOperations';
 import { normalizeRequestedMonths, validateRequestDetailNumbers, validateSurplusItems } from '~/../shared/requestDetailFields';
 import { formatPhoneNumber, normalizePhoneNumber } from '~/../shared/phone';
 
@@ -52,7 +57,7 @@ const error = ref('');
 const staffSaveStatus = ref<'idle' | 'saving' | 'saved' | 'failed'>('idle');
 const photoNames = ref<string[]>([]);
 const surplusRemovalIndex = ref<number | null>(null);
-const editingSection = ref<'participant' | 'overview' | 'prescription' | 'food' | null>(null);
+const editingSection = ref<'participant' | 'overview' | 'prescription' | 'food' | 'shipping' | null>(null);
 const editableDiagnoses = ref<string[]>([]);
 const editableFormulas = ref<FormulaEntry[]>([]);
 const prescriptionSection = ref<HTMLElement>();
@@ -95,11 +100,15 @@ async function reserveShipmentTransfer(index:number){
 const canRepEdit = computed(() => identity.value === 'admin' || identity.value === 'agency');
 const selectedProduct = computed(() => props.products?.find((product) => product.id === props.request?.productId));
 
+function authorizationProduct(authorization:{productName:string;productForm?:string}) {return props.products?.find(product=>product.name===authorization.productName&&product.form===authorization.productForm);}
+
 function copyRequest(request: RequestRecord): Partial<RequestRecord> {
     const requestedMonths = normalizeRequestedMonths(request.benefitMonthsRequested);
     return {
         ...request,
         genericFields:{...request.genericFields},
+        shipping:request.shipping?{...request.shipping}:undefined,
+        formulaAuthorizations:formulaAuthorizations(request,benefitMonths.value[0]?.value??''),
         shipments:staffShipmentRows(request).map(row=>({...row,unitsPerCase:row.unitsPerCase ?? ((request.requestedFormulas?.length ?? 1)<=1?selectedProduct.value?.unitsPerCase:undefined)})),
         requestedFormulas: request.requestedFormulas?.map(formula=>({...formula})),
         participantFirstName: participantNames(request).first,
@@ -121,7 +130,7 @@ const benefitMonths = computed(() => {
     return Array.from({ length: 24 }, (_, index) => {
         const month = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + index, 1));
         const value = `${month.getUTCFullYear()}-${String(month.getUTCMonth() + 1).padStart(2, '0')}`;
-        return { value, label: month.toLocaleDateString('en-US', { month: 'long', year: 'numeric', timeZone: 'UTC' }) };
+        return { value, label: formatIssuanceMonth(value) };
     });
 });
 
@@ -198,17 +207,18 @@ async function denyRequest() {
     await save({ status: 'denied', staffNotes: draft.staffNotes });
 }
 
-function addBenefitMonth() {
-    const issuances = draft.benefitIssuances ?? [];
+function addBenefitMonth(formulaIndex:number) {
+    const authorization=draft.formulaAuthorizations![formulaIndex]!;
+    const issuances = authorization.benefitIssuances;
     const month = getNextBenefitMonth(issuances) || benefitMonths.value[0]?.value || '';
     if (!month || issuances.some((issuance) => issuance.month === month)) {
         return;
     }
-    draft.benefitIssuances = [...issuances, { month, quantity: 0 }];
+    authorization.benefitIssuances = [...issuances, { month, quantity: 0 }];
 }
 
-function removeBenefitMonth(index: number) {
-    draft.benefitIssuances?.splice(index, 1);
+function removeBenefitMonth(formulaIndex:number,index: number) {
+    draft.formulaAuthorizations?.[formulaIndex]?.benefitIssuances.splice(index, 1);
 }
 
 function addRequestedMonth() {
@@ -222,7 +232,8 @@ function removeRequestedMonth(index: number) {
     draft.benefitMonthsRequested = (draft.benefitMonthsRequested ?? []).filter((_, itemIndex) => itemIndex !== index);
 }
 
-function startEditing(section: 'participant' | 'overview' | 'prescription' | 'food') {
+function startEditing(section: 'participant' | 'overview' | 'prescription' | 'food' | 'shipping') {
+    if(section==='shipping'){draft.shipping={...blankClinicAddress(),...draft.shipping,clinicName:draft.shipping?.clinicName||props.agency?.name||'',attention:draft.shipping?.attention||props.rep?.name||'',email:draft.shipping?.email||props.rep?.email||'',phone:formatPhoneNumber(draft.shipping?.phone||props.rep?.phone||'')};}
     if (section === 'overview') {
         editableDiagnoses.value = (draft.diagnosis ?? '').split(/[\n;]/).map(value => value.trim()).filter(Boolean);
         editableFormulas.value = editableRequestFormulas(draft);
@@ -288,6 +299,10 @@ function saveFormSection() {
             wicNutritionStaffName: draft.wicFoodRestrictions === 'not-indicated' ? draft.wicNutritionStaffName : '',
             wicNutritionStaffNotes: draft.wicFoodRestrictions === 'not-indicated' && draft.wicStaffFoodRestrictions === 'restricted' ? draft.wicNutritionStaffNotes : '',
         });
+    } else if(editingSection.value==='shipping'){
+        const shipping={...draft.shipping!,clinicId:undefined,phone:normalizePhoneNumber(draft.shipping?.phone??'')};
+        const shippingError=validateShipping(shipping);if(shippingError){error.value=shippingError;return;}
+        updates.shipping=shipping;
     } else if (editingSection.value === 'prescription') {
         Object.assign(updates, {
             doctorPrintedName: draft.doctorPrintedName,
@@ -331,8 +346,10 @@ function confirmRemoveSurplusItem() {
 
 async function saveStaffFields() {
     staffSaveStatus.value = 'saving';
-    const issuances = draft.benefitIssuances ?? [];
-    const validationErrors = validateBenefitIssuances(issuances);
+    const authorizations=draft.formulaAuthorizations??[];
+    const first=authorizations[0];
+    const issuances = first?.benefitIssuances ?? [];
+    const validationErrors = validateFormulaAuthorizations(authorizations);
     if (validationErrors.length) {
         error.value = validationErrors[0];
         staffSaveStatus.value = 'failed';
@@ -345,13 +362,14 @@ async function saveStaffFields() {
         return;
     }
     await save({
+        formulaAuthorizations:authorizations,
         benefitIssuances: issuances,
-        approvedCases: Number(draft.approvedCases),
-        approvedMonths: Number(draft.approvedMonths),
-        expectedSurplus: Number(draft.expectedSurplus),
-        expectedSurplusUnit: draft.expectedSurplusUnit ?? 'units',
-        agencyUnitsOnHand: Number(draft.agencyUnitsOnHand),
-        agencyUnitsOnHandUnit: draft.agencyUnitsOnHandUnit ?? 'units',
+        approvedCases: Number(first?.approvedCases??0),
+        approvedMonths: Number(first?.approvedMonths??0),
+        expectedSurplus: Number(first?.expectedSurplus??0),
+        expectedSurplusUnit: first?.expectedSurplusUnit ?? 'units',
+        agencyUnitsOnHand: Number(first?.agencyUnitsOnHand??0),
+        agencyUnitsOnHandUnit: first?.agencyUnitsOnHandUnit ?? 'units',
         staffNotes: draft.staffNotes,
         nextSteps: draft.nextSteps,
     });
@@ -759,30 +777,30 @@ async function saveAgencyUpdate() {
                 </div>
             </div>
             <fieldset class="cdph-fields" :disabled="draft.status === 'denied'">
+            <div class="issuance-heading"><h3>Issuance</h3></div>
+            <fieldset v-for="(authorization,formulaIndex) in draft.formulaAuthorizations" :key="`${authorization.productName}-${authorization.productForm}-${authorization.flavor}`" class="authorization-formula">
+                <legend v-if="(draft.formulaAuthorizations?.length??0)>1">Formula {{formulaIndex+1}}</legend>
             <div class="detail-grid cdph-product-details">
-                <div><span>Formula Name</span><strong>{{ request.productName }}</strong></div>
-                <div><span>Product Number</span><strong>{{ selectedProduct?.productCode ?? '—' }}</strong></div>
-                <div><span>Units Per Case</span><strong>{{ selectedProduct?.unitsPerCase ?? '—' }}</strong></div>
-                <div><span>Yield</span><strong>{{ selectedProduct?.yield !== undefined ? `${selectedProduct.yield} fl oz` : '—' }}</strong></div>
-            </div>
-            <div class="issuance-heading">
-                <h4>Issuance</h4>
+                <div><span>Formula Name</span><strong>{{authorization.productName}}<template v-if="authorization.flavor"> · {{authorization.flavor}}</template><br />{{formulaFormLabel(authorization.productForm)}}</strong></div>
+                <div><span>Product Number</span><strong>{{authorizationProduct(authorization)?.productCode ?? '—'}}</strong></div>
+                <div><span>Units Per Case</span><strong>{{authorizationProduct(authorization)?.unitsPerCase ?? '—'}}</strong></div>
+                <div><span>Yield</span><strong>{{authorizationProduct(authorization)?.yield !== undefined ? `${authorizationProduct(authorization)!.yield} fl oz` : '—'}}</strong></div>
             </div>
             <div class="form-grid compact-form-grid">
-                <label class="field-label">
+                <label class="field-label approval-quantity-field">
                     Approved Cases for Approved Months
                     <div class="case-month-input">
-                        <input v-model.number="draft.approvedCases" class="form-input" type="number" min="0" aria-label="Approved Cases" />
+                        <input v-model.number="authorization.approvedCases" class="form-input authorization-number" type="number" inputmode="numeric" min="0" :aria-label="`Formula ${formulaIndex+1} Approved Cases`" />
                         <span>cases for</span>
-                        <input v-model.number="draft.approvedMonths" class="form-input" type="number" min="0" aria-label="Approved Months" />
+                        <input v-model.number="authorization.approvedMonths" class="form-input authorization-number" type="number" inputmode="numeric" min="0" :aria-label="`Formula ${formulaIndex+1} Approved Months`" />
                         <span>months</span>
                     </div>
                 </label>
                 <label class="field-label">
                     Agency Units On Hand
                     <div class="surplus-input">
-                        <input v-model.number="draft.agencyUnitsOnHand" class="form-input" type="number" min="0" />
-                        <select v-model="draft.agencyUnitsOnHandUnit" class="form-input" aria-label="Agency Units On Hand Unit">
+                        <input v-model.number="authorization.agencyUnitsOnHand" class="form-input authorization-number" type="number" inputmode="numeric" min="0" />
+                        <select v-model="authorization.agencyUnitsOnHandUnit" class="form-input" aria-label="Agency Units On Hand Unit">
                             <option value="units">Units</option>
                             <option value="cases">Cases</option>
                         </select>
@@ -791,8 +809,8 @@ async function saveAgencyUpdate() {
                 <label class="field-label">
                     Expected Surplus
                     <div class="surplus-input">
-                        <input v-model.number="draft.expectedSurplus" class="form-input" type="number" min="0" />
-                        <select v-model="draft.expectedSurplusUnit" class="form-input" aria-label="Expected Surplus Unit">
+                        <input v-model.number="authorization.expectedSurplus" class="form-input authorization-number" type="number" inputmode="numeric" min="0" />
+                        <select v-model="authorization.expectedSurplusUnit" class="form-input" aria-label="Expected Surplus Unit">
                             <option value="units">Units</option>
                             <option value="cases">Cases</option>
                         </select>
@@ -802,20 +820,21 @@ async function saveAgencyUpdate() {
             <div class="benefit-allocation-editor">
                 <div class="issuance-row-heading">
                     <h4>Select Month and Quantity</h4>
-                    <button class="text-button" type="button" @click="addBenefitMonth">+ Add issuance month</button>
+                    <button class="text-button" type="button" @click="addBenefitMonth(formulaIndex)">+ Add issuance month</button>
                 </div>
-                <div v-for="(issuance, index) in draft.benefitIssuances" :key="`${issuance.month}-${index}`" class="month-row">
-                    <select v-model="issuance.month" class="form-input month-select">
+                <div v-for="(issuance, index) in authorization.benefitIssuances" :key="`${issuance.month}-${index}`" class="month-row">
+                    <select v-model="issuance.month" class="form-input month-select" :aria-label="`Formula ${formulaIndex+1} issuance month ${index+1}`">
                         <option value="">Select month</option>
                         <option v-for="month in benefitMonths" :key="month.value" :value="month.value">{{ month.label }}</option>
                     </select>
                     <div class="quantity-input">
-                        <input v-model.number="issuance.quantity" class="form-input month-quantity" type="number" min="1" placeholder="Quantity" />
+                        <input v-model.number="issuance.quantity" class="form-input month-quantity" type="number" inputmode="numeric" min="1" placeholder="Quantity" :aria-label="`Formula ${formulaIndex+1} issuance quantity ${index+1}`" />
                         <span>units</span>
                     </div>
-                    <button class="icon-button" type="button" aria-label="Remove benefit month" @click="removeBenefitMonth(index)">×</button>
+                    <button class="icon-button" type="button" aria-label="Remove benefit month" @click="removeBenefitMonth(formulaIndex,index)">×</button>
                 </div>
             </div>
+            </fieldset>
             <label class="field-label">
                 Next Steps
                 <textarea v-model="draft.nextSteps" class="form-textarea" placeholder="Add instructions or follow-up notes." />
@@ -862,7 +881,21 @@ async function saveAgencyUpdate() {
         </section>
 
         <section ref="shippingSection" class="detail-section" tabindex="-1">
-            <h3>Shipping Info</h3>
+            <div class="section-heading"><h3>Shipping</h3><button v-if="canStaffEdit && editingSection!=='shipping'" class="text-button" type="button" @click="startEditing('shipping')">Edit</button></div>
+            <form v-if="editingSection==='shipping' && draft.shipping" class="shipping-detail-editor" @submit.prevent="saveFormSection">
+                <div class="form-grid compact-form-grid">
+                    <label class="field-label detail-field-wide">Local Agency<input :value="agency?.name" class="form-input" disabled /></label>
+                    <label class="field-label">Contact<input v-model="draft.shipping.attention" class="form-input" maxlength="250" /></label>
+                    <label class="field-label">Phone Number<input v-model="draft.shipping.phone" class="form-input" type="tel" @blur="draft.shipping.phone=formatPhoneNumber(draft.shipping.phone??'')" /></label>
+                    <label class="field-label detail-field-wide">Email<input v-model="draft.shipping.email" class="form-input" type="email" /></label>
+                    <label class="field-label detail-field-wide">Street Address<input v-model="draft.shipping.addressLine1" class="form-input" required maxlength="250" /></label>
+                    <label class="field-label detail-field-wide">Address Line 2<input v-model="draft.shipping.addressLine2" class="form-input" maxlength="250" /></label>
+                    <label class="field-label">City<input v-model="draft.shipping.city" class="form-input" required maxlength="250" /></label>
+                    <div class="form-grid shipping-state-zip"><label class="field-label">State<input v-model="draft.shipping.state" class="form-input" required maxlength="2" /></label><label class="field-label">ZIP Code<input v-model="draft.shipping.postalCode" class="form-input" required maxlength="10" /></label></div>
+                </div>
+                <p v-if="error" class="form-error" role="alert">{{error}}</p>
+                <div class="form-actions"><button class="button button-ghost" type="button" :disabled="saving" @click="cancelEditing">Cancel</button><button class="button button-secondary" type="submit" :disabled="saving">Save Section</button></div>
+            </form>
             <div v-if="canStaffEdit && shipmentCaseBalance" class="shipment-case-summary">
                 <strong v-if="shipmentFeatures.caseReconciliation">Case Reconciliation</strong>
                 <p v-if="shipmentFeatures.caseReconciliation">Original Approved: {{shipmentCaseBalance.approved ?? 'Not set'}} · Received: {{formatCaseEquivalent(shipmentCaseBalance.received)}} · Returned/Destroyed: {{formatCaseEquivalent(shipmentCaseBalance.disposed)}} · Damaged Held: {{formatCaseEquivalent(shipmentCaseBalance.damaged)}} · Usable Cases Kept (equivalent): {{formatCaseEquivalent(shipmentCaseBalance.retained)}}</p>
@@ -870,17 +903,17 @@ async function saveAgencyUpdate() {
                 <p v-if="shipmentFeatures.potentialOverDelivery && shipmentCaseBalance.projectedExcess>0" class="shipment-case-warning" role="alert"><strong>Potential over-delivery:</strong> outstanding original and replacement shipments could exceed the approved limit by {{formatCaseEquivalent(shipmentCaseBalance.projectedExcess)}} cases. Review before sending more product.</p>
                 <p v-if="shipmentFeatures.caseReconciliation && shipmentCaseBalance.needsApproval" class="shipment-case-warning" role="alert">Set the approved case limit so received quantities can be checked.</p>
             </div>
+            <template v-if="editingSection!=='shipping'">
             <div class="detail-grid shipping-contact-details">
-                <div><span>Contact</span><strong>{{rep?.name || '—'}}</strong></div>
+                <div><span>Contact</span><strong>{{request.shipping?.attention || rep?.name || '—'}}</strong></div>
                 <div><span>Phone Number</span><strong>{{(request.shipping?.phone || rep?.phone)?formatPhoneNumber(request.shipping?.phone || rep?.phone || ''):'—'}}</strong></div>
                 <div class="detail-field-wide"><span>Email</span><strong>{{request.shipping?.email || rep?.email || '—'}}</strong></div>
             </div>
-            <div v-if="request.shipping" class="shipping-address-field"><span class="detail-field-heading">Shipping Address</span><address class="shipping-preview shipping-destination"><strong>{{request.shipping.clinicName}}</strong><template v-if="rep?.name"><br />Attn: {{rep.name}}</template><br />{{request.shipping.addressLine1}}<template v-if="request.shipping.addressLine2"><br />{{request.shipping.addressLine2}}</template><br />{{request.shipping.city}}, {{request.shipping.state}} {{request.shipping.postalCode}}</address></div>
+            <div class="shipping-address-field"><span class="detail-field-heading">Shipping Address</span><address v-if="request.shipping" class="shipping-preview shipping-destination"><strong>{{agency?.name || '—'}}</strong><template v-if="request.shipping.attention || rep?.name"><br />Attn: {{request.shipping.attention || rep?.name}}</template><br />{{request.shipping.addressLine1}}<template v-if="request.shipping.addressLine2"><br />{{request.shipping.addressLine2}}</template><br />{{request.shipping.city}}, {{request.shipping.state}} {{request.shipping.postalCode}}</address><p v-else class="shipping-destination muted-copy">No shipping address saved for this request.</p></div>
+            </template>
             <div class="shipment-list">
-                <section v-for="(shipment,index) in canStaffEdit ? draft.shipments : requestShipments(request)" :key="index" class="shipment-card">
-                    <div class="panel-heading"><h4>{{ (canStaffEdit ? draft.shipments?.length : requestShipments(request).length)! > 1 ? `Shipment ${index + 1}` : 'Shipment' }}</h4>
-                        <button v-if="canStaffEdit && canDeleteShipment({...request,shipmentDrafts:draft.shipments},index)" type="button" class="text-button" :disabled="saving" :aria-label="`Delete Shipment ${index+1}`" @click="deletingShipmentIndex=index">Delete Shipment</button>
-                    </div>
+                <fieldset v-for="(shipment,index) in canStaffEdit ? draft.shipments : requestShipments(request)" :key="index" class="shipment-card">
+                    <legend>{{ (canStaffEdit ? draft.shipments?.length : requestShipments(request).length)! > 1 ? `Shipment ${index + 1}` : 'Shipment' }}</legend>
                     <div class="detail-grid">
                         <label v-if="editingShipmentPlan(shipment,index)" class="field-label detail-field-wide">Shipment Source<select :value="shipment.shipmentSource??'distributor'" class="form-input" :aria-label="`Shipment ${index+1} Source`" :disabled="saving || !!requestShipments(request)[index]?.etaSentAt" @change="changeShipmentSource(shipment,($event.target as HTMLSelectElement).value)"><option value="distributor">Distributor</option><option value="agency">Local Agency Transfer</option></select></label>
                         <template v-if="shipment.shipmentSource==='agency'">
@@ -894,7 +927,7 @@ async function saveAgencyUpdate() {
                         <label v-if="editingShipmentPlan(shipment,index)" class="field-label">Distributor<select :value="shipment.distributorId ?? ''" class="form-input" :aria-label="`Shipment ${index+1} Distributor`" :disabled="saving" @change="selectDistributor(shipment,($event.target as HTMLSelectElement).value)"><option value="">{{!shipment.distributorId && shipment.supplier?`${shipment.supplier} (legacy supplier)`:'Select Distributor'}}</option><option v-for="item in distributorData?.distributors" :key="item.id" :value="item.id">{{item.name}}</option></select></label>
                         <div v-else><span>Distributor</span><strong>{{shipment.supplier || '—'}}</strong></div>
                         </template>
-                        <template v-if="shipmentFeatures.quantityTracking || shipment.shipmentSource==='agency'">
+                        <template v-if="shipmentFeatures.quantityTracking || shipmentFeatures.receiptQuantities || shipment.shipmentSource==='agency'">
                         <label v-if="editingShipmentPlan(shipment,index)" class="field-label">Units per Case<input v-model.number="shipment.unitsPerCase" class="form-input" type="number" min="1" step="1" :aria-label="`Shipment ${index+1} Units per Case`" :disabled="saving || shipment.receivedUnits!==undefined || shipment.dispositions?.some(item=>item.units!==undefined) || (!!requestShipments(request)[index]?.unitsPerCase && (shipment.receivedCases!==undefined || !!shipment.receivedAt || !!shipment.receiptConfirmed))" /></label>
                         <div v-else><span>Units per Case</span><strong>{{shipment.unitsPerCase ?? 'Not confirmed'}}</strong></div>
                         </template>
@@ -910,7 +943,7 @@ async function saveAgencyUpdate() {
                         <template v-if="shipment.shipmentSource!=='agency' || shipment.etaSentAt">
                         <label v-if="editingShipmentPlan(shipment,index)" class="field-label detail-field-wide">Carrier<select v-model="shipment.carrier" class="form-input" :aria-label="`Shipment ${index+1} Carrier`" :disabled="saving"><option value="fedex">FedEx</option><option value="dhl">DHL</option><option value="ups">UPS</option></select></label>
                         <div v-else><span>Carrier</span><strong>{{shipment.carrier==='agency'?'Agency Delivery':shipment.carrier.toUpperCase()}}</strong></div>
-                        <label v-if="editingShipmentPlan(shipment,index)" class="field-label detail-field-wide">Tracking Numbers<textarea :value="shipment.trackingNumbers.join('\n')" class="form-textarea" placeholder="Enter one tracking number per line." :aria-label="`Shipment ${index+1} Tracking Numbers`" :disabled="saving" @input="setShipmentTracking(shipment,($event.target as HTMLTextAreaElement).value)" /></label>
+                        <label v-if="editingShipmentPlan(shipment,index)" class="field-label detail-field-wide">Tracking Numbers<textarea v-tracking-size :value="shipment.trackingNumbers.join('\n')" class="form-textarea shipment-tracking-input" placeholder="Enter one tracking number per line." :aria-label="`Shipment ${index+1} Tracking Numbers`" :disabled="saving" @input="setShipmentTracking(shipment,($event.target as HTMLTextAreaElement).value)" /></label>
                         <div v-else class="detail-field-wide"><span>{{shipment.shipmentSource==='agency'?'Tracking / Delivery Reference':'Tracking Numbers'}}</span><strong>{{shipment.trackingNumbers.join(', ') || 'N/A'}}</strong></div>
                         </template>
                         <div v-if="shipment.shipmentSource==='agency'" class="detail-field-wide"><span>Transfer Quantity</span><strong>{{shipment.casesShipped*(shipment.unitsPerCase??0)+(shipment.looseUnitsShipped??0)}} units</strong></div>
@@ -920,15 +953,17 @@ async function saveAgencyUpdate() {
                     <ShipmentIssuePanel :key="`${request.id}-${index}`" v-if="requestShipments(request)[index] && (!canStaffEdit || shipmentReceiptKey(shipment)===shipmentReceiptKey(requestShipments(request)[index]!))" :request="request" :shipment="requestShipments(request)[index]!" :index="index" :can-report="canRepEdit" :receipt-editing="!!receiptEditors[index]" :catalog-units-per-case="(request.requestedFormulas?.length??1)<=1?selectedProduct?.unitsPerCase:undefined" :disabled="saving" @updated="applyShipmentIssueResult" />
                     <div v-if="shipment.shipmentSource==='agency'" class="shipping-save-action">
                         <button v-if="canStaffEdit && !shipment.transferId" class="button button-secondary" type="button" :disabled="saving || !shipment.sourceLotId || !shipment.unitsPerCase || !(shipment.casesShipped || shipment.looseUnitsShipped)" @click="reserveShipmentTransfer(index)">Authorize &amp; Reserve Transfer</button>
+                        <button v-if="canStaffEdit && canDeleteShipment({...request,shipmentDrafts:draft.shipments},index)" type="button" class="text-button" :disabled="saving" :aria-label="`Delete Shipment ${index+1}`" @click="deletingShipmentIndex=index">Delete Shipment</button>
                         <span v-if="shipment.transferId" class="save-feedback" role="status">{{shipment.transferStatus==='reserved'?'Reserved · Awaiting shipment':shipment.transferStatus==='received'?'Transfer received':'In Transit'}}</span>
                         <NuxtLink v-if="shipment.transferId" to="/surplus" class="text-button">View Transfer</NuxtLink>
                     </div>
                     <div v-else-if="canStaffEdit && !shipmentReceived(request,shipment) && shipment.receivedCases===undefined && !shipment.issue && !shipment.deletedIssues?.length" class="shipping-save-action">
                         <button class="button button-secondary" type="button" :disabled="saving" :aria-label="`${shipment.etaSentAt?(editingShipmentPlan(shipment,index)?'Send Update':'Edit ETA'):'Send ETA'} for shipment ${index+1}`" @click="editOrSendEta(index)">{{ sendingEtaIndex === index ? 'Sending…' : shipment.etaSentAt ? (editingShipmentPlan(shipment,index)?'Send Update':'Edit ETA') : 'Send ETA' }}</button>
                         <button v-if="shipment.etaSentAt && editingShipmentPlan(shipment,index)" class="button button-ghost" type="button" :disabled="saving" :aria-label="`Cancel ETA edit for shipment ${index+1}`" @click="cancelEtaEdit(index)">Cancel</button>
-                        <span v-if="shipmentHasUnsentChanges(shipment,requestShipments(request)[index])" class="save-feedback" role="status">{{shipment.etaSentAt ? 'Unsent changes' : 'Draft · Not sent'}}</span><span v-else class="save-feedback save-feedback-saved" role="status">{{shipmentPublishNotice?.index===index && shipmentPublishNotice.updated ? 'Update Sent' : 'ETA Sent'}}</span>
+                        <button v-if="canStaffEdit && canDeleteShipment({...request,shipmentDrafts:draft.shipments},index)" type="button" class="text-button" :disabled="saving" :aria-label="`Delete Shipment ${index+1}`" @click="deletingShipmentIndex=index">Delete Shipment</button>
+                        <span v-if="!shipment.etaSentAt" class="save-feedback" role="status">Draft · Not sent</span><span v-else-if="!shipmentHasUnsentChanges(shipment,requestShipments(request)[index])" class="shipment-sent-status" role="status"><span aria-hidden="true">✓</span> {{shipmentPublishNotice?.index===index && shipmentPublishNotice.updated ? 'Update Sent' : 'ETA Sent'}}</span>
                     </div>
-                </section>
+                </fieldset>
             </div>
             <template v-if="canStaffEdit">
                 <p v-if="shipmentDeleteNotice" class="save-feedback save-feedback-saved" role="status">{{shipmentDeleteNotice}}</p>
@@ -1001,10 +1036,9 @@ async function saveAgencyUpdate() {
         <div v-if="pendingDecision" class="confirmation-backdrop" @click.self="pendingDecision = null">
             <div class="confirmation-modal" role="dialog" aria-modal="true" aria-labelledby="deny-decision-title">
                 <h3 id="deny-decision-title">Are you sure you want to deny this request?</h3>
-                <p>This will remove the approved state and mark the request as denied.</p>
                 <div class="form-actions">
                     <button class="button button-ghost" type="button" @click="pendingDecision = null">Cancel</button>
-                    <button class="button button-danger" type="button" @click="confirmDenial">Confirm denial</button>
+                    <button class="button button-danger" type="button" @click="confirmDenial">Confirm Denial</button>
                 </div>
             </div>
         </div>
