@@ -181,6 +181,7 @@ export async function executeSurplusCommand(
             .bind(c.transferId ?? '', lot!.id)
             .first<any>();
         if (!t) fail('Transfer not found.');
+        if(t.request_id)fail('Use the linked request transfer workflow for shipping, receipt or cancellation.');
         quantity = t.quantity;
         guard('EXISTS(SELECT 1 FROM surplus_transfers WHERE id=? AND source_lot_id=? AND status=?)', [
             t.id,

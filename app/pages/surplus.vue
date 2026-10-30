@@ -404,8 +404,9 @@ async function upload(kind: string, event: Event) {
         </section>
         <section>
             <h2>Transfers</h2>
+            <AgencyTransferShipment v-for="t in data?.transfers?.filter(t=>t.request_id)" :key="t.id" :transfer="t" :source-name="agencyName(t.source_agency_id)" :destination-name="agencyName(t.destination_agency_id)" :can-ship="!!reviewer || data?.user.agencyId===t.source_agency_id" @updated="refresh" />
             <article
-                v-for="t in data?.transfers"
+                v-for="t in data?.transfers?.filter(t=>!t.request_id)"
                 :key="t.id"
             >
                 <strong>{{ agencyName(t.source_agency_id) }} → {{ agencyName(t.destination_agency_id) }}</strong>

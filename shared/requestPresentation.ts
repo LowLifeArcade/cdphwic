@@ -130,3 +130,9 @@ export function participantAgeAtBenefitsStart(dob?: string, benefitsStart?: stri
     const parts = [[years, 'year'], [remainder, 'month'], [days, 'day']] as const;
     return parts.filter(([count]) => count > 0).map(([count, unit]) => `${count} ${unit}${count === 1 ? '' : 's'}`).join(', ') || '0 days';
 }
+
+export function formatEtaDate(value?: string): string {
+    if (!value) return '—';
+    const match = /^(\d{4})-(\d{2})-(\d{2})(?:T.*)?$/.exec(value);
+    return match ? `${match[2]}-${match[3]}-${match[1]}` : value;
+}

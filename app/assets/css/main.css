@@ -1228,9 +1228,14 @@ label {
 }
 .shipping-save-action {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     gap: 10px;
     margin-top: 10px;
+}
+.shipping-save-action .button {
+    flex-shrink: 0;
+    white-space: nowrap;
 }
 .agency-save-action {
     display: flex;
@@ -2201,6 +2206,7 @@ label {
 .issuance-row-heading h4 { margin: 0; font-size: var(--form-label-size); font-weight: 400; }
 .shipment-list { display: grid; gap: 16px; margin-bottom: 12px; }
 .shipment-card { border: 1px solid var(--line); border-radius: 8px; padding: 12px; min-width: 0; }
+.shipment-card .shipping-save-action .shipment-received-label { color: var(--success-text); font-weight: 800; }
 .shipment-card .panel-heading h4 { margin: 0; }
 .shipment-card .form-grid { align-items: start; }
 .shipment-card .form-input, .shipment-card .form-textarea { margin-bottom: 0; }
@@ -2489,3 +2495,7 @@ button:focus-visible, .button:focus-visible { outline: 2px solid #0077cf; outlin
     padding-inline: 0;
     margin-inline: 0;
 }
+
+.shipment-case-summary {padding:14px;border:1px solid var(--line);border-radius:8px;margin-bottom:16px;}
+.shipment-case-summary p {margin:8px 0 0;}
+.shipment-case-warning {color:var(--danger-text);border-left:3px solid #AE5018;padding-left:12px;}

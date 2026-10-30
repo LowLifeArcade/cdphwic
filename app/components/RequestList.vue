@@ -1,5 +1,9 @@
 <script setup lang="ts">
-import {submissionDateOnly} from '~/../shared/requestPresentation';
+import {shipmentFeatureFlags} from '~/../shared/featureFlags';
+import {caseBalance,shipmentListSummary} from '~/../shared/shipmentCaseTracking';
+import {localDate} from '~/../shared/surplus';
+import {deliveryCategory,filterAndSortRequests,type DeliveryFilter,type RequestTagFilter,type RequestListSort} from '~/../shared/requestListFilters';
+import {formatEtaDate,submissionDateOnly} from '~/../shared/requestPresentation';
 import {formatShippingAddress} from '~/../shared/shipping';
 import {canEditSubmission} from '~/../shared/requestEditing';
 import type { ProductForm, ProductRecord, RequestRecord } from '~/../shared/domain';
@@ -7,9 +11,18 @@ const props = defineProps<{ requests: RequestRecord[]; products: ProductRecord[]
 const identity = useState<'admin' | 'agency' | 'internal'>('demo-identity', () => 'admin');
 const selected = ref<RequestRecord | null>(null);
 const openError=ref('');
-const selectedIndex = computed(() => props.requests.findIndex((request) => request.id === selected.value?.id));
-const previousRequest = computed(() => props.requests[selectedIndex.value - 1]);
-const nextRequest = computed(() => selectedIndex.value < 0 ? undefined : props.requests[selectedIndex.value + 1]);
+const listToday=ref(localDate());
+function shippingSummary(request:RequestRecord) {return shipmentListSummary(request,listToday.value);}
+const shipmentFeatures=shipmentFeatureFlags(useRuntimeConfig().public);
+function needsCaseReview(request:RequestRecord) {if(!shipmentFeatures.caseReconciliation&&!shipmentFeatures.potentialOverDelivery)return false;const balance=caseBalance(request);return (shipmentFeatures.caseReconciliation&&(balance.excess>0||balance.needsApproval))||(shipmentFeatures.potentialOverDelivery&&balance.projectedExcess>0);}
+const deliveryFilter = ref<DeliveryFilter>('all');
+const tagFilter = ref<RequestTagFilter>('all');
+const sortBy = ref<RequestListSort>('submitted');
+const visibleRequests = computed(()=>filterAndSortRequests(props.requests,deliveryFilter.value,tagFilter.value,sortBy.value));
+watch(identity,()=>{selected.value=null;});
+const selectedIndex = computed(() => visibleRequests.value.findIndex((request) => request.id === selected.value?.id));
+const previousRequest = computed(() => visibleRequests.value[selectedIndex.value - 1]);
+const nextRequest = computed(() => selectedIndex.value < 0 ? undefined : visibleRequests.value[selectedIndex.value + 1]);
 const { data: agencyData } = await useFetch('/api/agencies');
 const agencies = computed(() => agencyData.value?.agencies ?? []);
 const members = computed(() => agencyData.value?.members ?? []);
@@ -50,11 +63,17 @@ async function openRequest(request: RequestRecord) {
 
 <template>
     <p v-if="openError" role="alert">{{openError}}</p>
+    <div class="filter-bar request-list-controls">
+        <label>Delivery<select v-model="deliveryFilter" class="filter-select"><option value="all">All deliveries</option><option value="awaiting">Awaiting Receipt</option><option value="partial">Partially Received</option><option value="received">Fully Received</option><option value="issue">Shipment Issue</option></select></label>
+        <label>Tags<select v-model="tagFilter" class="filter-select"><option value="all">All tags</option><option value="new">New</option><option value="extension">Extension</option><option value="approved">Approved</option><option value="special">Special Order</option></select></label>
+        <label>Sort by<select v-model="sortBy" class="filter-select"><option value="submitted">Submitted Date (newest first)</option><option value="eta">ETA (earliest first)</option><option value="participant">Participant Name (A–Z)</option></select></label>
+        <span class="muted-copy">{{visibleRequests.length}} shown</span>
+    </div>
     <div class="request-table-wrap">
         <div class="request-table-head">
             <span>Participant</span><span>Clinic</span><span>Product</span><span>Status</span><span>ETA</span><span />
         </div>
-        <div v-for="request in requests" :key="request.id" class="request-row-shell">
+        <div v-for="request in visibleRequests" :key="request.id" class="request-row-shell">
         <button
             class="request-row"
             @click="openRequest(request)"
@@ -77,6 +96,8 @@ async function openRequest(request: RequestRecord) {
             <span
                 ><span class="request-status-tags">
                     <StatusBadge :status="request.status" />
+                    <span v-if="identity!=='agency' && needsCaseReview(request)" class="request-tag shipping-issue-tag">Case Count Review</span>
+                    <span v-if="deliveryCategory(request) === 'issue'" class="request-tag shipping-issue-tag">Shipping Issue</span>
                     <span
                         v-if="request.specialOrder"
                         class="request-tag"
@@ -85,22 +106,18 @@ async function openRequest(request: RequestRecord) {
                         v-if="request.approved"
                         class="request-tag"
                     >Approved</span>
-                </span><small>Submitted {{ formatDate(request.submissionDate) }}</small></span
+                </span><small v-if="shippingSummary(request).total">{{shippingSummary(request).received}} of {{shippingSummary(request).total}} fully received<template v-if="shippingSummary(request).replaced"> · {{shippingSummary(request).replaced}} replaced</template></small><small>Submitted {{ formatDate(request.submissionDate) }}</small></span
             >
-            <span
-                ><strong>{{ request.eta ?? '—' }}</strong
-                ><small>{{
-                    request.trackingNumbers?.length
-                        ? request.trackingNumbers.map((item) => item.number).join(', ')
-                        : 'N/A'
-                }}</small></span
-            >
+            <span class="shipment-eta-cell" :title="shippingSummary(request).nextEta ? `Next ETA: ${formatEtaDate(shippingSummary(request).nextEta)}` : undefined">
+                <strong :class="{'eta-overdue':shippingSummary(request).overdue}">{{shippingSummary(request).nextEta ? formatEtaDate(shippingSummary(request).nextEta) : shippingSummary(request).total && !shippingSummary(request).awaiting ? 'All deliveries closed' : 'ETA pending'}}</strong>
+                <small v-if="shippingSummary(request).awaiting">{{shippingSummary(request).awaiting}} awaiting receipt<template v-if="shippingSummary(request).overdue"> · Overdue</template></small>
+            </span>
             <span class="row-arrow">›</span>
         </button>
         <NuxtLink v-if="identity === 'agency' && canEditSubmission(request)" class="request-edit-link" :to="{path:'/requests/new',query:{request:request.id}}" :aria-label="`Edit submission for ${request.participantName}`">Edit submission</NuxtLink>
         </div>
         <div
-            v-if="!requests.length"
+            v-if="!visibleRequests.length"
             class="empty-state"
         >
             No requests match this view.
@@ -129,6 +146,11 @@ async function openRequest(request: RequestRecord) {
 </template>
 
 <style scoped>
+.request-list-controls {margin-bottom:16px;gap:12px;}
+.request-list-controls label {display:flex;align-items:center;gap:8px;}
+.shipment-eta-cell small {white-space:normal;overflow:visible;text-overflow:clip;}
+.eta-overdue {color:var(--danger-text);}
+.shipping-issue-tag {color:#FFFFFF;background:#AE5018;border-color:#AE5018;}
 .request-row-shell {position:relative;}
 .request-edit-link {position:absolute;right:12px;bottom:5px;padding:3px 6px;color:var(--purple-light);font-size:0.72rem;border-radius:4px;background:var(--surface);}
 .request-edit-link:hover {text-decoration:underline;}

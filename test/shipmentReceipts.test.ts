@@ -1,0 +1,94 @@
+import {receiptQuantityKey} from '../shared/shipmentQuantities';
+import {expect,it} from 'vitest';
+import {confirmShipmentReceipts,shipmentReceiptKey,shipmentReceived,canConfirmShipment} from '../shared/shipmentReceipts';
+import {filterAndSortRequests,deliveryCategory} from '../shared/requestListFilters';
+import type {RequestRecord} from '../shared/domain';
+const sample = (): RequestRecord => ({id:9050,agencyId:10,agencyMemberId:100,participantName:'Example',productName:'Formula',status:'shipped',shipments:[{eta:'2026-11-01',casesShipped:2,carrier:'ups',trackingNumbers:['A']},{eta:'2026-11-03',casesShipped:3,carrier:'fedex',trackingNumbers:['B']}]});
+it('records only selected shipments and completes only after all are received',()=>{
+    const original=sample();
+    const first={...original,...confirmShipmentReceipts(original,[{index:0,key:shipmentReceiptKey(original.shipments![0]!),receivedCases:(original.shipments![0]!).casesShipped,expectedReceipt:receiptQuantityKey(original.shipments![0]!)}],100,'2026-11-01T10:00:00Z')};
+    expect(first.status).toBe('shipped');
+    expect(first.shipments![0]).toMatchObject({receivedAt:'2026-11-01T10:00:00Z',receivedBy:100});
+    expect(first.shipments![1]!.receivedAt).toBeUndefined();
+    expect(deliveryCategory(first)).toBe('partial');
+    const last={...first,...confirmShipmentReceipts(first,[{index:1,key:shipmentReceiptKey(first.shipments![1]!),receivedCases:(first.shipments![1]!).casesShipped,expectedReceipt:receiptQuantityKey(first.shipments![1]!)}],100,'2026-11-03T10:00:00Z')};
+    expect(last.status).toBe('complete'); expect(last.receivedStatus).toBe('received');
+    expect(last.shipments![0]!.receivedAt).toBe('2026-11-01T10:00:00Z');
+    expect(deliveryCategory(last)).toBe('received');
+});
+it('rejects empty, changed, invalid, and unsent selections',()=>{
+    const request=sample(); const key=shipmentReceiptKey(request.shipments![0]!);
+    expect(()=>confirmShipmentReceipts(request,[],100)).toThrow();
+    expect(()=>confirmShipmentReceipts(request,[{index:7,key}],100)).toThrow();
+    request.shipments![0]!.trackingNumbers=['CHANGED'];
+    expect(()=>confirmShipmentReceipts(request,[{index:0,key}],100)).toThrow();
+    request.status='in_progress';
+    expect(canConfirmShipment(request,request.shipments![0]!)).toBe(false);
+    expect(()=>confirmShipmentReceipts(request,[{index:0,key:shipmentReceiptKey(request.shipments![0]!),receivedCases:(request.shipments![0]!).casesShipped,expectedReceipt:receiptQuantityKey(request.shipments![0]!)}],100)).toThrow();
+});
+it('supports legacy completed receipts and independently sent shipments',()=>{
+    const request=sample(); request.status='complete';request.receivedStatus='received';
+    expect(shipmentReceived(request,request.shipments![0]!)).toBe(true);
+    expect(deliveryCategory(request)).toBe('received');
+    request.status='in_progress';request.receivedStatus='shipped';request.shipments![0]!.etaSentAt='2026-10-29T00:00:00Z';
+    const updates=confirmShipmentReceipts(request,[{index:0,key:shipmentReceiptKey(request.shipments![0]!),receivedCases:(request.shipments![0]!).casesShipped,expectedReceipt:receiptQuantityKey(request.shipments![0]!)}],100);
+    expect(updates.status).toBe('in_progress');
+    expect(updates.shipments![1]!.receivedAt).toBeUndefined();
+});
+it('filters delivery categories and tags and sorts dates with missing ETAs last',()=>{
+    const a=sample(); const b={...sample(),id:9051,participantName:'Amy',eta:'2026-11-02',requestKind:'extension' as const,approved:true};
+    a.eta='2026-11-01';
+    const c={...sample(),id:9052,status:'unopened' as const,shipments:undefined,participantName:'Zed'};
+    expect(deliveryCategory(c)).toBe('none');
+    expect(filterAndSortRequests([b,c,a],'awaiting','all','eta').map(r=>r.id)).toEqual([9050,9051]);
+    expect(filterAndSortRequests([b,c,a],'all','extension','participant').map(r=>r.id)).toEqual([9051]);
+    expect(filterAndSortRequests([b,c,a],'all','all','eta').map(r=>r.id)).toEqual([9050,9051,9052]);
+    expect(deliveryCategory({...a,receivedStatus:'damaged'})).toBe('issue');
+});
+it('persists partial and final confirmations while rejecting a concurrent stale write',async()=>{
+    const {surplusDb}=await import('./helpers/surplusDb');
+    const {ensureSubmittedRequest,updateSubmittedRequest}=await import('../server/utils/submittedRequests');
+    const {db}=surplusDb();
+    const original=await ensureSubmittedRequest(db,{...sample(),submissionId:'individual-receipts'});
+    const first=await updateSubmittedRequest(db,original,confirmShipmentReceipts(original,[{index:0,key:shipmentReceiptKey(original.shipments![0]!),receivedCases:(original.shipments![0]!).casesShipped,expectedReceipt:receiptQuantityKey(original.shipments![0]!)}],100));
+    expect(first.status).toBe('shipped');
+    await expect(updateSubmittedRequest(db,original,confirmShipmentReceipts(original,[{index:1,key:shipmentReceiptKey(original.shipments![1]!),receivedCases:(original.shipments![1]!).casesShipped,expectedReceipt:receiptQuantityKey(original.shipments![1]!)}],100))).rejects.toMatchObject({statusCode:409});
+    const last=await updateSubmittedRequest(db,first,confirmShipmentReceipts(first,[{index:1,key:shipmentReceiptKey(first.shipments![1]!),receivedCases:(first.shipments![1]!).casesShipped,expectedReceipt:receiptQuantityKey(first.shipments![1]!)}],100));
+    expect(last.status).toBe('complete');
+});
+it('preserves receipts when an older staff screen saves shipment details',async()=>{
+    const {surplusDb}=await import('./helpers/surplusDb');
+    const {ensureSubmittedRequest,updateSubmittedRequest}=await import('../server/utils/submittedRequests');
+    const {db}=surplusDb();
+    const old=await ensureSubmittedRequest(db,{...sample(),id:9053,submissionId:'stale-staff-receipts'});
+    const confirmed=await updateSubmittedRequest(db,old,confirmShipmentReceipts(old,[{index:0,key:shipmentReceiptKey(old.shipments![0]!),receivedCases:(old.shipments![0]!).casesShipped,expectedReceipt:receiptQuantityKey(old.shipments![0]!)}],100));
+    const saved=await updateSubmittedRequest(db,confirmed,{shipments:old.shipments});
+    expect(saved.shipments![0]!.receivedAt).toBe(confirmed.shipments![0]!.receivedAt);
+    const changed=structuredClone(old.shipments!);changed[0]!.trackingNumbers=['replacement'];
+    await expect(updateSubmittedRequest(db,saved,{shipments:changed})).rejects.toMatchObject({statusCode:409});
+});
+it('does not copy receipt confirmation to an identical but unreceived shipment',async()=>{
+    const {surplusDb}=await import('./helpers/surplusDb');
+    const {ensureSubmittedRequest,updateSubmittedRequest}=await import('../server/utils/submittedRequests');
+    const {db}=surplusDb();const request=sample();request.shipments![1]=structuredClone(request.shipments![0]!);
+    const previous=await ensureSubmittedRequest(db,{...request,id:9054,submissionId:'identical-shipment-receipts'});
+    const first=await updateSubmittedRequest(db,previous,confirmShipmentReceipts(previous,[{index:0,key:shipmentReceiptKey(previous.shipments![0]!),receivedCases:(previous.shipments![0]!).casesShipped,expectedReceipt:receiptQuantityKey(previous.shipments![0]!)}],100));
+    const saved=await updateSubmittedRequest(db,first,{shipments:previous.shipments});
+    expect(saved.status).toBe('shipped');
+    expect(shipmentReceived(saved,saved.shipments![0]!)).toBe(true);
+    expect(shipmentReceived(saved,saved.shipments![1]!)).toBe(false);
+});
+it('keeps reported issues until explicitly resolved and ignores stale aggregate receipt values',async()=>{
+    const {surplusDb}=await import('./helpers/surplusDb');
+    const {ensureSubmittedRequest,updateSubmittedRequest}=await import('../server/utils/submittedRequests');
+    const {db}=surplusDb();const request=sample();
+    const original=await ensureSubmittedRequest(db,{...request,id:9055,submissionId:'receipt-issues'});
+    const complete=await updateSubmittedRequest(db,original,confirmShipmentReceipts(original,request.shipments!.map((row,index)=>({index,key:shipmentReceiptKey(row),receivedCases:(row).casesShipped,expectedReceipt:receiptQuantityKey(row)})),100));
+    const stale=await updateSubmittedRequest(db,complete,{status:'shipped',receivedStatus:'shipped',repNotes:'Old window note'});
+    expect(stale.status).toBe('complete');expect(stale.receivedStatus).toBe('received');
+    const problem=await updateSubmittedRequest(db,stale,{status:'damaged',receivedStatus:'damaged'});
+    const saved=await updateSubmittedRequest(db,problem,{shipments:problem.shipments});
+    expect(saved.status).toBe('damaged');expect(saved.receivedStatus).toBe('damaged');
+    const resolved=await updateSubmittedRequest(db,saved,{status:'complete',receivedStatus:'received'});
+    expect(resolved.status).toBe('complete');expect(resolved.receivedStatus).toBe('received');
+});
