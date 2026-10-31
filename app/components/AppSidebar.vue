@@ -7,6 +7,17 @@ const props = defineProps<{ user: SessionUser }>();
 const navigation = computed(() => getNavigationItems(props.user));
 const mobileOpen = useState('mobile-nav-open', () => false);
 const identity = useState<DemoIdentity>('demo-identity', () => 'admin');
+const route = useRoute();
+const {data:pendingTransfers,refresh:refreshPendingTransfers,clear:clearPendingTransfers}=await useFetch('/api/surplus/transfers/pending',{
+    key:'pending-transfer-count',headers:computed(()=>({'x-demo-user':identity.value})),server:false,watch:false,
+});
+const pendingTransferCount=computed(()=>props.user.memberType==='agency' ? pendingTransfers.value?.count??0 : 0);
+watch(identity,()=>{clearPendingTransfers();void refreshPendingTransfers();});
+watch(()=>route.fullPath,()=>{void refreshPendingTransfers();});
+let pendingTransferTimer:ReturnType<typeof setInterval>|undefined;
+function refreshVisibleTransfers(){if(!document.hidden)void refreshPendingTransfers();}
+onMounted(()=>{pendingTransferTimer=setInterval(refreshVisibleTransfers,60000);window.addEventListener('focus',refreshVisibleTransfers);});
+onBeforeUnmount(()=>{if(pendingTransferTimer)clearInterval(pendingTransferTimer);window.removeEventListener('focus',refreshVisibleTransfers);});
 const adminSession = useState('admin-session', () => true);
 const profileMenuOpen = ref(false);
 const loginAsOpen = ref(false);
@@ -96,11 +107,12 @@ async function loginAs() {
             >
                 <NuxtLink
                     class="nav-item"
-                    :to="item.to"
+                    :to="item.to==='/surplus' && pendingTransferCount ? '/surplus#transfers' : item.to"
                     @click="closeMobileNav"
                 >
                     <span class="nav-icon">{{ item.icon }}</span>
                     <span>{{ item.label }}</span>
+                    <span v-if="item.to==='/surplus' && pendingTransferCount" class="pending-transfer-badge" role="status" :aria-label="`${pendingTransferCount} pending transfer ${pendingTransferCount===1?'request':'requests'}`">{{pendingTransferCount}}</span>
                 </NuxtLink>
                 <NuxtLink
                     v-for="child in item.children"
@@ -217,3 +229,7 @@ async function loginAs() {
         </form>
     </div>
 </template>
+
+<style scoped>
+.pending-transfer-badge {margin-left:auto;min-width:22px;padding:2px 6px;border-radius:12px;background:#902A92;color:#FFFFFF;font-size:12px;font-weight:700;text-align:center;line-height:18px;}
+</style>

@@ -88,27 +88,27 @@ async function submit(){
     <div class="shipment-receipt-panel">
         <div v-if="hasReceipt && !showEntry" class="receipt-summary">
             <div class="shipping-save-action">
-                <strong :class="shipmentReceived(request,shipment)?'shipment-received-label':'shipment-partial-label'">{{shipmentReceived(request,shipment)?'Received':'Partially Received'}}<template v-if="shipment.receivedAt"> · {{formatEtaDate(submissionDateOnly(shipment.receivedAt))}}</template></strong>
+                <strong class="receipt-status-badge" :class="shipmentReceived(request,shipment)?'shipment-received-label':'shipment-partial-label'" role="status"><span v-if="shipmentReceived(request,shipment)" aria-hidden="true">✓</span><span>{{shipmentReceived(request,shipment)?'Received':'Partially Received'}}</span><time v-if="shipment.receivedAt" :datetime="submissionDateOnly(shipment.receivedAt)">{{formatEtaDate(submissionDateOnly(shipment.receivedAt))}}</time></strong>
                 <button v-if="canConfirm && shipmentDispatched(request,shipment)" class="text-button" type="button" :disabled="disabled || saving" :aria-label="`Edit Receipt for shipment ${index+1}`" @click="editReceipt">Edit Receipt</button>
             </div>
             <p v-if="receiptQuantities && shipment.receiptMode!=='simple'">Received: {{formatShipmentUnits(quantities.receivedUnits,size)}}<template v-if="quantities.damagedUnits"> · Damaged: {{formatShipmentUnits(quantities.damagedUnits,size)}}</template><template v-if="quantities.missingUnits"> · Missing: {{formatShipmentUnits(quantities.missingUnits,size)}}</template></p>
         </div>
         <div v-if="showEntry" class="receipt-entry">
-            <strong>{{hasReceipt?'Edit Shipment Receipt':'Confirm Shipment Receipt'}}</strong>
+            <h4 class="receipt-heading">{{hasReceipt?'Edit Shipment Receipt':'Confirm Shipment Receipt'}}</h4>
             <div v-if="receiptQuantities" class="form-grid compact-form-grid">
                 <label class="field-label">Cases Received *<input v-model="cases" type="number" min="0" step="1" required class="form-input" :aria-label="`Shipment ${index+1} cases received`" :disabled="disabled || saving || !!evidenceRetry" /></label>
-                <label class="field-label">Loose Units Received<input v-model="loose" type="number" min="0" :max="size-1" step="1" class="form-input" :aria-label="`Shipment ${index+1} loose units received`" :disabled="disabled || saving || !!evidenceRetry || !validUnitSize(receiptShipment.unitsPerCase)" /></label>
+                <label class="field-label">Loose Unit(s) Received<input v-model="loose" type="number" min="0" :max="size-1" step="1" class="form-input" :aria-label="`Shipment ${index+1} loose Unit(s) received`" :disabled="disabled || saving || !!evidenceRetry || !validUnitSize(receiptShipment.unitsPerCase)" /></label>
             </div>
             <label class="receipt-damage-toggle"><input v-model="damage" type="checkbox" :disabled="disabled || saving || !!evidenceRetry || (receiptQuantities && !validUnitSize(receiptShipment.unitsPerCase))" @change="toggleDamage" /><span>Some product arrived damaged</span></label>
             <div v-if="receiptQuantities && damage" class="form-grid compact-form-grid">
                 <label class="field-label">Damaged Cases (included above)<input v-model="damagedCases" type="number" min="0" step="1" class="form-input" :aria-label="`Shipment ${index+1} damaged cases`" :disabled="disabled || saving || !!evidenceRetry" /></label>
-                <label class="field-label">Damaged Loose Units (included above)<input v-model="damagedLoose" type="number" min="0" :max="size-1" step="1" class="form-input" :aria-label="`Shipment ${index+1} damaged loose units`" :disabled="disabled || saving || !!evidenceRetry" /></label>
+                <label class="field-label">Damaged Loose Unit(s) (included above)<input v-model="damagedLoose" type="number" min="0" :max="size-1" step="1" class="form-input" :aria-label="`Shipment ${index+1} damaged loose Unit(s)`" :disabled="disabled || saving || !!evidenceRetry" /></label>
             </div>
             <p v-if="receiptQuantities && preview" class="receipt-quantity-summary" aria-live="polite">Received: {{formatShipmentUnits(preview.received,size)}} · Missing: {{formatShipmentUnits(preview.missing,size)}}<template v-if="preview.damaged"> · Damaged: {{formatShipmentUnits(preview.damaged,size)}}</template></p>
-            <label v-if="discrepancy || shipment.issue" class="field-label">Issue Notes<textarea v-model="notes" class="form-textarea" maxlength="4000" :aria-label="`Shipment ${index+1} receipt issue notes`" :disabled="disabled || saving || !!evidenceRetry" /></label>
+            <label v-if="discrepancy || shipment.issue" class="field-label">Notes<textarea v-model="notes" class="form-textarea" maxlength="4000" :aria-label="`Shipment ${index+1} receipt issue notes`" :disabled="disabled || saving || !!evidenceRetry" /></label>
             <label v-if="hasDamage" class="field-label">Damage Images<template v-if="shipment.distributorPolicy?.imagesRequired"> *</template><input type="file" multiple accept="image/jpeg,image/png,image/webp" :disabled="disabled || saving" :aria-label="`Shipment ${index+1} receipt damage images`" @change="chooseImages" /></label>
             <p v-if="files.length" class="muted-copy">{{files.length}} image(s) ready to upload.</p>
-            <p v-if="missingImages" class="receipt-error">Attach at least one damage image as required by this distributor.</p>
+            <p v-if="missingImages" class="receipt-error">Attach at least one image showing all damaged items as required by this distributor.</p>
             <p v-if="receiptQuantities && String(cases).trim()!=='' && !preview" class="receipt-error">Check the quantities. Damaged product must be included in the received total; documented returns or destruction must remain accounted for.</p>
             <div class="receipt-actions">
                 <button class="button button-secondary" type="button" :disabled="disabled || saving || (!evidenceRetry && ((receiptQuantities && !preview) || missingImages))" :aria-label="`${evidenceRetry?'Retry damage images':hasReceipt?'Save Receipt':'Confirm Receipt'} for shipment ${index+1}`" @click="submit">{{saving?'Saving…':evidenceRetry?'Retry Damage Images':hasReceipt?'Save Receipt':'Confirm Receipt'}}</button>
@@ -121,7 +121,9 @@ async function submit(){
 </template>
 <style scoped>
 .shipment-receipt-panel {margin-top:12px;}
-.receipt-entry {margin-top:12px;display:grid;gap:10px;}
+.receipt-entry {margin-top:20px;padding-top:16px;border-top:2px solid color-mix(in srgb,#902A92 55%,var(--line));display:grid;gap:12px;}
+.receipt-entry .receipt-heading {margin:0 0 2px;font-size:18px;line-height:1.35;font-weight:700;color:#DF76B8;}
+:global(:root[data-theme='light']) .receipt-entry .receipt-heading {color:#902A92;}
 .receipt-entry p,.receipt-summary p {margin:0;}
 .receipt-summary {display:grid;gap:8px;}
 .receipt-actions {display:flex;gap:10px;flex-wrap:wrap;}
@@ -130,7 +132,10 @@ async function submit(){
 .receipt-damage-toggle input {width:20px;height:20px;margin:0;flex:0 0 auto;accent-color:var(--purple);}
 .receipt-damage-toggle:has(input:checked) {border-color:var(--purple);background:var(--accent-bg);color:var(--accent-text);}
 .receipt-damage-toggle:has(input:disabled) {opacity:.6;}
-.shipment-received-label {color:var(--success-text);font-weight:800;}
+.receipt-status-badge {display:inline-flex;align-items:center;flex-wrap:wrap;gap:6px;padding:6px 10px;border:1px solid #0077CF;border-radius:8px;background:#002595;font-size:16px;line-height:1.35;font-weight:800;}
+.receipt-status-badge time {font-size:14px;font-weight:700;border-left:1px solid currentColor;padding-left:8px;}
+.receipt-status-badge.shipment-partial-label {border-color:var(--warning-border,#B56F2C);background:var(--warning-bg);}
+.shipment-receipt-panel .shipping-save-action .receipt-status-badge.shipment-received-label {color:#FFFFFF;font-weight:800;}
 .shipment-partial-label {color:var(--warning-text);font-weight:800;}
 .receipt-error {color:var(--red);}
 .receipt-quantity-summary {font-weight:600;}

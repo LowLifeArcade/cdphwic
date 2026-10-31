@@ -1130,7 +1130,7 @@ async function submitRequest() {
                     <input :id="`surplus-flavor-${index}`" v-model="entry.flavor" class="form-input" />
                 </div>
                 <div class="form-field">
-                    <label :for="`surplus-units-${index}`">Surplus Quantity (in units)</label>
+                    <label :for="`surplus-units-${index}`">Surplus Quantity (in Unit(s))</label>
                     <input :id="`surplus-units-${index}`" v-model="entry.units" class="form-input" type="number" min="1" required />
                 </div>
                 <div class="form-field">

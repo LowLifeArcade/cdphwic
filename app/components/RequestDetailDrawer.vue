@@ -826,11 +826,11 @@ async function saveAgencyUpdate() {
                     </div>
                 </label>
                 <label class="field-label">
-                    Agency Units On Hand
+                    Agency Unit(s) On Hand
                     <div class="surplus-input">
                         <input v-model.number="authorization.agencyUnitsOnHand" class="form-input authorization-number" type="number" inputmode="numeric" min="0" />
-                        <select v-model="authorization.agencyUnitsOnHandUnit" class="form-input" aria-label="Agency Units On Hand Unit">
-                            <option value="units">Units</option>
+                        <select v-model="authorization.agencyUnitsOnHandUnit" class="form-input" aria-label="Agency Unit(s) On Hand Unit">
+                            <option value="units">Unit(s)</option>
                             <option value="cases">Cases</option>
                         </select>
                     </div>
@@ -840,7 +840,7 @@ async function saveAgencyUpdate() {
                     <div class="surplus-input">
                         <input v-model.number="authorization.expectedSurplus" class="form-input authorization-number" type="number" inputmode="numeric" min="0" />
                         <select v-model="authorization.expectedSurplusUnit" class="form-input" aria-label="Expected Surplus Unit">
-                            <option value="units">Units</option>
+                            <option value="units">Unit(s)</option>
                             <option value="cases">Cases</option>
                         </select>
                     </div>
@@ -858,7 +858,7 @@ async function saveAgencyUpdate() {
                     </select>
                     <div class="quantity-input">
                         <input v-model.number="issuance.quantity" class="form-input month-quantity" type="number" inputmode="numeric" min="1" placeholder="Quantity" :aria-label="`Formula ${formulaIndex+1} issuance quantity ${index+1}`" />
-                        <span>units</span>
+                        <span>Unit(s)</span>
                     </div>
                     <button class="icon-button" type="button" aria-label="Remove benefit month" @click="removeBenefitMonth(formulaIndex,index)">×</button>
                 </div>
@@ -959,7 +959,7 @@ async function saveAgencyUpdate() {
                         <div v-else><span>Distributor</span><strong>{{shipment.supplier || '—'}}</strong></div>
                         </template>
                         <template v-if="shipmentFeatures.quantityTracking || shipmentFeatures.receiptQuantities || shipment.shipmentSource==='agency'">
-                        <label v-if="editingShipmentPlan(shipment,index)" class="field-label">Units per Case<input v-model.number="shipment.unitsPerCase" class="form-input" type="number" min="1" step="1" @input="syncTransferQuantity(shipment)" :aria-label="`Shipment ${index+1} Units per Case`" :disabled="saving || shipment.receivedUnits!==undefined || shipment.dispositions?.some(item=>item.units!==undefined) || (!!requestShipments(request)[index]?.unitsPerCase && (shipment.receivedCases!==undefined || !!shipment.receivedAt || !!shipment.receiptConfirmed))" /></label>
+                        <label v-if="editingShipmentPlan(shipment,index)" class="field-label">Unit(s) per Case<input v-model.number="shipment.unitsPerCase" class="form-input" type="number" min="1" step="1" @input="syncTransferQuantity(shipment)" :aria-label="`Shipment ${index+1} Unit(s) per Case`" :disabled="saving || shipment.receivedUnits!==undefined || shipment.dispositions?.some(item=>item.units!==undefined) || (!!requestShipments(request)[index]?.unitsPerCase && (shipment.receivedCases!==undefined || !!shipment.receivedAt || !!shipment.receiptConfirmed))" /></label>
                         <div v-else><span>Units per Case</span><strong>{{shipment.unitsPerCase ?? 'Not confirmed'}}</strong></div>
                         </template>
                         <label v-if="editingShipmentLogistics(shipment,index)" class="field-label">ETA<input v-model="shipment.eta" class="form-input" type="date" :aria-label="`Shipment ${index+1} ETA`" :disabled="saving" /></label>
@@ -967,7 +967,7 @@ async function saveAgencyUpdate() {
                         <template v-if="shipment.shipmentSource==='agency'">
                             <template v-if="editingShipmentPlan(shipment,index)">
                                 <label class="field-label">Cases to Transfer<input v-model.number="shipment.casesShipped" class="form-input" type="number" inputmode="numeric" min="0" step="1" :aria-label="`Shipment ${index+1} Cases to Transfer`" :disabled="saving" @input="syncTransferQuantity(shipment)" /></label>
-                                <label class="field-label">Units to Transfer<input v-model.number="shipment.looseUnitsShipped" class="form-input" type="number" inputmode="numeric" min="0" :max="(shipment.unitsPerCase??1)-1" step="1" :aria-label="`Shipment ${index+1} Units to Transfer`" :disabled="saving" @input="syncTransferQuantity(shipment)" /></label>
+                                <label class="field-label">Unit(s) to Transfer<input v-model.number="shipment.looseUnitsShipped" class="form-input" type="number" inputmode="numeric" min="0" :max="(shipment.unitsPerCase??1)-1" step="1" :aria-label="`Shipment ${index+1} Unit(s) to Transfer`" :disabled="saving" @input="syncTransferQuantity(shipment)" /></label>
                             </template>
                             <template v-else><div><span>Cases to Transfer</span><strong>{{shipment.casesShipped}}</strong></div><div><span>Units to Transfer</span><strong>{{shipment.looseUnitsShipped??0}}</strong></div></template>
                             <div class="detail-field-wide"><span>Total Transfer Quantity</span><strong>{{shipment.transferQuantity??shipment.unitsToTransfer??0}} units</strong></div>
@@ -975,7 +975,7 @@ async function saveAgencyUpdate() {
                         <template v-else-if="shipmentFeatures.casesShipped">
                         <label v-if="editingShipmentPlan(shipment,index)" class="field-label">Cases Shipped<input v-model.number="shipment.casesShipped" class="form-input" type="number" min="0" :aria-label="`Shipment ${index+1} Cases Shipped`" :disabled="saving" /></label>
                         <div v-else><span>Cases Shipped</span><strong>{{shipment.casesShipped}}<template v-if="shipmentFeatures.quantityTracking && shipment.looseUnitsShipped"> + {{shipment.looseUnitsShipped}} loose units</template></strong></div>
-                        <label v-if="shipmentFeatures.quantityTracking && editingShipmentPlan(shipment,index) && shipment.replacementFor!==undefined" class="field-label">Loose Units Shipped<input v-model.number="shipment.looseUnitsShipped" class="form-input" type="number" min="0" :max="(shipment.unitsPerCase??1)-1" :disabled="saving || shipment.replacementBasis==='cases'" :aria-label="`Shipment ${index+1} Loose Units Shipped`" /></label>
+                        <label v-if="shipmentFeatures.quantityTracking && editingShipmentPlan(shipment,index) && shipment.replacementFor!==undefined" class="field-label">Loose Unit(s) Shipped<input v-model.number="shipment.looseUnitsShipped" class="form-input" type="number" min="0" :max="(shipment.unitsPerCase??1)-1" :disabled="saving || shipment.replacementBasis==='cases'" :aria-label="`Shipment ${index+1} Loose Unit(s) Shipped`" /></label>
                         </template>
                         <label v-if="shipment.shipmentSource==='agency'" class="field-label detail-field-wide">Carrier<input value="GSO" class="form-input" readonly :aria-label="`Shipment ${index+1} Carrier`" /></label>
                         <label v-else-if="editingShipmentLogistics(shipment,index)" class="field-label detail-field-wide">Carrier<select v-model="shipment.carrier" class="form-input" :aria-label="`Shipment ${index+1} Carrier`" :disabled="saving"><option value="fedex">FedEx</option><option value="dhl">DHL</option><option value="ups">UPS</option></select></label>
@@ -994,7 +994,7 @@ async function saveAgencyUpdate() {
                             <span v-if="shipment.transferEtaSentAt && !editingShipmentLogistics(shipment,index)" class="shipment-sent-status" role="status">✓ ETA Sent</span>
                         </template>
                         <button v-if="canStaffEdit && canDeleteShipment({...request,shipmentDrafts:draft.shipments},index)" type="button" class="text-button" :disabled="saving" :aria-label="`Delete Shipment ${index+1}`" @click="deletingShipmentIndex=index">Delete Shipment</button>
-                        <span v-if="shipment.transferId && shipment.transferStatus==='reserved'" class="shipment-sent-status" role="status"><span aria-hidden="true">✓</span> Transfer Requested</span><span v-else-if="shipment.transferId" class="save-feedback" role="status">{{shipment.transferStatus==='received'?'Transfer received':'In Transit'}}</span>
+                        <span v-if="shipment.transferId && shipment.transferStatus==='reserved'" class="shipment-sent-status" role="status"><span aria-hidden="true">✓</span> Transfer Requested</span><span v-else-if="shipment.transferId" :class="shipment.transferStatus==='received'?'shipment-sent-status':'shipment-transit-status'" role="status"><span v-if="shipment.transferStatus!=='received'" aria-hidden="true">→</span> {{shipment.transferStatus==='received'?'Transfer received':'In Transit'}}</span>
                         <NuxtLink v-if="shipment.transferId" to="/surplus" class="text-button">View Transfer</NuxtLink>
                         <p v-if="transferAuthorizationIndex===index && transferAuthorizationMessage" class="form-error transfer-authorization-error" role="alert">{{transferAuthorizationMessage}}</p>
                     </div>
@@ -1014,10 +1014,6 @@ async function saveAgencyUpdate() {
                     <span v-if="shippingSaveStatus !== 'idle'" class="save-feedback" :class="`save-feedback-${shippingSaveStatus}`" role="status">{{ shippingSaveStatus === 'saving' ? 'Saving…' : shippingSaveStatus === 'saved' ? 'Draft saved · Not sent to Local Agency' : 'Save failed' }}</span>
                 </div>
             </template>
-            <label v-if="canRepEdit" class="field-label">
-                Agency Notes
-                <textarea v-model="draft.repNotes" class="form-textarea" />
-            </label>
             <p
                 v-if="photoNames.length"
                 class="muted-copy"
@@ -1033,7 +1029,7 @@ async function saveAgencyUpdate() {
                 </div>
                 <div v-for="(item, index) in draft.surplusItems" :key="index" class="surplus-entry-row">
                     <label class="field-label">Formula<input v-model="item.productName" class="form-input" /></label>
-                    <label class="field-label">Units<input v-model.number="item.units" class="form-input" type="number" min="0" /></label>
+                    <label class="field-label">Unit(s)<input v-model.number="item.units" class="form-input" type="number" min="0" /></label>
                     <label class="field-label">Expiration<input v-model="item.expirationDate" class="form-input" type="date" /></label>
                     <button class="icon-button" type="button" aria-label="Remove surplus row" @click="requestRemoveSurplusItem(index)">×</button>
                 </div>
@@ -1044,7 +1040,7 @@ async function saveAgencyUpdate() {
             <div v-else-if="canStaffEdit && canRepEdit" class="confirmation-response-actions">
                 <button class="button button-primary report-surplus-button" type="button" @click="startSurplusReport">Report Surplus</button>
             </div>
-            <div class="agency-save-action">
+            <div v-if="canStaffEdit && canRepEdit && reportingSurplus" class="agency-save-action">
                 <button
                 v-if="canRepEdit"
                 class="button button-secondary"

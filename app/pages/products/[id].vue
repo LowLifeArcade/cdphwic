@@ -147,7 +147,7 @@ async function saveProduct() {
                     </select>
                 </div>
                 <div class="form-field">
-                    <label for="units-per-case">Units per case</label>
+                    <label for="units-per-case">Unit(s) per case</label>
                     <input
                         id="units-per-case"
                         v-model="form.unitsPerCase"

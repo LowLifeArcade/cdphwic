@@ -188,3 +188,18 @@ it('keeps earlier reserved transfer logistics private while authorizing another 
  const second=await authorizeRequestTransfer(f.db,first,[first.shipmentDrafts![0]!,{...f.row,casesShipped:1}],1,f.admin);
  expect(second.shipments![0]!.eta).toBe('');expect(second.shipmentDrafts![0]!.eta).toBe('2026-11-10');expect(second.shipments).toHaveLength(2);
 });
+it('counts pending transfers for the sending agency before ETA and clears when shipped or cancelled',async()=>{
+ const {pendingTransferCount}=await import('../server/utils/pendingTransfers');
+ const f=await fixture();const reserved=await authorizeRequestTransfer(f.db,f.request,[f.row],0,f.admin);
+ const sender={...getDemoUser('agency'),agencyId:11};
+ expect(await pendingTransferCount(f.db,sender)).toBe(1);
+ expect(await pendingTransferCount(f.db,getDemoUser('agency'))).toBe(0);
+ expect(await pendingTransferCount(f.db,f.admin)).toBe(0);
+ const id=reserved.shipments![0]!.transferId!;
+ await dispatchTransfer(f.db,id,sender,{eta:'2026-11-10',carrier:'gso',trackingNumbers:['PENDING']});
+ expect(await pendingTransferCount(f.db,sender)).toBe(0);
+ const second=await fixture();const other=await authorizeRequestTransfer(second.db,second.request,[second.row],0,second.admin);
+ const {deleteSubmittedShipment}=await import('../server/utils/submittedRequests');
+ await deleteSubmittedShipment(second.db,other,0,second.admin.id);
+ expect(await pendingTransferCount(second.db,sender)).toBe(0);
+});

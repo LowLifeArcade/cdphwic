@@ -56,10 +56,10 @@ async function submitIssue(action:ShipmentIssueCommand['action']) {
 
 <template>
     <div v-if="shipment.issue && !receiptEditing" class="shipment-issue-panel">
-        <div v-if="shipment.issue" :class="['shipment-issue-details',{'shipment-issue-active':!shipment.issue.resolvedAt}]">
+        <div v-if="shipment.issue" :class="['shipment-issue-details',{'shipment-issue-active':!shipment.issue.resolvedAt,'shipment-issue-damaged':shipment.issue.type==='damaged'&&!shipment.issue.resolvedAt}]">
             <strong>{{shipment.issue.resolvedAt?'Resolved issue':'Shipment issue'}} — {{ {damaged:'Damaged',missing:'Missing',incomplete:'Incomplete'}[shipment.issue.type] }}</strong>
+            <small class="issue-reported">Reported {{formatEtaDate(submissionDateOnly(shipment.issue.reportedAt))}}<template v-if="shipment.issue.resolvedAt"> · Resolved {{formatEtaDate(submissionDateOnly(shipment.issue.resolvedAt))}}</template><template v-if="shipment.issue.reopenedAt"> · Reopened {{formatEtaDate(submissionDateOnly(shipment.issue.reopenedAt))}}</template></small>
             <p v-if="shipment.issue.notes" class="issue-notes">{{shipment.issue.notes}}</p>
-            <small>Reported {{formatEtaDate(submissionDateOnly(shipment.issue.reportedAt))}}<template v-if="shipment.issue.resolvedAt"> · Resolved {{formatEtaDate(submissionDateOnly(shipment.issue.resolvedAt))}}</template><template v-if="shipment.issue.reopenedAt"> · Reopened {{formatEtaDate(submissionDateOnly(shipment.issue.reopenedAt))}}</template></small>
         </div>
         <ShipmentRequirementsPanel v-if="showDamageRequirements(identity,shipment,editing && !responding && issueType==='damaged')" :shipment="shipment" />
         <ShipmentEvidencePanel v-if="shipment.issue" :request="request" :shipment="shipment" :index="index" :can-provide="canReport" @updated="record=>emit('updated',record)" />
@@ -88,7 +88,7 @@ async function submitIssue(action:ShipmentIssueCommand['action']) {
         </div>
         <div v-if="editing" class="issue-editor">
             <label v-if="!responding" class="field-label">Issue Type<select v-model="issueType" class="form-input" :aria-label="`Shipment ${index+1} issue type`" :disabled="saving"><option value="damaged">Damaged</option><option value="missing">Missing</option><option value="incomplete">Incomplete</option></select></label>
-            <label class="field-label">{{responding?'Response':'Issue Notes'}}<textarea v-model="notes" class="form-textarea" maxlength="4000" :placeholder="responding?'Enter a response to the local agency.':'Describe the issue with this shipment.'" :aria-label="responding?`Shipment ${index+1} response`:`Shipment ${index+1} issue notes`" :disabled="saving" /></label>
+            <label class="field-label">{{responding?'Response':'Notes'}}<textarea v-model="notes" class="form-textarea" maxlength="4000" :placeholder="responding?'Enter a response to the local agency.':'Describe the issue with this shipment.'" :aria-label="responding?`Shipment ${index+1} response`:`Shipment ${index+1} issue notes`" :disabled="saving" /></label>
             <div class="issue-actions">
                 <button class="button button-secondary" type="button" :disabled="disabled || saving" @click="submitIssue(responding?'respond':'update')">{{saving?'Saving…':responding?'Send Response':'Save Issue Update'}}</button>
                 <button class="button button-ghost" type="button" :disabled="saving" @click="editing=false;error=''">Cancel</button>
@@ -103,6 +103,10 @@ async function submitIssue(action:ShipmentIssueCommand['action']) {
 .shipment-issue-panel {margin-top:12px;}
 .shipment-issue-details {padding:12px;border:1px solid var(--line);border-radius:8px;}
 .shipment-issue-active {border-color:var(--red);}
+.shipment-issue-damaged {border-color:#E2742F;background:color-mix(in srgb,#E2742F 10%,transparent);}
+.shipment-issue-damaged > strong {color:#E2742F;}
+:global(:root[data-theme='light']) .shipment-issue-damaged > strong {color:#AE5018;}
+.issue-reported {display:block;margin-top:6px;}
 .issue-notes {white-space:pre-wrap;margin:8px 0;overflow-wrap:anywhere;}
 .issue-actions {display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin-top:10px;}
 .issue-responses {display:grid;gap:12px;margin-top:12px;}

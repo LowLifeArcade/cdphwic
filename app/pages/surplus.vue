@@ -5,6 +5,7 @@ const route = useRoute();
 const identity = useState<'admin' | 'agency' | 'internal'>('demo-identity', () => 'admin');
 const headers = computed(() => ({ 'x-demo-user': identity.value }));
 const { data, refresh, error } = await useFetch('/api/surplus', { headers, server: false });
+async function refreshTransferState(){await refresh();await refreshNuxtData('pending-transfer-count');}
 const { data: agencyData } = await useFetch('/api/agencies');
 watch([()=>route.query.transfer,()=>data.value?.transfers],async([selected])=>{
     const id=typeof selected==='string'?selected:'';
@@ -144,7 +145,7 @@ async function run(work: () => Promise<unknown>) {
     try {
         await work();
         modal.value = '';
-        await refresh();
+        await refreshTransferState();
     } catch (e: any) {
         message.value = e.data?.message ?? e.data?.statusMessage ?? e.message ?? 'Unable to save.';
     } finally {
@@ -270,6 +271,43 @@ async function upload(kind: string, event: Event) {
         >
             {{ message }}
         </p>
+        <section id="transfers">
+            <h2>Transfers</h2>
+            <AgencyTransferShipment v-for="t in data?.transfers?.filter(t=>t.request_id)" :key="t.id" :transfer="t" :source-name="agencyName(t.source_agency_id)" :destination-name="agencyName(t.destination_agency_id)" :can-ship="data?.user.memberType==='agency' && data?.user.agencyId===t.source_agency_id" @updated="refreshTransferState" />
+            <article
+                v-for="t in data?.transfers?.filter(t=>!t.request_id)"
+                :key="t.id"
+            >
+                <strong>{{ agencyName(t.source_agency_id) }} → {{ agencyName(t.destination_agency_id) }}</strong>
+                <p>
+                    {{ t.formula_name }} · {{ t.quantity }} units · {{ t.status }} · {{ t.request_ref }}
+                    {{ t.tracking_reference }}
+                </p>
+                <template v-if="reviewer"
+                    ><button
+                        v-if="t.status === 'reserved'"
+                        class="button"
+                        @click="start('ship', data?.lots.find((l: any) => l.id === t.source_lot_id) as SurplusLot, t)"
+                    >
+                        Confirm shipment</button
+                    ><button
+                        v-if="t.status === 'reserved'"
+                        class="button"
+                        @click="start('cancel', data?.lots.find((l: any) => l.id === t.source_lot_id) as SurplusLot, t)"
+                    >
+                        Cancel reservation</button
+                    ><button
+                        v-if="t.status === 'shipped'"
+                        class="button"
+                        @click="
+                            start('receive', data?.lots.find((l: any) => l.id === t.source_lot_id) as SurplusLot, t)
+                        "
+                    >
+                        Confirm receipt
+                    </button></template
+                >
+            </article>
+        </section>
         <div class="surplus-filters">
             <label
                 >Search formula<input
@@ -410,43 +448,6 @@ async function upload(kind: string, event: Event) {
                 </button>
             </article>
         </section>
-        <section>
-            <h2>Transfers</h2>
-            <AgencyTransferShipment v-for="t in data?.transfers?.filter(t=>t.request_id)" :key="t.id" :transfer="t" :source-name="agencyName(t.source_agency_id)" :destination-name="agencyName(t.destination_agency_id)" :can-ship="data?.user.memberType==='agency' && data?.user.agencyId===t.source_agency_id" @updated="refresh" />
-            <article
-                v-for="t in data?.transfers?.filter(t=>!t.request_id)"
-                :key="t.id"
-            >
-                <strong>{{ agencyName(t.source_agency_id) }} → {{ agencyName(t.destination_agency_id) }}</strong>
-                <p>
-                    {{ t.formula_name }} · {{ t.quantity }} units · {{ t.status }} · {{ t.request_ref }}
-                    {{ t.tracking_reference }}
-                </p>
-                <template v-if="reviewer"
-                    ><button
-                        v-if="t.status === 'reserved'"
-                        class="button"
-                        @click="start('ship', data?.lots.find((l: any) => l.id === t.source_lot_id) as SurplusLot, t)"
-                    >
-                        Confirm shipment</button
-                    ><button
-                        v-if="t.status === 'reserved'"
-                        class="button"
-                        @click="start('cancel', data?.lots.find((l: any) => l.id === t.source_lot_id) as SurplusLot, t)"
-                    >
-                        Cancel reservation</button
-                    ><button
-                        v-if="t.status === 'shipped'"
-                        class="button"
-                        @click="
-                            start('receive', data?.lots.find((l: any) => l.id === t.source_lot_id) as SurplusLot, t)
-                        "
-                    >
-                        Confirm receipt
-                    </button></template
-                >
-            </article>
-        </section>
         <section v-if="data?.user.role === 'admin'">
             <h2>Agency notice forms</h2>
             <p>Upload the current forms used by donation and destruction notices.</p>
@@ -557,7 +558,7 @@ async function upload(kind: string, event: Event) {
                         v-if="
                             ['new', 'reconcile', 'deduct', 'reserve', 'destroy', 'confirm', 'forecast'].includes(modal)
                         "
-                        >{{ modal === 'forecast' ? 'Anticipated units' : 'Units'
+                        >{{ modal === 'forecast' ? 'Anticipated Unit(s)' : 'Unit(s)'
                         }}<input
                             v-model.number="input.quantity"
                             type="number"
