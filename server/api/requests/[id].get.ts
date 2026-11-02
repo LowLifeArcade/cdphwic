@@ -1,5 +1,5 @@
 import { getRequestById } from '../../utils/requestStore';
-import { submittedRequest, ensureSubmittedRequest, updateSubmittedRequest } from '../../utils/submittedRequests';
+import { submittedRequest, ensureSubmittedRequest, updateSubmittedRequest, markMoreInfoRead } from '../../utils/submittedRequests';
 import { getSessionFromHeaders } from '../../utils/session';
 import { canSeeAgency, isReviewer } from '../../../shared/surplus';
 export default defineEventHandler(async (event) => {
@@ -14,5 +14,6 @@ export default defineEventHandler(async (event) => {
         const previous = await ensureSubmittedRequest(env.CDPHWIC, request);
         request = await updateSubmittedRequest(env.CDPHWIC, previous, {status:'opened'});
     }
+    if(env?.CDPHWIC && request.moreInfoRequests?.length)request=await markMoreInfoRead(env.CDPHWIC,request,user);
     return { request };
 });

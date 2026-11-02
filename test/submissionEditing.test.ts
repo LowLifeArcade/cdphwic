@@ -120,18 +120,23 @@ it('does not change inventory or overwrite a report that was already reviewed', 
 });
 it('saves incomplete Pending LA corrections and then resubmits the same request with replacement documentation',async()=>{
  const db=await fixture();const saved=await store.submittedRequest(db,request.id,agency);
- const pending=await store.requestMoreInfo(db,saved!,getDemoUser('internal'),'Correct signed date',saved!.revision??0);
+ const sent=await store.requestMoreInfo(db,saved!,getDemoUser('internal'),'Correct signed date',saved!.revision??0);
+ const pending=await store.reopenMoreInfoSubmission(db,sent,getDemoUser('internal'),sent.revision!);
  const incomplete=await store.editSubmittedRequest(db,agency,pending,{prescriptionSignedDate:''},pending.revision!,{saveOnly:true});
  expect(incomplete.status).toBe('needs_info');expect(incomplete.prescriptionSignedDate).toBe('');
  await expect(store.editSubmittedRequest(db,agency,incomplete,{},incomplete.revision!)).rejects.toMatchObject({statusCode:400});
  const resubmitted=await store.editSubmittedRequest(db,agency,incomplete,{prescriptionSignedDate:'2026-10-28'},incomplete.revision!,{attachment:{storageKey:'replacement',fileName:'updated.pdf',contentType:'application/pdf',size:100}});
  expect(resubmitted.id).toBe(request.id);expect(resubmitted.status).toBe('unopened');expect(resubmitted.openedAt).toBeUndefined();expect(resubmitted.moreInfoRequests?.at(-1)?.resubmittedAt).toBeTruthy();expect(resubmitted.prescriptionAttachment?.storageKey).toBe('replacement');
+ expect(resubmitted.moreInfoRequests?.at(-1)?.resubmissionOpen).toBe(false);
+ const reopened=await store.reopenMoreInfoSubmission(db,resubmitted,getDemoUser('internal'),resubmitted.revision!);expect(reopened.status).toBe('needs_info');
+ const second=await store.editSubmittedRequest(db,agency,reopened,{},reopened.revision!,{saveOnly:true});expect(second.status).toBe('needs_info');
 });
 it('does not rewrite reconciled surplus when resubmitting unrelated corrections',async()=>{
  const {db}=surplusDb();const original={...request,submissionId:'reconciled-followup',id:1000100,surplusItems:[{productName:'Fortini',productForm:'ready-to-feed' as const,units:3,expirationDate:'2027-12-31'}]};
  await persistSurplusSubmission(db,original.submissionId,original,agency);
  await db.prepare("UPDATE surplus_reports SET status='reconciled' WHERE submission_id=?").bind(original.submissionId).run();
- const pending=await store.requestMoreInfo(db,original,getDemoUser('internal'),'Correct provider name',0);
+ const sent=await store.requestMoreInfo(db,original,getDemoUser('internal'),'Correct provider name',0);
+ const pending=await store.reopenMoreInfoSubmission(db,sent,getDemoUser('internal'),sent.revision!);
  const saved=await store.editSubmittedRequest(db,agency,pending,{doctorPrintedName:'Updated Provider'},pending.revision!,{saveOnly:true});
  const resubmitted=await store.editSubmittedRequest(db,agency,saved,{},saved.revision!);
  expect(resubmitted.status).toBe('unopened');expect(await db.prepare('SELECT status FROM surplus_reports WHERE submission_id=?').bind(original.submissionId).first('status')).toBe('reconciled');

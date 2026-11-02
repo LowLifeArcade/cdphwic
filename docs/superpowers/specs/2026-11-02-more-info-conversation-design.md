@@ -1,0 +1,9 @@
+# Ongoing More Info Conversation
+
+User requires ongoing exchange between CDPH/WIC and Local Agency, preserving the previously approved Resolved action. Extend existing thread responses with authenticated author side, allowing repeated messages from either side until resolved, including after resubmission during review. Retain legacy messages as Local Agency responses. Each message notifies the opposite side and preserves request status. Initial Send to LA still returns a request; a follow-up is a reply in the current thread. Resolved history remains read-only for new replies; reviewers may initiate a fresh information request. Keep existing note editing/deletion.
+
+Approach: extend the existing response array and scoped request command. Avoid separate top-level notes for every reviewer response; those split the exchange. No database migration or new messaging service is needed. Use existing permissions and revision-checked storage. Restrict conversation to review stages, consistent with Resolved.
+
+User refinements: recipient-read messages are immutable (no edits or deletes). Pending corrections retain Update and Resubmit independently of conversation responses. Remove purple bars; use neutral cards and clear sender names. Incoming messages appear in the existing in-app notification bell with unread count and New markers, refreshed every minute/on focus; reading request messages clears those notices.
+
+Latest user change supersedes automatic correction access: More Info messages do not reopen the form. CDPH/WIC/Admin explicitly Reopen for Resubmission; only then can LA update and resubmit. Submission consumes that grant; Resolved revokes it. Reopening refreshes the surplus comparison baseline and notifies LA, retaining prior submission dates. Approved details collapse for all roles. Strengthen conversation styling with blue heading, teal role distinction and visible reviewer controls, without purple bars.

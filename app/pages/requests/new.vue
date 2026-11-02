@@ -244,7 +244,7 @@ if(editingId.value){
   request=result.request;
  }
  correctingRequest.value=hasPendingMoreInfo(request);
- correctionNotes.value=request.moreInfoRequests?.filter(entry=>!entry.deletedAt&&!entry.resubmittedAt).map(entry=>entry.notes).join('\n\n')??'';
+ correctionNotes.value=request.moreInfoRequests?.filter(entry=>!entry.deletedAt&&(!entry.resubmittedAt||entry.resubmissionOpen)&&!entry.resolvedAt).map(entry=>entry.notes).join('\n\n')??'';
  const restored=restoreSubmittedForm(request);
  Object.assign(form,restored.form);
  additionalFormulas.value=restored.additionalFormulas;

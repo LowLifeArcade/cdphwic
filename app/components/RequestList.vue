@@ -50,18 +50,17 @@ async function openRequest(request: RequestRecord) {
         return;
     }
     openError.value='';
-    if ((identity.value === 'admin' || identity.value === 'internal') && request.status === 'unopened') {
-        try { const result = await $fetch<{ request: RequestRecord }>(`/api/requests/${request.id}`, {
-            method: 'PUT',
-            headers: {'x-demo-user':identity.value},
-            body: { status: 'opened' },
-        });
-        Object.assign(request, result.request);
-        } catch {openError.value='The request could not be opened. Please refresh and try again.';return;}
-    }
+    try {
+        const result=await $fetch<{request:RequestRecord}>(`/api/requests/${request.id}`,{headers:{'x-demo-user':identity.value}});
+        Object.assign(request,result.request);
+        if(import.meta.client)window.dispatchEvent(new Event('request-messages-changed'));
+    } catch {openError.value='The request could not be opened. Please refresh and try again.';return;}
     selected.value=request;
 }
-watch([()=>route.query.request,()=>props.requests],async([id])=>{const request=props.requests.find(r=>String(r.id)===String(id));if(!request)return;if(selected.value?.id===request.id){if(selected.value!==request)Object.assign(selected.value,request);}else await openRequest(request);},{immediate:true});
+async function openMessageRequest(event:Event){const id=(event as CustomEvent<number>).detail;if(String(route.query.request)!==String(id))return;const request=props.requests.find(row=>row.id===id);if(request)await openRequest(request);}
+onMounted(()=>window.addEventListener('open-request-message',openMessageRequest));
+onBeforeUnmount(()=>window.removeEventListener('open-request-message',openMessageRequest));
+watch([()=>route.query.request,()=>props.requests],async([id],[previousId])=>{const request=props.requests.find(r=>String(r.id)===String(id));if(!request)return;if(selected.value?.id===request.id && id===previousId){if(selected.value!==request)Object.assign(selected.value,request);}else await openRequest(request);},{immediate:true});
 </script>
 
 <template>

@@ -265,3 +265,11 @@ it('allows only reviewers to send More Info Requested and protects note and auth
  event.identity='agency';event.body={moreInfoRequests:[],authorizationVersions:[{id:'forged'}]};
  const unchanged=await put(event as never);expect(unchanged.request.moreInfoRequests).toHaveLength(1);expect(unchanged.request.authorizationVersions).toBeUndefined();
 });
+it('records message reads when the recipient opens request details and rejects deleting the read note',async()=>{
+ const {requestMoreInfo}=await import('../server/utils/submittedRequests');
+ const event=await fixture();const original=(await submittedRequest(event.db,1000998,getDemoUser('agency')))!;
+ const sent=await requestMoreInfo(event.db,original,getDemoUser('internal'),'Please clarify.',original.revision??0);
+ const result=await get(event as never);expect(result.request.moreInfoRequests![0]!.readAt).toBeTruthy();
+ event.identity='internal';event.body={revision:result.request.revision,moreInfoNote:{noteId:sent.moreInfoRequests![0]!.id,action:'delete'}};
+ await expect(put(event as never)).rejects.toMatchObject({statusCode:409});
+});

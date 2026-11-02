@@ -19,7 +19,7 @@ import {validateRequestedMonths} from '../../shared/requestMonthSelection';
 import {validateFormulaSelection} from '../../shared/formulaEntries';
 import {requestShipments,shipmentUpdates,validateShipments} from '../../shared/requestShipments';
 import {resolveShipping} from './clinicStore';
-import { canEditSubmission, hasPendingMoreInfo, submissionFields } from '../../shared/requestEditing';
+import { canEditSubmission, canReplyToMoreInfo, canReopenMoreInfo, canResolveMoreInfo, hasPendingMoreInfo, submissionFields } from '../../shared/requestEditing';
 import { validateRequestSubmission } from '../../shared/requestSubmission';
 import { validDate, localDate } from '../../shared/surplus';
 import type { RequestRecord, SessionUser } from '../../shared/domain';
@@ -78,7 +78,7 @@ async function writeRecord(
     unopened: boolean,
     extra: D1PreparedStatement[] = [],
 ) {
-    if(hasPendingMoreInfo(previous) && !request.moreInfoRequests?.at(-1)?.resubmittedAt) request.status='needs_info';
+    if(hasPendingMoreInfo(previous) && (!request.moreInfoRequests?.at(-1)?.resubmittedAt || request.moreInfoRequests?.at(-1)?.resubmissionOpen===true) && !request.moreInfoRequests?.at(-1)?.resolvedAt) request.status='needs_info';
     const condition = unopened
         ? " AND json_extract(request_json,'$.status')='unopened' AND json_extract(request_json,'$.openedAt') IS NULL"
         : '';
@@ -325,7 +325,7 @@ export async function editSubmittedRequest(
             );
         }
     }
-    if(hasPendingMoreInfo(previous) && !options.saveOnly){request.status='unopened';request.openedAt=undefined;request.moreInfoRequests=previous.moreInfoRequests!.map((entry,index)=>index===previous.moreInfoRequests!.length-1?{...entry,resubmittedAt:new Date().toISOString(),resubmittedBy:user.id}:entry);}
+    if(hasPendingMoreInfo(previous) && !options.saveOnly){request.status='unopened';request.openedAt=undefined;request.moreInfoRequests=previous.moreInfoRequests!.map((entry,index)=>index===previous.moreInfoRequests!.length-1?{...entry,resubmissionOpen:false,resubmittedAt:new Date().toISOString(),resubmittedBy:user.id}:entry);}
     return writeRecord(db, previous, request, !hasPendingMoreInfo(previous), steps);
 }
 
@@ -379,6 +379,9 @@ export async function editMoreInfoNote(db:D1Database,previous:RequestRecord,user
  if(!command||!['edit','delete'].includes(command.action))throw Object.assign(new Error('Select a valid note action.'),{statusCode:400});
  const note=previous.moreInfoRequests?.find(entry=>entry.id===command.noteId&&!entry.deletedAt);
  if(!note)throw Object.assign(new Error('Note not found.'),{statusCode:404,statusMessage:'Note not found.'});
+ const noticeIds=[`followup:${note.id}`,...(note.responses??[]).map(response=>`followup-response:${response.id}`)];
+ const reads=await db.prepare('SELECT notice_id FROM surplus_notice_reads WHERE notice_id IN (SELECT value FROM json_each(?)) LIMIT 1').bind(JSON.stringify(noticeIds)).first();
+ if(note.deletionLocked||note.readAt||note.responses?.some(response=>response.readAt)||reads)throw Object.assign(new Error('A message that has been read cannot be edited or deleted.'),{statusCode:409,statusMessage:'A message that has been read cannot be edited or deleted.'});
  if(command.action==='edit'&&(typeof command.notes!=='string'||!command.notes.trim()||command.notes.length>4000))throw Object.assign(new Error('Enter a note of up to 4000 characters.'),{statusCode:400,statusMessage:'Enter a note of up to 4000 characters.'});
  const now=new Date().toISOString();
  const moreInfoRequests=previous.moreInfoRequests!.map(entry=>entry.id!==note.id?entry:command.action==='delete'?{...entry,deletedAt:now,deletedBy:user.id}:{...entry,notes:command.notes!.trim(),editedAt:now,editedBy:user.id,noteHistory:[...(entry.noteHistory??[]),{notes:entry.notes,changedAt:now,changedBy:user.id}]});
@@ -388,13 +391,67 @@ export async function editMoreInfoNote(db:D1Database,previous:RequestRecord,user
 
 export interface MoreInfoReply {noteId:string;notes:string}
 export async function replyToMoreInfo(db:D1Database,previous:RequestRecord,user:SessionUser,reply:MoreInfoReply,revision:number){
- if(user.memberType!=='agency'||user.role==='admin')throw Object.assign(new Error('Only the Local Agency can respond to this note.'),{statusCode:403,statusMessage:'Only the Local Agency can respond to this note.'});
+ const reviewer=user.role==='admin'||user.memberType==='internal';
+ if(!reviewer&&user.memberType!=='agency')throw Object.assign(new Error('Only CDPH/WIC, Admin or the Local Agency can respond.'),{statusCode:403,statusMessage:'Only CDPH/WIC, Admin or the Local Agency can respond.'});
  if(!canSeeAgency(user,previous.agencyId))throw Object.assign(new Error('Request not found.'),{statusCode:404});
  if(revision!==(previous.revision??0))throw conflict();
  if(!reply||typeof reply.notes!=='string'||!reply.notes.trim()||reply.notes.length>4000)throw Object.assign(new Error('Enter an answer of up to 4000 characters.'),{statusCode:400,statusMessage:'Enter an answer of up to 4000 characters.'});
- const note=previous.moreInfoRequests?.find(entry=>entry.id===reply.noteId&&!entry.deletedAt&&!entry.resubmittedAt);
- if(!hasPendingMoreInfo(previous)||!note)throw Object.assign(new Error('This information request is no longer awaiting a response.'),{statusCode:409,statusMessage:'This information request is no longer awaiting a response.'});
- const response={id:crypto.randomUUID(),notes:reply.notes.trim(),respondedAt:new Date().toISOString(),respondedBy:user.id};
- const moreInfoRequests=previous.moreInfoRequests!.map(entry=>entry.id===note.id?{...entry,responses:[...(entry.responses??[]),response]}:entry);
- return writeRecord(db,previous,nextRecord(previous,{moreInfoRequests}),false);
+ const note=previous.moreInfoRequests?.find(entry=>entry.id===reply.noteId&&!entry.deletedAt&&!entry.resolvedAt);
+ if(!canReplyToMoreInfo(previous,reply.noteId)||!note)throw Object.assign(new Error('This information request is no longer awaiting a response.'),{statusCode:409,statusMessage:'This information request is no longer awaiting a response.'});
+ const response={id:crypto.randomUUID(),notes:reply.notes.trim(),respondedAt:new Date().toISOString(),respondedBy:user.id,respondedAs:reviewer?'reviewer' as const:'agency' as const};
+ const readHistory=moreInfoReadHistory(previous,user);
+ const moreInfoRequests=readHistory!.map(entry=>entry.id===note.id?{...entry,responses:[...(entry.responses??[]),response]}:entry);
+ return writeRecord(db,previous,nextRecord(previous,{moreInfoRequests}),false,moreInfoReadNoticeSteps(db,previous,user));
+}
+
+export async function resolveMoreInfo(db:D1Database,previous:RequestRecord,user:SessionUser,revision:number){
+ if(user.role!=='admin'&&user.memberType!=='internal')throw Object.assign(new Error('Only CDPH/WIC or Admin can resolve information requests.'),{statusCode:403,statusMessage:'Only CDPH/WIC or Admin can resolve information requests.'});
+ if(revision!==(previous.revision??0))throw conflict();
+ if(!canResolveMoreInfo(previous))throw Object.assign(new Error('There are no outstanding information requests.'),{statusCode:409,statusMessage:'There are no outstanding information requests.'});
+ const now=new Date().toISOString();
+ const moreInfoRequests=previous.moreInfoRequests!.map(entry=>entry.resolvedAt?entry:{...entry,resubmissionOpen:false,resolvedAt:now,resolvedBy:user.id});
+ return writeRecord(db,previous,nextRecord(previous,{status:'in_progress',moreInfoRequests}),false);
+}
+
+function moreInfoReadHistory(previous:RequestRecord,user:SessionUser,noticeId?:string){
+ const reviewer=user.role==='admin'||user.memberType==='internal';const now=new Date().toISOString();
+ return previous.moreInfoRequests?.map(note=>{
+  if(note.deletedAt)return note;
+  const initialRead=!reviewer&&!note.readAt&&(!noticeId||noticeId===`followup:${note.id}`||noticeId===`followup:${note.id}:reopen:${note.resubmissionOpenedAt}`);
+  const responses=note.responses?.map(response=>{
+   const incoming=reviewer?response.respondedAs!=='reviewer':response.respondedAs==='reviewer';
+   return incoming&&!response.readAt&&(!noticeId||noticeId===`followup-response:${response.id}`)?{...response,readAt:now,readBy:user.id}:response;
+  });
+  return {...note,...(initialRead?{readAt:now,readBy:user.id}:{}),...(responses?{responses}:{})};
+ });
+}
+export async function markMoreInfoRead(db:D1Database,previous:RequestRecord,user:SessionUser,noticeId?:string){
+ if(!canSeeAgency(user,previous.agencyId))throw Object.assign(new Error('Request not found.'),{statusCode:404});
+ if(user.role!=='admin'&&user.memberType!=='internal'&&user.memberType!=='agency')throw Object.assign(new Error('Not authorized.'),{statusCode:403});
+ let moreInfoRequests=moreInfoReadHistory(previous,user,noticeId);
+ // Preserve notification reads recorded before message-level read receipts existed.
+ const noticeIds=(previous.moreInfoRequests??[]).flatMap(note=>[`followup:${note.id}`,...(note.responses??[]).map(response=>`followup-response:${response.id}`)]);
+ const reads=await db.prepare('SELECT notice_id FROM surplus_notice_reads WHERE notice_id IN (SELECT value FROM json_each(?))').bind(JSON.stringify(noticeIds)).all<{notice_id:string}>();
+ const seen=new Set(reads.results.map(row=>row.notice_id));
+ moreInfoRequests=moreInfoRequests?.map(note=>seen.has(`followup:${note.id}`)||note.responses?.some(response=>seen.has(`followup-response:${response.id}`))?{...note,deletionLocked:true}:note);
+ const steps=moreInfoReadNoticeSteps(db,previous,user,noticeId);
+ if(JSON.stringify(moreInfoRequests)===JSON.stringify(previous.moreInfoRequests)){if(steps.length)await db.batch(steps);return previous;}
+ return writeRecord(db,previous,nextRecord(previous,{moreInfoRequests}),false,steps);
+}
+
+function moreInfoReadNoticeSteps(db:D1Database,previous:RequestRecord,user:SessionUser,noticeId?:string){
+ const reviewer=user.role==='admin'||user.memberType==='internal';
+ const ids=(previous.moreInfoRequests??[]).filter(note=>!note.deletedAt).flatMap(note=>[
+  ...(!reviewer?[`followup:${note.id}`,...(note.resubmissionOpen&&note.resubmissionOpenedAt?[`followup:${note.id}:reopen:${note.resubmissionOpenedAt}`]:[])]:[]),
+  ...(note.responses??[]).filter(response=>reviewer?response.respondedAs!=='reviewer':response.respondedAs==='reviewer').map(response=>`followup-response:${response.id}`),
+ ]).filter(id=>!noticeId||id===noticeId);
+ return ids.length?[db.prepare('INSERT OR IGNORE INTO surplus_notice_reads(notice_id,user_id) SELECT value,? FROM json_each(?)').bind(user.id,JSON.stringify(ids))]:[];
+}
+
+export async function reopenMoreInfoSubmission(db:D1Database,previous:RequestRecord,user:SessionUser,revision:number){
+ if(user.role!=='admin'&&user.memberType!=='internal')throw Object.assign(new Error('Only CDPH/WIC or Admin can reopen a request for resubmission.'),{statusCode:403,statusMessage:'Only CDPH/WIC or Admin can reopen a request for resubmission.'});
+ if(revision!==(previous.revision??0))throw conflict();
+ if(!canReopenMoreInfo(previous))throw Object.assign(new Error('This information request cannot be reopened for resubmission.'),{statusCode:409,statusMessage:'This information request cannot be reopened for resubmission.'});
+ const moreInfoRequests=previous.moreInfoRequests!.map((entry,index)=>index===previous.moreInfoRequests!.length-1?{...entry,resubmissionOpen:true,resubmissionOpenedAt:new Date().toISOString(),resubmissionOpenedBy:user.id,originalSurplusItems:structuredClone(previous.surplusItems??[])}:entry);
+ return writeRecord(db,previous,nextRecord(previous,{status:'needs_info',moreInfoRequests}),false);
 }

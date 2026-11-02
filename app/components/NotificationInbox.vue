@@ -9,9 +9,10 @@ const { data, refresh, clear } = await useFetch('/api/surplus/notices', {
 watch(identity,()=>{open.value=false;message.value='';clear();refresh();});
 let noticeTimer:ReturnType<typeof setInterval>|undefined;
 function refreshVisibleNotices(){if(!document.hidden)void refresh();}
-onMounted(()=>{noticeTimer=setInterval(refreshVisibleNotices,60000);window.addEventListener('focus',refreshVisibleNotices);});
-onBeforeUnmount(()=>{if(noticeTimer)clearInterval(noticeTimer);window.removeEventListener('focus',refreshVisibleNotices);});
+onMounted(()=>{noticeTimer=setInterval(refreshVisibleNotices,60000);window.addEventListener('focus',refreshVisibleNotices);window.addEventListener('request-messages-changed',refreshVisibleNotices);});
+onBeforeUnmount(()=>{if(noticeTimer)clearInterval(noticeTimer);window.removeEventListener('focus',refreshVisibleNotices);window.removeEventListener('request-messages-changed',refreshVisibleNotices);});
 const unread = computed(() => data.value?.notices.filter((n) => !n.is_read).length ?? 0);
+function openMessage(requestId:number){open.value=false;window.dispatchEvent(new CustomEvent('open-request-message',{detail:requestId}));}
 async function read(id: string) {
     await $fetch('/api/surplus/notices', {
         method: 'POST',
@@ -40,14 +41,15 @@ async function download(kind: string) {
 <template>
     <div class="notice-wrap">
         <button
-            class="icon-button"
+            class="icon-button notice-trigger"
             aria-label="Notifications"
+            :title="unread ? `${unread} unread notifications` : 'Notifications'"
             @click="
                 open = !open;
                 refresh();
             "
         >
-            ♧<span v-if="unread"> {{ unread }}</span>
+            <svg aria-hidden="true" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9Z"/><path d="M10 21h4"/></svg><span v-if="unread" class="notice-count" role="status" :aria-label="`${unread} unread notifications`">{{unread>99?'99+':unread}}</span>
         </button>
         <section
             v-if="open"
@@ -65,7 +67,9 @@ async function download(kind: string) {
             <article
                 v-for="n in data?.notices"
                 :key="n.id"
+                :class="{'notice-unread':!n.is_read}"
             >
+                <span v-if="!n.is_read" class="notice-new">New</span>
                 <strong>{{
                     n.title
                         ? n.title
@@ -77,9 +81,9 @@ async function download(kind: string) {
                 }}</strong>
                 <template v-if="n.kind==='request-info' || n.kind==='request-eta' || n.kind==='request-response' || n.kind==='transfer-pickup'">
                     <p>Request #{{n.request_id}}</p><p class="request-notice-notes">{{n.notes}}</p>
-                    <NuxtLink v-if="n.kind==='request-info'" class="button button-secondary" :to="{path:'/requests/new',query:{request:n.request_id}}" @click="open=false">Update Request</NuxtLink>
+                    <NuxtLink v-if="n.kind==='request-info'" class="button button-secondary" :to="{path:'/requests',query:{request:n.request_id}}" @click="openMessage(n.request_id)">View Message</NuxtLink>
                     <NuxtLink v-else-if="n.kind==='transfer-pickup'" class="button button-secondary" :to="{path:'/requests',query:{request:n.request_id}}" @click="open=false">View Shipment</NuxtLink>
-                    <NuxtLink v-else-if="n.kind==='request-response'" class="button button-secondary" :to="{path:'/requests',query:{request:n.request_id}}" @click="open=false">View Response</NuxtLink>
+                    <NuxtLink v-else-if="n.kind==='request-response'" class="button button-secondary" :to="{path:'/requests',query:{request:n.request_id}}" @click="openMessage(n.request_id)">View Message</NuxtLink>
                     <template v-else><NuxtLink class="button button-secondary" :to="{path:'/requests',query:{request:n.request_id}}" @click="open=false">View Shipment</NuxtLink><a class="button button-secondary" :href="`/api/requests/${n.request_id}/authorization-form.pdf?version=${n.version_id}`" target="_blank" rel="noopener">Print / Download Authorization</a></template>
                 </template>
                 <template v-else-if="n.kind==='transfer'">
@@ -125,6 +129,9 @@ async function download(kind: string) {
     </div>
 </template>
 <style scoped>
+.notice-trigger {position:relative;}
+.notice-count {position:absolute;top:-5px;right:-8px;min-width:18px;height:18px;padding:0 4px;display:grid;place-items:center;border-radius:10px;background:#002595;color:#fff;font-size:11px;font-weight:700;border:2px solid var(--surface);}
+.notice-new {display:inline-block;margin-right:8px;padding:2px 6px;border-radius:4px;background:#002595;color:#fff;font-size:11px;font-weight:600;}
 .notice-wrap {
     position: relative;
 }
