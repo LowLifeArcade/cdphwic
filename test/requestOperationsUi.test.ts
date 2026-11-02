@@ -75,12 +75,12 @@ describe('request operations UI', () => {
         expect(drawer).toContain('Product Number');
         expect(drawer).toContain('Units Per Case');
         expect(drawer).toContain('Yield');
-        expect(drawer).toContain('Agency Units On Hand');
+        expect(drawer).toContain('Agency Unit(s) On Hand');
         expect(drawer).toContain('cases for');
         expect(drawer).not.toContain('Amount Approved');
         expect(drawer).toContain('Expected Surplus Unit');
-        expect(drawer).toContain('Agency Units On Hand Unit');
-        expect(drawer).toContain('Agency Units On Hand');
+        expect(drawer).toContain('Agency Unit(s) On Hand Unit');
+        expect(drawer).toContain('Agency Unit(s) On Hand');
         expect(drawer).not.toContain('Cases Ordered');
         expect(drawer).toContain('>Issuance</h3>');
         expect(drawer.indexOf('Issuance')).toBeLessThan(drawer.indexOf('Approved Cases for Approved Months'));
