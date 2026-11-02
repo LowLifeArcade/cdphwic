@@ -93,6 +93,8 @@ export interface SurplusForecast {
     report_id: string | null;
 }
 export interface SurplusTransfer {
+    shipped_date?:string;
+    received_date?:string;
     request_id?:number;
     units_per_case?:number;
     eta?:string;

@@ -203,3 +203,13 @@ it('counts pending transfers for the sending agency before ETA and clears when s
  await deleteSubmittedShipment(second.db,other,0,second.admin.id);
  expect(await pendingTransferCount(second.db,sender)).toBe(0);
 });
+it('notifies reviewers once when the sending agency confirms pickup',async()=>{
+ const {requestNotices}=await import('../server/utils/requestNotices');const f=await fixture();
+ const reserved=await authorizeRequestTransfer(f.db,f.request,[f.row],0,f.admin);const id=reserved.shipments![0]!.transferId!;
+ expect((await requestNotices(f.db,getDemoUser('internal'))).filter(n=>n.kind==='transfer-pickup')).toHaveLength(0);
+ const sender={...getDemoUser('agency'),agencyId:11};await dispatchTransfer(f.db,id,sender,{eta:'2026-11-10',carrier:'gso',trackingNumbers:['PICKUP-NOTICE']});
+ const notices=await requestNotices(f.db,getDemoUser('internal'));const pickup=notices.find(n=>n.kind==='transfer-pickup');expect(pickup?.transfer_id).toBe(id);expect(pickup?.notes).toContain('GSO pickup');
+ await expect(shipRequestTransfer(f.db,id,sender)).rejects.toMatchObject({statusCode:409});expect((await requestNotices(f.db,f.admin)).filter(n=>n.kind==='transfer-pickup')).toHaveLength(1);
+ expect(f.sqlite.prepare('SELECT on_hand,reserved FROM surplus_lots WHERE id=?').get(f.lot.id)).toMatchObject({on_hand:36,reserved:0});
+ expect((await requestNotices(f.db,getDemoUser('agency'))).some(n=>n.kind==='transfer-pickup')).toBe(false);
+});

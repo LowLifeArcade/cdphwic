@@ -7,7 +7,7 @@ const identity=useState<'admin'|'agency'|'internal'>('demo-identity',()=> 'admin
 const busy=ref(false);const error=ref('');
 const formulaLabel=computed(()=>`${props.transfer.formula_name} ${{powder:'Powder',concentrate:'Liquid Concentrate','ready-to-feed':'RTF'}[props.transfer.form]??props.transfer.form}`);
 const destination=computed(()=>{try{return JSON.parse(props.transfer.destination_shipping??'null') as import('~/../shared/shipping').RequestShipping|null;}catch{return null;}});
-async function ship(){busy.value=true;error.value='';try{await $fetch(`/api/request-transfers/${props.transfer.id}/ship`,{method:'POST',headers:{'x-demo-user':identity.value}});emit('updated');}catch(e){error.value=(e as any).data?.statusMessage??'Transfer could not be shipped.';}finally{busy.value=false;}}
+async function ship(){busy.value=true;error.value='';try{await $fetch(`/api/request-transfers/${props.transfer.id}/ship`,{method:'POST',headers:{'x-demo-user':identity.value}});emit('updated');}catch(e){error.value=(e as any).data?.statusMessage??'Pickup could not be confirmed.';}finally{busy.value=false;}}
 </script>
 <template>
  <article :id="`transfer-${transfer.id}`" class="transfer-shipment" tabindex="-1">
@@ -28,10 +28,13 @@ async function ship(){busy.value=true;error.value='';try{await $fetch(`/api/requ
    <address v-if="destination">{{destinationName}}<template v-if="destination.attention"><br />Attn: {{destination.attention}}</template><br />{{destination.addressLine1}}<template v-if="destination.addressLine2"><br />{{destination.addressLine2}}</template><br />{{destination.city}}, {{destination.state}} {{destination.postalCode}}</address>
    <span v-else class="transfer-label">Shipping address has not been provided.</span>
   </div>
+  <TransferShippingLabels :transfer-id="transfer.id" :can-upload="false" />
+  <TransferPickupInstructions v-if="canShip && transfer.status==='reserved'" />
+  <p v-if="(transfer.status==='shipped'||transfer.status==='received') && transfer.shipped_date" class="pickup-confirmed" role="status">✓ Pickup confirmed {{formatDisplayDate(transfer.shipped_date)}}</p>
   <div v-if="transfer.status==='reserved'" class="transfer-actions">
    <template v-if="transfer.eta && transfer.tracking_reference">
-    <button v-if="canShip" class="button button-secondary" type="button" :disabled="busy" @click="ship">{{busy?'Saving…':'Confirm Transfer'}}</button>
-    <p v-else>Awaiting shipment confirmation from {{sourceName}}.</p>
+    <button v-if="canShip" class="button button-secondary" type="button" :disabled="busy" @click="ship">{{busy?'Saving…':'Confirm Pickup'}}</button>
+    <p v-else>Awaiting pickup confirmation from {{sourceName}}.</p>
    </template>
    <p v-else>Awaiting ETA and tracking details from CDPH/WIC.</p>
   </div>

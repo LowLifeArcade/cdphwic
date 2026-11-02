@@ -22,7 +22,7 @@ import {staffShipmentRows,shipmentHasUnsentChanges} from '~/../shared/shipmentPu
 import {blankShipment,requestShipments,validateShipments,type RequestShipment} from '~/../shared/requestShipments';
 import {requestFormulas,participantNames,insuranceDetails,requestedMonthLabels,foodRestrictionLabel,formulaFormLabel,providerAddressLines,submissionDateOnly,participantAgeAtBenefitsStart} from '~/../shared/requestPresentation';
 import { validateDiagnoses } from '~/../shared/diagnosisCatalog';
-import {canEditSubmission} from '~/../shared/requestEditing';
+import {canEditSubmission,hasPendingMoreInfo} from '~/../shared/requestEditing';
 import type { ProductRecord, RequestRecord, RequestStatus } from '~/../shared/domain';
 import { getNextBenefitMonth, canGenerateAuthorizationForm, getApprovalStatus, canSelectShippedStatus } from '~/../shared/requestOperations';
 import { normalizeRequestedMonths, validateRequestDetailNumbers, validateSurplusItems } from '~/../shared/requestDetailFields';
@@ -87,6 +87,22 @@ const canStaffEdit = computed(() => identity.value === 'admin' || identity.value
 const reviewerOpenDate = ref(localDate());
 watch(() => props.request?.id, () => { reviewerOpenDate.value = localDate();editingEtaIndex.value=null;shipmentPublishNotice.value=null; });
 const ageMilestoneAlerts = computed(() => participantAgeAlerts(props.request?.participantDob,reviewerOpenDate.value,30));
+const moreInfoNotes=ref('');
+const moreInfoNotice=ref('');
+const editingMoreInfoId=ref('');
+const editingMoreInfoNotes=ref('');
+const deletingMoreInfoId=ref('');
+const moreInfoReplies=ref<Record<string,string>>({});
+const canCollapseReviewDetails=computed(()=>canStaffEdit.value && (props.request?.approved===true || props.request?.status==='approved'));
+const reviewDetailsExpanded=ref(true);
+watch([()=>props.request?.id,canCollapseReviewDetails],()=>{reviewDetailsExpanded.value=!canCollapseReviewDetails.value;},{immediate:true});
+async function sendMoreInfoReply(noteId:string){const notes=moreInfoReplies.value[noteId]?.trim();if(!notes)return;await save({moreInfoReply:{noteId,notes}} as Partial<RequestRecord>);if(!error.value){moreInfoReplies.value[noteId]='';moreInfoNotice.value='Response sent to CDPH/WIC.';}}
+const visibleMoreInfoRequests=computed(()=>props.request?.moreInfoRequests?.filter(entry=>!entry.deletedAt)??[]);
+function startMoreInfoEdit(entry:NonNullable<RequestRecord['moreInfoRequests']>[number]){editingMoreInfoId.value=entry.id;editingMoreInfoNotes.value=entry.notes;deletingMoreInfoId.value='';}
+async function saveMoreInfoNote(action:'edit'|'delete',noteId:string){await save({moreInfoNote:{noteId,action,...(action==='edit'?{notes:editingMoreInfoNotes.value.trim()}:{})}} as Partial<RequestRecord>);if(!error.value){editingMoreInfoId.value='';deletingMoreInfoId.value='';moreInfoNotice.value=action==='edit'?'Note updated.':'Note deleted.';}}
+
+watch(()=>props.request?.id,()=>{moreInfoNotes.value='';moreInfoNotice.value='';editingMoreInfoId.value='';deletingMoreInfoId.value='';moreInfoReplies.value={};});
+async function sendMoreInfo(){if(!props.request||!moreInfoNotes.value.trim())return;await save({requestMoreInfo:{notes:moreInfoNotes.value.trim()}} as Partial<RequestRecord>);if(!error.value){moreInfoNotes.value='';moreInfoNotice.value='Sent to Local Agency.';}}
 const canEditOriginal= computed(()=>!!props.request&&canEditSubmission(props.request));
 const {data:distributorData}=await useFetch<{distributors:import('~/../shared/distributors').DistributorProfile[]}>('/api/distributors',{headers:computed(()=>({'x-demo-user':identity.value})),watch:[identity]});
 function selectDistributor(shipment:import('~/../shared/requestShipments').RequestShipment,id:string){shipment.distributorId=id||undefined;const found=distributorData.value?.distributors.find(d=>d.id===id);shipment.supplier=found?.name??'';}
@@ -546,6 +562,7 @@ async function saveAgencyUpdate() {
             <div>
                 <span class="eyebrow">Request #{{ request.id }}</span>
                 <h2>{{ request.participantName }}</h2>
+                <span class="request-tag request-kind-tag">{{ request.requestKind === 'extension' ? 'Extension' : 'New' }}</span>
             </div>
             <div class="drawer-header-tools">
             <button v-if="request.prescriptionAttachment" type="button" class="button button-secondary attachment-toggle" :title="request.prescriptionAttachment.fileName" :aria-expanded="documentOpen" aria-controls="request-document-panel" @click="documentOpen=!documentOpen">{{request.prescriptionAttachment.fileName}}</button>
@@ -579,11 +596,11 @@ async function saveAgencyUpdate() {
             </div>
             </div>
         </div>
-        <div v-if="identity === 'agency' && canEditOriginal && request" class="form-actions"><NuxtLink class="button button-secondary" :to="{path:'/requests/new',query:{request:request.id}}">Edit submission</NuxtLink><small>Editable until Admin/FPU opens the submission.</small></div>
+        <div v-if="identity === 'agency' && canEditOriginal && request" class="form-actions"><NuxtLink class="button button-secondary" :to="{path:'/requests/new',query:{request:request.id}}">Edit submission</NuxtLink><small>{{request.status==='needs_info'?'Update the requested information, then Resubmit to CDPH/WIC.':'Editable until Admin/FPU opens the submission.'}}</small></div>
         <div class="drawer-status">
             <div class="request-status-tags">
-                <span class="request-tag request-kind-tag">{{ request.requestKind === 'extension' ? 'Extension' : 'New' }}</span>
-                <StatusBadge :status="draft.status ?? request.status" />
+                <StatusBadge v-if="!hasPendingMoreInfo(request)" :status="draft.status ?? request.status" />
+                <span v-if="hasPendingMoreInfo(request)" class="request-tag more-info-status" title="Returned to Local Agency for more information" role="status">More Info Requested</span>
                 <span
                     v-if="request.specialOrder"
                     class="request-tag"
@@ -595,6 +612,8 @@ async function saveAgencyUpdate() {
             </div>
             <span>Submitted {{ formatSubmittedDate(request.submissionDate) }}</span>
         </div>
+        <button v-if="canCollapseReviewDetails" class="review-details-toggle" type="button" :aria-expanded="reviewDetailsExpanded" :aria-controls="`review-details-${request.id}`" @click="reviewDetailsExpanded=!reviewDetailsExpanded"><span>Participant and Medical Details</span><span aria-hidden="true">{{reviewDetailsExpanded?'⌃':'⌄'}}</span></button>
+        <div :id="`review-details-${request.id}`" v-show="!canCollapseReviewDetails || reviewDetailsExpanded">
         <section class="detail-section participant-summary">
             <div class="section-heading">
                 <h3>Participant</h3>
@@ -755,6 +774,21 @@ async function saveAgencyUpdate() {
                 <button class="button button-secondary" type="button" :disabled="saving" @click="saveFormSection">Save Section</button>
             </div>
         </section>
+        </div>
+        <section v-if="canStaffEdit || request.moreInfoRequests?.length" class="detail-section more-info-section">
+            <div class="section-heading"><h3>More Info Requested</h3></div>
+            <div v-for="entry in visibleMoreInfoRequests" :key="entry.id" class="more-info-history">
+                <template v-if="canStaffEdit && editingMoreInfoId===entry.id"><label class="field-label">Notes<textarea v-model="editingMoreInfoNotes" class="form-textarea" maxlength="4000" rows="3" /></label><div class="more-info-actions"><button class="button button-secondary" type="button" :disabled="saving || !editingMoreInfoNotes.trim()" @click="saveMoreInfoNote('edit',entry.id)">Save Note</button><button class="button button-ghost" type="button" :disabled="saving" @click="editingMoreInfoId=''">Cancel</button></div></template>
+                <template v-else><p class="more-info-notes">{{entry.notes}}</p><div v-if="canStaffEdit" class="more-info-actions"><button class="text-button" type="button" :disabled="saving" @click="startMoreInfoEdit(entry)">Edit</button><button class="text-button" type="button" :disabled="saving" @click="deletingMoreInfoId=entry.id">Delete</button></div></template>
+                <small>Requested {{formatDisplayDate(submissionDateOnly(entry.requestedAt))}}<template v-if="entry.editedAt"> · Edited {{formatDisplayDate(submissionDateOnly(entry.editedAt))}}</template><template v-if="entry.resubmittedAt"> · Resubmitted {{formatDisplayDate(submissionDateOnly(entry.resubmittedAt))}}</template></small>
+                <div v-if="entry.responses?.length" class="more-info-responses"><article v-for="response in entry.responses" :key="response.id" class="more-info-response"><strong>Local Agency Response</strong><p>{{response.notes}}</p><small>{{formatDisplayDate(submissionDateOnly(response.respondedAt))}}</small></article></div>
+                <div v-if="identity==='agency' && hasPendingMoreInfo(request) && !entry.resubmittedAt" class="more-info-reply"><label class="field-label" :for="`more-info-reply-${entry.id}`">Response<textarea :id="`more-info-reply-${entry.id}`" v-model="moreInfoReplies[entry.id]" class="form-textarea" maxlength="4000" rows="3" placeholder="Type your answer here." :disabled="saving" /></label><button class="button button-secondary" type="button" :disabled="saving || !moreInfoReplies[entry.id]?.trim()" @click="sendMoreInfoReply(entry.id)">Send Response</button></div>
+                <div v-if="canStaffEdit && deletingMoreInfoId===entry.id" class="more-info-delete-confirmation"><p>Are you sure you want to delete this note?</p><div class="more-info-actions"><button class="button button-danger" type="button" :disabled="saving" @click="saveMoreInfoNote('delete',entry.id)">Delete Note</button><button class="button button-ghost" type="button" :disabled="saving" @click="deletingMoreInfoId=''">Cancel</button></div></div>
+            </div>
+            <template v-if="canStaffEdit"><label class="field-label">Notes<textarea v-model="moreInfoNotes" class="form-textarea" maxlength="4000" rows="3" placeholder="Describe what is missing and what needs to be addressed." /></label><button class="button button-secondary" type="button" :disabled="saving || !moreInfoNotes.trim()" @click="sendMoreInfo">Send to LA</button></template>
+            <p v-if="moreInfoNotice" role="status">{{moreInfoNotice}}</p>
+            <NuxtLink v-if="identity==='agency' && canEditOriginal && hasPendingMoreInfo(request)" class="button button-secondary" :to="{path:'/requests/new',query:{request:request.id}}">Update and Resubmit</NuxtLink>
+        </section>
         <hr class="cdph-section-divider" />
         <section class="cdph-workspace" aria-label="State-Issued Formula Authorization">
             <header class="cdph-workspace-header"><h3>State-Issued Formula Authorization</h3></header>
@@ -782,7 +816,7 @@ async function saveAgencyUpdate() {
                 >
                     <option value="opened">Opened</option>
                     <option value="in_progress">In progress</option>
-                    <option value="needs_info">Need info</option>
+                    <option v-if="request.status==='needs_info'" value="needs_info" disabled>Pending LA</option>
                     <option value="denied">Denied</option>
                     <option
                         v-if="canSelectShippedStatus(request ?? {})"
@@ -910,6 +944,7 @@ async function saveAgencyUpdate() {
         </section>
 
         <section ref="shippingSection" class="detail-section" tabindex="-1">
+            <div v-if="canGenerateAuthorizationForm(request)" class="authorization-downloads"><a class="button button-secondary" :href="`/api/requests/${request.id}/authorization-form.pdf`" target="_blank" rel="noopener">Print / Download Authorization</a><details v-if="(request.authorizationVersions?.length??0)>1"><summary>Earlier authorization versions</summary><p v-for="version in request.authorizationVersions" :key="version.id"><a :href="`/api/requests/${request.id}/authorization-form.pdf?version=${version.id}`" target="_blank" rel="noopener">{{formatDisplayDate(submissionDateOnly(version.sentAt))}} · Shipment {{version.shipmentIndex+1}}</a></p></details></div>
             <div class="section-heading"><h3>Shipping</h3><button v-if="canStaffEdit && editingSection!=='shipping'" class="text-button" type="button" @click="startEditing('shipping')">Edit</button></div>
             <form v-if="editingSection==='shipping' && draft.shipping" class="shipping-detail-editor" @submit.prevent="saveFormSection">
                 <div class="form-grid compact-form-grid">
@@ -983,6 +1018,7 @@ async function saveAgencyUpdate() {
                         <label v-if="editingShipmentLogistics(shipment,index)" class="field-label detail-field-wide">Tracking Numbers<textarea v-tracking-size :value="shipment.trackingNumbers.join('\n')" class="form-textarea shipment-tracking-input" placeholder="Enter one tracking number per line." :aria-label="`Shipment ${index+1} Tracking Numbers`" :disabled="saving" @input="setShipmentTracking(shipment,($event.target as HTMLTextAreaElement).value)" /></label>
                         <div v-else class="detail-field-wide"><span>{{shipment.shipmentSource==='agency'?'Tracking / Delivery Reference':'Tracking Numbers'}}</span><strong>{{shipment.trackingNumbers.join(', ') || 'N/A'}}</strong></div>
                     </div>
+                    <TransferShippingLabels v-if="shipment.transferId" :transfer-id="shipment.transferId" :can-upload="canStaffEdit" :allow-upload="shipment.transferStatus==='reserved'" />
                     <ShipmentReceiptPanel :key="`receipt-${request.id}-${index}`" v-if="requestShipments(request)[index]" :request="request" :shipment="requestShipments(request)[index]!" :index="index" :can-confirm="canRepEdit" @editing="value=>receiptEditors[index]=value" :catalog-units-per-case="shipmentCatalogSize(requestShipments(request)[index]!)" :disabled="saving" @updated="applyShipmentIssueResult" />
                     <ShipmentCasePanel :key="`cases-${request.id}-${index}`" v-if="shipmentFeatures.quantityTracking && requestShipments(request)[index] && (!canStaffEdit || shipmentReceiptKey(shipment)===shipmentReceiptKey(requestShipments(request)[index]!))" :request="request" :shipment="requestShipments(request)[index]!" :index="index" :can-manage="canStaffEdit" :disabled="saving" @updated="applyShipmentIssueResult" />
                     <ShipmentIssuePanel :key="`${request.id}-${index}`" v-if="requestShipments(request)[index] && (!canStaffEdit || shipmentReceiptKey(shipment)===shipmentReceiptKey(requestShipments(request)[index]!))" :request="request" :shipment="requestShipments(request)[index]!" :index="index" :can-report="canRepEdit" :receipt-editing="!!receiptEditors[index]" :catalog-units-per-case="shipmentCatalogSize(requestShipments(request)[index]!)" :disabled="saving" @updated="applyShipmentIssueResult" />
@@ -1094,3 +1130,20 @@ async function saveAgencyUpdate() {
 
     </aside>
 </template>
+
+<style scoped>
+.more-info-section {background:var(--accent-bg,color-mix(in srgb,#902A92 8%,var(--surface)));border:1px solid var(--accent-border,#902A92);border-radius:10px;padding:18px;margin:16px 0;}
+.more-info-section .section-heading h3 {color:var(--accent-text,#DF76B8);}
+.more-info-history {border-left:3px solid #902A92;padding:12px 14px;margin-bottom:12px;background:var(--surface);border-radius:0 8px 8px 0;}
+.more-info-responses {display:grid;gap:10px;margin:12px 0 0 16px;}
+.more-info-response {border-left:2px solid #007888;padding-left:12px;}
+.more-info-response p {white-space:pre-wrap;overflow-wrap:anywhere;margin:6px 0;}
+.more-info-reply {margin:12px 0 0 16px;display:grid;gap:8px;justify-items:start;}
+.more-info-reply .field-label {width:100%;}
+.review-details-toggle {display:flex;align-items:center;justify-content:space-between;gap:12px;width:100%;text-align:left;padding:14px 16px;margin:12px 0;background:var(--surface-raised);color:var(--text);border:1px solid var(--line);border-radius:8px;font-family:inherit;font-size:16px;font-weight:600;cursor:pointer;}
+.review-details-toggle:focus-visible {outline:2px solid #902A92;outline-offset:3px;}
+.more-info-notes {white-space:pre-wrap;overflow-wrap:anywhere;}
+.more-info-section > button {margin-top:12px;}
+.more-info-actions {display:flex;flex-wrap:wrap;gap:12px;margin:8px 0;}
+.more-info-delete-confirmation {padding:10px 12px;border:1px solid var(--line);border-radius:8px;margin-top:8px;}
+</style>

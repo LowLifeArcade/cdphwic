@@ -258,3 +258,10 @@ it('lets CDPH/WIC edit manual request shipping outside its assigned clinic addre
  event.body={revision:0,shipping:{clinicName:'Local Agency',addressLine1:'123 Example Street',addressLine2:'',city:'Example',state:'CA',postalCode:'90000'}};
  const saved=await put(event as never);expect(saved.request.shipping!.addressLine1).toBe('123 Example Street');
 });
+it('allows only reviewers to send More Info Requested and protects note and authorization histories from client writes',async()=>{
+ const event=await fixture();event.body={revision:0,requestMoreInfo:{notes:'Please correct the date.'}};
+ await expect(put(event as never)).rejects.toMatchObject({statusCode:403});
+ event.identity='internal';const sent=await put(event as never);expect(sent.request.status).toBe('needs_info');
+ event.identity='agency';event.body={moreInfoRequests:[],authorizationVersions:[{id:'forged'}]};
+ const unchanged=await put(event as never);expect(unchanged.request.moreInfoRequests).toHaveLength(1);expect(unchanged.request.authorizationVersions).toBeUndefined();
+});

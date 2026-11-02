@@ -5,11 +5,13 @@ import {localDate} from '~/../shared/surplus';
 import {deliveryCategory,filterAndSortRequests,type DeliveryFilter,type RequestTagFilter,type RequestListSort} from '~/../shared/requestListFilters';
 import {formatEtaDate,submissionDateOnly} from '~/../shared/requestPresentation';
 import {formatShippingAddress} from '~/../shared/shipping';
-import {canEditSubmission} from '~/../shared/requestEditing';
+import {canEditSubmission,hasPendingMoreInfo} from '~/../shared/requestEditing';
 import type { ProductForm, ProductRecord, RequestRecord } from '~/../shared/domain';
 const props = defineProps<{ requests: RequestRecord[]; products: ProductRecord[] }>();
 const identity = useState<'admin' | 'agency' | 'internal'>('demo-identity', () => 'admin');
 const selected = ref<RequestRecord | null>(null);
+const route=useRoute();
+
 const openError=ref('');
 const listToday=ref(localDate());
 function shippingSummary(request:RequestRecord) {return shipmentListSummary(request,listToday.value);}
@@ -59,6 +61,7 @@ async function openRequest(request: RequestRecord) {
     }
     selected.value=request;
 }
+watch([()=>route.query.request,()=>props.requests],async([id])=>{const request=props.requests.find(r=>String(r.id)===String(id));if(!request)return;if(selected.value?.id===request.id){if(selected.value!==request)Object.assign(selected.value,request);}else await openRequest(request);},{immediate:true});
 </script>
 
 <template>
@@ -78,13 +81,13 @@ async function openRequest(request: RequestRecord) {
             class="request-row"
             @click="openRequest(request)"
         >
-            <span
-                ><strong>{{ request.participantName }}</strong
-                ><small
-                    >{{ request.requestKind === 'extension' ? 'Extension' : 'New' }} ·
-                    {{ request.participantFamilyId ?? '—' }}</small
-                ></span
-            >
+            <span>
+                <strong>{{ request.participantName }}</strong>
+                <span class="participant-request-meta">
+                    <span class="request-tag request-kind-tag">{{ request.requestKind === 'extension' ? 'Extension' : 'New' }}</span>
+                    <small>{{ request.participantFamilyId ?? '—' }}</small>
+                </span>
+            </span>
             <span :title="formatShippingAddress(request.shipping)"
                 ><strong>{{ agencies.find(agency => agency.id === request.agencyId)?.name || '—' }}</strong
                 ><small>{{ formatShippingAddress(request.shipping) }}</small></span
@@ -95,7 +98,8 @@ async function openRequest(request: RequestRecord) {
             >
             <span
                 ><span class="request-status-tags">
-                    <StatusBadge :status="request.status" />
+                    <StatusBadge v-if="!hasPendingMoreInfo(request)" :status="request.status" />
+                <span v-if="hasPendingMoreInfo(request)" class="request-tag more-info-status" title="Returned to Local Agency for more information" role="status">More Info Requested</span>
                     <span v-if="identity!=='agency' && needsCaseReview(request)" class="request-tag shipping-issue-tag">Case Count Review</span>
                     <span v-if="deliveryCategory(request) === 'issue'" class="request-tag shipping-issue-tag">Shipping Issue</span>
                     <span
@@ -109,7 +113,7 @@ async function openRequest(request: RequestRecord) {
                 </span><small v-if="shippingSummary(request).total">{{shippingSummary(request).received}} of {{shippingSummary(request).total}} fully received<template v-if="shippingSummary(request).replaced"> · {{shippingSummary(request).replaced}} replaced</template></small><small>Submitted {{ formatDate(request.submissionDate) }}</small></span
             >
             <span class="shipment-eta-cell" :title="shippingSummary(request).nextEta ? `Next ETA: ${formatEtaDate(shippingSummary(request).nextEta)}` : undefined">
-                <strong :class="{'eta-overdue':shippingSummary(request).overdue}">{{shippingSummary(request).nextEta ? formatEtaDate(shippingSummary(request).nextEta) : shippingSummary(request).total && !shippingSummary(request).awaiting ? 'All deliveries closed' : 'ETA pending'}}</strong>
+                <strong :class="{'eta-overdue':shippingSummary(request).overdue}">{{shippingSummary(request).nextEta ? formatEtaDate(shippingSummary(request).nextEta) : shippingSummary(request).total && !shippingSummary(request).awaiting ? 'All deliveries closed' : (request.approved === true || request.status === 'approved') && !request.specialOrder ? 'ETA pending' : ''}}</strong>
                 <small v-if="shippingSummary(request).awaiting">{{shippingSummary(request).awaiting}} awaiting receipt<template v-if="shippingSummary(request).overdue"> · Overdue</template></small>
             </span>
             <span class="row-arrow">›</span>
@@ -154,4 +158,9 @@ async function openRequest(request: RequestRecord) {
 .request-row-shell {position:relative;}
 .request-edit-link {position:absolute;right:12px;bottom:5px;padding:3px 6px;color:var(--purple-light);font-size:0.72rem;border-radius:4px;background:var(--surface);}
 .request-edit-link:hover {text-decoration:underline;}
+</style>
+
+<style scoped>
+.participant-request-meta {display:flex;align-items:center;gap:8px;min-width:0;}
+.participant-request-meta .request-kind-tag {flex-shrink:0;}
 </style>

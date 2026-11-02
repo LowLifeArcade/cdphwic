@@ -168,6 +168,8 @@ export interface RequestRecord {
     agencyUnitsOnHandUnit?: 'units' | 'cases';
     surplusItems?: Array<{ productName: string; productForm?: ProductForm; flavor?: string; units: number; expirationDate: string }>;
     staffNotes?: string;
+    moreInfoRequests?: Array<{id:string;notes:string;requestedAt:string;requestedBy:number;responses?:Array<{id:string;notes:string;respondedAt:string;respondedBy:number}>;editedAt?:string;editedBy?:number;deletedAt?:string;deletedBy?:number;noteHistory?:Array<{notes:string;changedAt:string;changedBy:number}>;originalSurplusItems?:RequestRecord['surplusItems'];resubmittedAt?:string;resubmittedBy?:number}>;
+    authorizationVersions?: Array<{id:string;sentAt:string;shipmentIndex:number;record:RequestRecord}>;
     nextSteps?: string;
     repNotes?: string;
     agencyConfirmationAlertedAt?: string;

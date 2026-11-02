@@ -1,0 +1,53 @@
+import {it,expect} from 'vitest';
+import {surplusDb} from './helpers/surplusDb';
+import {getDemoUser} from '../server/utils/session';
+import {ensureSubmittedRequest,requestMoreInfo,updateSubmittedRequest} from '../server/utils/submittedRequests';
+it('sends required reviewer notes with revision protection and preserves Pending LA during other updates',async()=>{
+ const {db}=surplusDb();const previous=await ensureSubmittedRequest(db,{id:9933,submissionId:'followup',agencyId:10,agencyMemberId:100,participantName:'Synthetic',productName:'Fortini',status:'opened'});
+ await expect(requestMoreInfo(db,previous,getDemoUser('agency'),'Missing date',previous.revision??0)).rejects.toMatchObject({statusCode:403});
+ await expect(requestMoreInfo(db,previous,getDemoUser('internal'),' ',previous.revision??0)).rejects.toMatchObject({statusCode:400});
+ const sent=await requestMoreInfo(db,previous,getDemoUser('internal'),'Please provide Date Signed.',previous.revision??0);
+ expect(sent.status).toBe('needs_info');expect(sent.moreInfoRequests?.[0]?.notes).toBe('Please provide Date Signed.');
+ await expect(requestMoreInfo(db,sent,getDemoUser('internal'),'Again',0)).rejects.toMatchObject({statusCode:409});
+ const updated=await updateSubmittedRequest(db,sent,{status:'in_progress'});expect(updated.status).toBe('needs_info');
+});
+it('publishes immutable authorization versions and scopes notices to the request agency',async()=>{
+ const {requestNotices}=await import('../server/utils/requestNotices');
+ const {db}=surplusDb();const previous=await ensureSubmittedRequest(db,{id:9934,submissionId:'publish',agencyId:10,agencyMemberId:100,participantName:'Synthetic',productName:'Fortini',productForm:'ready-to-feed',status:'in_progress',nextSteps:'Published instruction'});
+ const sent=await updateSubmittedRequest(db,previous,{shipmentDrafts:[{eta:'2026-11-10',carrier:'ups',casesShipped:2,trackingNumbers:['ONE']}]},false,0,3,undefined,false);
+ expect(sent.authorizationVersions).toHaveLength(1);expect(sent.authorizationVersions![0]!.record.shipmentDrafts).toBeUndefined();
+ const changed=await updateSubmittedRequest(db,sent,{nextSteps:'Unsent revision'});expect(changed.authorizationVersions![0]!.record.nextSteps).toBe('Published instruction');
+ const notices=await requestNotices(db,getDemoUser('agency'));expect(notices).toHaveLength(1);expect(notices[0]?.version_id).toBe(sent.authorizationVersions![0]!.id);
+ expect(await requestNotices(db,{...getDemoUser('agency'),agencyId:11})).toHaveLength(0);
+ const pending=await requestMoreInfo(db,changed,getDemoUser('internal'),'Please correct date',changed.revision!);
+ expect((await requestNotices(db,getDemoUser('agency'))).some(n=>n.kind==='request-info'&&n.notes==='Please correct date')).toBe(true);
+ await db.prepare('INSERT INTO surplus_notice_reads(notice_id,user_id) VALUES(?,?)').bind(`followup:${pending.moreInfoRequests![0]!.id}`,getDemoUser('agency').id).run();
+ expect((await requestNotices(db,getDemoUser('agency'))).find(n=>n.kind==='request-info')?.is_read).toBe(1);
+});
+it('allows reviewers to edit or remove notes with revision checks while preserving the return workflow',async()=>{
+ const {editMoreInfoNote}=await import('../server/utils/submittedRequests');
+ const {requestNotices}=await import('../server/utils/requestNotices');
+ const {db}=surplusDb();const original=await ensureSubmittedRequest(db,{id:9935,submissionId:'edit-followup',agencyId:10,agencyMemberId:100,participantName:'Synthetic',productName:'Fortini',status:'opened'});
+ const sent=await requestMoreInfo(db,original,getDemoUser('internal'),'Original note',0);const id=sent.moreInfoRequests![0]!.id;
+ await expect(editMoreInfoNote(db,sent,getDemoUser('agency'),{noteId:id,action:'edit',notes:'Unauthorized'},sent.revision!)).rejects.toMatchObject({statusCode:403});
+ await expect(editMoreInfoNote(db,sent,getDemoUser('internal'),{noteId:id,action:'edit',notes:' '},sent.revision!)).rejects.toMatchObject({statusCode:400});
+ const edited=await editMoreInfoNote(db,sent,getDemoUser('internal'),{noteId:id,action:'edit',notes:'Corrected note'},sent.revision!);
+ expect(edited.moreInfoRequests![0]!.notes).toBe('Corrected note');expect(edited.status).toBe('needs_info');expect((await requestNotices(db,getDemoUser('agency')))[0]?.notes).toBe('Corrected note');
+ await expect(editMoreInfoNote(db,edited,getDemoUser('admin'),{noteId:id,action:'delete'},sent.revision!)).rejects.toMatchObject({statusCode:409});
+ const deleted=await editMoreInfoNote(db,edited,getDemoUser('admin'),{noteId:id,action:'delete'},edited.revision!);
+ expect(deleted.moreInfoRequests![0]!.deletedAt).toBeTruthy();expect(deleted.status).toBe('needs_info');expect(await requestNotices(db,getDemoUser('agency'))).toHaveLength(0);
+ const {canEditSubmission}=await import('../shared/requestEditing');expect(canEditSubmission(deleted)).toBe(true);
+});
+it('lets the request agency answer an active note without clearing the return status and notifies reviewers',async()=>{
+ const {replyToMoreInfo}=await import('../server/utils/submittedRequests');const {requestNotices}=await import('../server/utils/requestNotices');
+ const {db}=surplusDb();const original=await ensureSubmittedRequest(db,{id:9936,submissionId:'reply-followup',agencyId:10,agencyMemberId:100,participantName:'Synthetic',productName:'Fortini',status:'opened'});
+ const pending=await requestMoreInfo(db,original,getDemoUser('internal'),'Please clarify.',0);const noteId=pending.moreInfoRequests![0]!.id;
+ await expect(replyToMoreInfo(db,pending,getDemoUser('internal'),{noteId,notes:'Wrong role'},pending.revision!)).rejects.toMatchObject({statusCode:403});
+ await expect(replyToMoreInfo(db,pending,{...getDemoUser('agency'),agencyId:11},{noteId,notes:'Wrong agency'},pending.revision!)).rejects.toMatchObject({statusCode:404});
+ await expect(replyToMoreInfo(db,pending,getDemoUser('agency'),{noteId,notes:' '},pending.revision!)).rejects.toMatchObject({statusCode:400});
+ const replied=await replyToMoreInfo(db,pending,getDemoUser('agency'),{noteId,notes:'The corrected form is ready.'},pending.revision!);
+ expect(replied.status).toBe('needs_info');expect(replied.moreInfoRequests![0]!.responses?.[0]?.notes).toBe('The corrected form is ready.');
+ const notices=await requestNotices(db,getDemoUser('internal'));expect(notices.some(n=>n.kind==='request-response'&&n.notes==='The corrected form is ready.')).toBe(true);
+ expect((await requestNotices(db,getDemoUser('agency'))).some(n=>n.kind==='request-response')).toBe(false);
+ await expect(replyToMoreInfo(db,replied,getDemoUser('agency'),{noteId,notes:'Stale'},pending.revision!)).rejects.toMatchObject({statusCode:409});
+});

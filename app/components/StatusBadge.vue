@@ -7,6 +7,6 @@ defineProps<{ status: RequestStatus | string }>();
     <span
         class="status-badge"
         :class="`status-${status}`"
-        >{{ String(status).replace('_', ' ') }}</span
+        >{{ status==='needs_info'?'Pending LA':String(status).replace('_', ' ') }}</span
     >
 </template>

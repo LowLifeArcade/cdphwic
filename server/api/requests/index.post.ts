@@ -82,6 +82,8 @@ export default defineEventHandler(async (event) => {
             originalApprovedCases: undefined,
             approvedCases: undefined,
             formulaAuthorizations: undefined,
+            moreInfoRequests: undefined,
+            authorizationVersions: undefined,
             shipments: undefined,
             receivedStatus: undefined,
             approved: false,

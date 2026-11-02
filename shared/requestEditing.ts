@@ -1,8 +1,9 @@
 import type { RequestRecord } from './domain';
 import { blankFormula, type FormulaEntry } from './formulaEntries';
 import { formatPhoneNumber } from './phone';
-export const canEditSubmission = (request: Pick<RequestRecord, 'status' | 'openedAt'>) =>
-    request.status === 'unopened' && !request.openedAt;
+export const canEditSubmission = (request: Pick<RequestRecord, 'status' | 'openedAt' | 'moreInfoRequests'>) =>
+    (request.status === 'unopened' && !request.openedAt) || hasPendingMoreInfo(request);
+export const hasPendingMoreInfo=(request:Pick<RequestRecord,'status'|'moreInfoRequests'>)=>request.status==='needs_info' && !!request.moreInfoRequests?.length && !request.moreInfoRequests.at(-1)?.resubmittedAt;
 export const submissionFieldKeys = [
     'shipping',
     'participantName',

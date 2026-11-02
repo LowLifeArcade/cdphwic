@@ -67,7 +67,7 @@ async function download(kind: string) {
                 :key="n.id"
             >
                 <strong>{{
-                    n.kind === 'transfer'
+                    n.title
                         ? n.title
                         : n.kind === 'forecast'
                         ? 'Confirm anticipated surplus'
@@ -75,7 +75,14 @@ async function download(kind: string) {
                           ? 'Formula available for donation'
                           : 'Expired formula — destruction required'
                 }}</strong>
-                <template v-if="n.kind==='transfer'">
+                <template v-if="n.kind==='request-info' || n.kind==='request-eta' || n.kind==='request-response' || n.kind==='transfer-pickup'">
+                    <p>Request #{{n.request_id}}</p><p class="request-notice-notes">{{n.notes}}</p>
+                    <NuxtLink v-if="n.kind==='request-info'" class="button button-secondary" :to="{path:'/requests/new',query:{request:n.request_id}}" @click="open=false">Update Request</NuxtLink>
+                    <NuxtLink v-else-if="n.kind==='transfer-pickup'" class="button button-secondary" :to="{path:'/requests',query:{request:n.request_id}}" @click="open=false">View Shipment</NuxtLink>
+                    <NuxtLink v-else-if="n.kind==='request-response'" class="button button-secondary" :to="{path:'/requests',query:{request:n.request_id}}" @click="open=false">View Response</NuxtLink>
+                    <template v-else><NuxtLink class="button button-secondary" :to="{path:'/requests',query:{request:n.request_id}}" @click="open=false">View Shipment</NuxtLink><a class="button button-secondary" :href="`/api/requests/${n.request_id}/authorization-form.pdf?version=${n.version_id}`" target="_blank" rel="noopener">Print / Download Authorization</a></template>
+                </template>
+                <template v-else-if="n.kind==='transfer'">
                     <p>{{n.formula_name}} · {{n.form}}<template v-if="n.flavor"> · {{n.flavor}}</template><br />{{n.quantity}} units to ship · Request #{{n.request_id}}</p>
                     <NuxtLink class="button button-secondary" :to="{path:'/surplus',query:{transfer:n.transfer_id},hash:`#transfer-${n.transfer_id}`}" @click="open=false">View Transfer</NuxtLink>
                 </template>
@@ -147,3 +154,5 @@ async function download(kind: string) {
     margin: 4px;
 }
 </style>
+
+<style scoped>.request-notice-notes{white-space:pre-wrap;overflow-wrap:anywhere;}</style>

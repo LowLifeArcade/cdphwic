@@ -2,7 +2,7 @@
 import {breastfeedingOptions,type BreastfeedingStatus,validateBreastfeeding} from '~/../shared/breastfeeding';
 import { hasMedicalDocumentation, medicalDocumentationRequiredMessage } from '~/../shared/medicalDocumentation';
 import {blankClinicAddress,validateShipping,type RequestShipping} from '~/../shared/shipping';
-import {canEditSubmission,restoreSubmittedForm} from '~/../shared/requestEditing';
+import {canEditSubmission,hasPendingMoreInfo,restoreSubmittedForm} from '~/../shared/requestEditing';
 import { benefitMonthLabels, toggleRequestedMonth, serializeRequestedMonths, validateRequestedMonths } from '~/../shared/requestMonthSelection';
 import { formulaCatalog, findFormula, availableFormulaForms, defaultFormulaForm, requiresReadyToFeedReason } from '~/../shared/formulaCatalog';
 import type { ProductForm, RequestRecord } from '~/../shared/domain';
@@ -19,6 +19,8 @@ const submissionId = ref<string>(crypto.randomUUID());
 const editingId = ref<number|undefined>(route.query.request?Number(route.query.request):undefined);
 const editingRevision=ref(0);
 const editLocked=ref(false);
+const correctingRequest=ref(false);
+const correctionNotes=ref('');
 const existingAttachment=ref<RequestRecord['prescriptionAttachment']>();
 const removeExistingAttachment=ref(false);
 const saving = ref(false);
@@ -241,6 +243,8 @@ if(editingId.value){
   const result=await $fetch<{request:RequestRecord}>(`/api/requests/${editingId.value}`,{method:'PUT',body:{status:'opened'},headers:{'x-demo-user':identity.value}});
   request=result.request;
  }
+ correctingRequest.value=hasPendingMoreInfo(request);
+ correctionNotes.value=request.moreInfoRequests?.filter(entry=>!entry.deletedAt&&!entry.resubmittedAt).map(entry=>entry.notes).join('\n\n')??'';
  const restored=restoreSubmittedForm(request);
  Object.assign(form,restored.form);
  additionalFormulas.value=restored.additionalFormulas;
@@ -265,6 +269,10 @@ async function saveRequest() {
     saving.value = true;
     submissionError.value = '';
     try {
+        if(editingId.value){
+            const result=await $fetch<{request:RequestRecord}>(`/api/requests/${editingId.value}/submission`,{method:'PUT',headers:{'x-demo-user':identity.value},body:submissionBody(true)});
+            editingRevision.value=result.request.revision??0;existingAttachment.value=result.request.prescriptionAttachment;uploadedStorageKey.value='';removeExistingAttachment.value=false;draftSavedNotice.value='Information saved. Resubmit when corrections are complete.';return;
+        }
         const result = await $fetch<{ request: RequestRecord }>('/api/requests/drafts', {
             method: 'POST', headers: { 'x-demo-user': identity.value },
             body: {
@@ -464,45 +472,13 @@ function syncFieldValidity() {
 }
 watch([form, additionalFormulas, surplusEntries, diagnosisInput, diagnosisDetails, requestForm, validationAttempted, shipping], syncFieldValidity, {deep:true, flush:'post', immediate:true});
 
-async function submitRequest() {
-    submitted.value = false;
-    if (saving.value || parsing.value) return;
-    validationAttempted.value = true;
-    const diagnosisCommitted = commitDiagnosis();
-    await nextTick();
-    syncFieldValidity();
-    const invalid = requestForm.value?.querySelector<HTMLElement>('input:invalid, select:invalid, textarea:invalid, [data-required-group][aria-invalid="true"]');
-    if (invalid || !diagnosisCommitted) {
-        submissionError.value = 'Complete the fields highlighted in red before submitting. You can still Save an incomplete request.';
-        invalid?.focus();
-        if (invalid && 'reportValidity' in invalid) (invalid as HTMLInputElement).reportValidity();
-        return;
-    }
-    submissionError.value = formulaSelectionError.value || validateAgencyFields(form);
-    if (!submissionError.value && ((!selectedFormula.value && !isOtherFormula.value) || (isOtherFormula.value && (!form.otherFormulaName.trim() || form.otherFormulaName.trim().toLowerCase() === 'other')) || !availableForms.value.includes(form.productForm as ProductForm))) {
-        submissionError.value = 'Select a matching formula name and an available form.';
-    }
-    if (!submissionError.value) {
-        for (const [index, entry] of additionalFormulas.value.entries()) {
-            const error = validateFormulaEntry(entry);
-            if (error) { submissionError.value = `Formula ${index + 2}: ${error}`; break; }
-        }
-    }
-    if (!submissionError.value && surplusEntries.value.some((entry) => !requestedFormulaNames.value.includes(entry.productName) || !Number.isFinite(Number(entry.units)) || Number(entry.units) <= 0)) {
-        submissionError.value = 'Select a requested formula and enter a positive surplus quantity.';
-    }
-    if (!submissionError.value) submissionError.value = validateBreastfeeding(form);
-    if (!submissionError.value) submissionError.value = validateShipping(shipping.value);
-    if (!submissionError.value) submissionError.value = validateRequestedMonths(selectedBenefitMonths());
-    if (!submissionError.value && surplusEntries.value.some((entry) => !entry.productForm || !surplusForms(entry.productName).includes(entry.productForm))) submissionError.value = 'Select a valid Form for each surplus entry.';
-    if (submissionError.value) return;
-    saving.value = true;
-    try {
-        const participantName = `${form.patientFirstName} ${form.patientLastName}`.trim();
+function submissionBody(saveOnly=false){
+    const participantName = `${form.patientFirstName} ${form.patientLastName}`.trim();
         const body = new FormData();
         body.append(
             'request',
             JSON.stringify({
+                saveOnly,
                 draftId: draftId.value,
                 revision: editingRevision.value,
                 removePrescriptionAttachment: removeExistingAttachment.value,
@@ -552,6 +528,43 @@ async function submitRequest() {
                 },
             }),
         );
+    return body;
+}
+async function submitRequest() {
+    submitted.value = false;
+    if (saving.value || parsing.value) return;
+    validationAttempted.value = true;
+    const diagnosisCommitted = commitDiagnosis();
+    await nextTick();
+    syncFieldValidity();
+    const invalid = requestForm.value?.querySelector<HTMLElement>('input:invalid, select:invalid, textarea:invalid, [data-required-group][aria-invalid="true"]');
+    if (invalid || !diagnosisCommitted) {
+        submissionError.value = 'Complete the fields highlighted in red before submitting. You can still Save an incomplete request.';
+        invalid?.focus();
+        if (invalid && 'reportValidity' in invalid) (invalid as HTMLInputElement).reportValidity();
+        return;
+    }
+    submissionError.value = formulaSelectionError.value || validateAgencyFields(form);
+    if (!submissionError.value && ((!selectedFormula.value && !isOtherFormula.value) || (isOtherFormula.value && (!form.otherFormulaName.trim() || form.otherFormulaName.trim().toLowerCase() === 'other')) || !availableForms.value.includes(form.productForm as ProductForm))) {
+        submissionError.value = 'Select a matching formula name and an available form.';
+    }
+    if (!submissionError.value) {
+        for (const [index, entry] of additionalFormulas.value.entries()) {
+            const error = validateFormulaEntry(entry);
+            if (error) { submissionError.value = `Formula ${index + 2}: ${error}`; break; }
+        }
+    }
+    if (!submissionError.value && surplusEntries.value.some((entry) => !requestedFormulaNames.value.includes(entry.productName) || !Number.isFinite(Number(entry.units)) || Number(entry.units) <= 0)) {
+        submissionError.value = 'Select a requested formula and enter a positive surplus quantity.';
+    }
+    if (!submissionError.value) submissionError.value = validateBreastfeeding(form);
+    if (!submissionError.value) submissionError.value = validateShipping(shipping.value);
+    if (!submissionError.value) submissionError.value = validateRequestedMonths(selectedBenefitMonths());
+    if (!submissionError.value && surplusEntries.value.some((entry) => !entry.productForm || !surplusForms(entry.productName).includes(entry.productForm))) submissionError.value = 'Select a valid Form for each surplus entry.';
+    if (submissionError.value) return;
+    saving.value = true;
+    try {
+        const body = submissionBody();
         await $fetch(editingId.value?`/api/requests/${editingId.value}/submission`:'/api/requests', { method: editingId.value?'PUT':'POST', body, headers: { 'x-demo-user': identity.value } });
         submitted.value = true;
         await router.push('/requests');
@@ -568,7 +581,7 @@ async function submitRequest() {
         <div>
             <p class="eyebrow">Requests</p>
             <h1>{{editingId?'Edit Request':'New Request'}}</h1>
-            <p v-if="editingId&&!editLocked">You can update this submission until Admin or FPU opens it.</p>
+            <p v-if="editingId&&!editLocked">{{correctingRequest?'Update the requested information and Resubmit to CDPH/WIC.':'You can update this submission until Admin or FPU opens it.'}}</p>
         </div>
         <NuxtLink
             class="button button-ghost"
@@ -576,6 +589,7 @@ async function submitRequest() {
             >Cancel</NuxtLink
         >
     </div>
+    <div v-if="correctingRequest" class="correction-request-note"><strong>More Info Requested</strong><p>{{correctionNotes}}</p></div>
     <p v-if="editLocked" role="alert">Admin/FPU has opened this submission. Its submitted form can no longer be edited.</p>
     <form v-else
         ref="requestForm"
@@ -1189,7 +1203,7 @@ async function submitRequest() {
                 to="/requests"
                 >Cancel</NuxtLink
             >
-            <button v-if="!editingId" class="button button-ghost" type="button" :disabled="saving || parsing" @click="saveRequest">Save</button>
+            <button v-if="!editingId || correctingRequest" class="button button-ghost" type="button" :disabled="saving || parsing" @click="saveRequest">Save</button>
             <button v-if="!editingId" class="button button-ghost" type="button" :disabled="saving || parsing" @click="router.push('/requests')">Close</button>
             <button v-if="!editingId" class="button button-danger" type="button" :disabled="saving || parsing" @click="deleteConfirmationOpen=true">Delete</button>
             <button
@@ -1197,7 +1211,7 @@ async function submitRequest() {
                 type="submit"
                 :disabled="saving || parsing"
             >
-                {{ saving ? 'Saving…' : editingId?'Save Changes':'Submit' }}
+                {{ saving ? 'Saving…' : correctingRequest?'Resubmit':editingId?'Save Changes':'Submit' }}
             </button>
         </div>
         <p
@@ -1213,3 +1227,5 @@ async function submitRequest() {
 .participant-grid {align-items:start;}
 .insurance-fields {display:grid;gap:16px;align-content:start;}
 </style>
+
+<style scoped>.correction-request-note{border-left:3px solid #902A92;padding:12px 16px;margin-bottom:16px;}.correction-request-note p{white-space:pre-wrap;overflow-wrap:anywhere;}</style>

@@ -1,3 +1,4 @@
+import {requestNotices} from './requestNotices';
 import { localDate, daysRemaining, isReviewer } from '../../shared/surplus';
 import type { SessionUser } from '../../shared/domain';
 import { expireSurplusLots } from './surplusStore';
@@ -44,6 +45,7 @@ export async function listSurplusNotices(db: D1Database, user: SessionUser) {
     // and shipping/cancellation automatically removes the pending action.
     const transfers=await db.prepare(`SELECT t.id AS transfer_id,t.source_agency_id AS agency_id,t.destination_agency_id,t.formula_name,t.form,t.flavor,t.expiration_date,t.quantity,t.units_per_case,t.request_id,CASE WHEN r.notice_id IS NULL THEN 0 ELSE 1 END AS is_read FROM surplus_transfers t JOIN surplus_lots l ON l.id=t.source_lot_id LEFT JOIN surplus_notice_reads r ON r.notice_id=('transfer:'||t.id) AND r.user_id=? WHERE t.request_id IS NOT NULL AND t.status='reserved' AND t.eta IS NOT NULL AND t.eta<>'' AND t.tracking_reference IS NOT NULL AND t.tracking_reference<>'' AND t.source_agency_id=? AND l.expiration_date>=? AND l.expired_units=0 ORDER BY t.rowid DESC`).bind(user.id,user.agencyId??-1,today).all<any>();
     return [
+        ...await requestNotices(db,user),
         ...transfers.results.map(t=>({...t,id:`transfer:${t.transfer_id}`,kind:'transfer',title:'Transfer Requested - Product Ready to Ship'})),
         ...notices,
         ...forecasts.results.map((f) => ({

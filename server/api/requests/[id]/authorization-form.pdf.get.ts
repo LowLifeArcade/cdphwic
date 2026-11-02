@@ -15,12 +15,15 @@ export default defineEventHandler(async (event) => {
         throw createError({ statusCode: 404, statusMessage: 'Request not found.' });
     }
     if (!canGenerateAuthorizationForm(request)) {
-        throw createError({ statusCode: 409, statusMessage: 'Authorization Form is available after approval and product ordering.' });
+        throw createError({ statusCode: 409, statusMessage: 'Authorization Form is available after Send ETA or approval and product ordering.' });
     }
 
     const agency = SEED_AGENCIES.find((item) => item.id === request.agencyId);
     const rep = SEED_MEMBERS.find((item) => item.id === request.agencyMemberId);
-    const pdf = await createAuthorizationFormPdf(request, agency, rep);
+    const versionId=getQuery(event).version;
+    const version=versionId?request.authorizationVersions?.find(item=>item.id===versionId):request.authorizationVersions?.at(-1);
+    if(versionId&&!version)throw createError({statusCode:404,statusMessage:'Authorization version not found.'});
+    const pdf = await createAuthorizationFormPdf(version?.record??request, agency, rep);
     setResponseHeader(event, 'content-type', 'application/pdf');
     setResponseHeader(event, 'content-disposition', `attachment; filename="authorization-form-${request.id}.pdf"`);
     return pdf;

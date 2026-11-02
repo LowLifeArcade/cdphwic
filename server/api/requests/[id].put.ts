@@ -11,13 +11,13 @@ import {requestShipments} from '../../../shared/requestShipments';
 import {confirmShipmentReceipts,shipmentReceived,shipmentFinished,type ShipmentReceiptSelection} from '../../../shared/shipmentReceipts';
 import type { RequestRecord } from '../../../shared/domain';
 import { getRequestById, updateRequestRecord } from '../../utils/requestStore';
-import { submittedRequest, ensureSubmittedRequest, deleteSubmittedShipment, updateSubmittedRequest, updateSubmittedShipmentIssue, updateSubmittedShipmentCases, updateSubmittedShipmentReceipt, updateSubmittedShipmentPolicy, updateSubmittedSimpleShipmentReceipt } from '../../utils/submittedRequests';
+import { submittedRequest, ensureSubmittedRequest, requestMoreInfo, editMoreInfoNote, replyToMoreInfo, deleteSubmittedShipment, updateSubmittedRequest, updateSubmittedShipmentIssue, updateSubmittedShipmentCases, updateSubmittedShipmentReceipt, updateSubmittedShipmentPolicy, updateSubmittedSimpleShipmentReceipt } from '../../utils/submittedRequests';
 import { getSessionFromHeaders } from '../../utils/session';
 import { canSeeAgency, isReviewer } from '../../../shared/surplus';
 import { submissionFields } from '../../../shared/requestEditing';
 export default defineEventHandler(async (event) => {
     const id = Number(getRouterParam(event, 'id'));
-    const updates = await readBody<Partial<RequestRecord> & {confirmShipmentReceipt?:SimpleShipmentReceiptCommand;shipmentPolicy?:ShipmentPolicyCommand;reserveTransferIndex?:number;deleteShipmentIndex?:number;sendEtaShipmentIndex?:number;confirmShipmentReceipts?:ShipmentReceiptSelection[];shipmentIssue?:ShipmentIssueCommand;shipmentCases?:ShipmentCaseCommand}>(event);
+    const updates = await readBody<Partial<RequestRecord> & {moreInfoReply?:import('../../utils/submittedRequests').MoreInfoReply;moreInfoNote?:import('../../utils/submittedRequests').MoreInfoNoteCommand;requestMoreInfo?:{notes:string};confirmShipmentReceipt?:SimpleShipmentReceiptCommand;shipmentPolicy?:ShipmentPolicyCommand;reserveTransferIndex?:number;deleteShipmentIndex?:number;sendEtaShipmentIndex?:number;confirmShipmentReceipts?:ShipmentReceiptSelection[];shipmentIssue?:ShipmentIssueCommand;shipmentCases?:ShipmentCaseCommand}>(event);
     const user = getSessionFromHeaders({ 'x-demo-user': getHeader(event, 'x-demo-user') });
     const env = event.context.cloudflare?.env as Partial<Env> | undefined;
     if (!env?.CDPHWIC) throw createError({ statusCode: 503, statusMessage: 'Request database unavailable.' });
@@ -26,6 +26,9 @@ export default defineEventHandler(async (event) => {
     if (!raw || !canSeeAgency(user, raw.agencyId))
         throw createError({ statusCode: 404, statusMessage: 'Request not found.' });
     const previous = saved ?? (await ensureSubmittedRequest(env.CDPHWIC, raw));
+    if(updates.moreInfoReply!==undefined){const request=await replyToMoreInfo(env.CDPHWIC,previous,user,updates.moreInfoReply,updates.revision!);updateRequestRecord(id,request);return {request};}
+    if(updates.moreInfoNote!==undefined){const request=await editMoreInfoNote(env.CDPHWIC,previous,user,updates.moreInfoNote,updates.revision!);updateRequestRecord(id,request);return {request};}
+    if(updates.requestMoreInfo!==undefined){const request=await requestMoreInfo(env.CDPHWIC,previous,user,updates.requestMoreInfo?.notes,updates.revision!);updateRequestRecord(id,request);return {request};}
     if(updates.reserveTransferIndex!==undefined){
         if(updates.revision!==(previous.revision??0))throw createError({statusCode:409,statusMessage:'Shipment details changed. Reload before authorizing a transfer.'});
         const request=await authorizeRequestTransfer(env.CDPHWIC,previous,updates.shipmentDrafts??[],updates.reserveTransferIndex,user);
@@ -89,7 +92,7 @@ export default defineEventHandler(async (event) => {
             statusCode: 409,
             statusMessage: 'Use Edit submission to update the complete form before Admin/FPU opens it.',
         });
-    const { confirmShipmentReceipt:_simpleReceipt, reserveTransferIndex:_reserveTransferIndex, deletedShipments:_deletedShipments, deleteShipmentIndex:_deleteShipmentIndex, prescriptionAttachment, openedAt, revision, shipmentPolicy:_policy, sendEtaShipmentIndex, confirmShipmentReceipts: _receiptSelection, shipmentIssue: _shipmentIssue, shipmentCases: _shipmentCases, originalApprovedCases: _originalApproval, ...safe } = updates;
+    const {moreInfoReply:_moreInfoReply,moreInfoNote:_moreInfoNote,moreInfoRequests:_moreInfo,authorizationVersions:_authorizationVersions,requestMoreInfo:_requestMoreInfo, confirmShipmentReceipt:_simpleReceipt, reserveTransferIndex:_reserveTransferIndex, deletedShipments:_deletedShipments, deleteShipmentIndex:_deleteShipmentIndex, prescriptionAttachment, openedAt, revision, shipmentPolicy:_policy, sendEtaShipmentIndex, confirmShipmentReceipts: _receiptSelection, shipmentIssue: _shipmentIssue, shipmentCases: _shipmentCases, originalApprovedCases: _originalApproval, ...safe } = updates;
     if (!isReviewer(user) && (safe.receivedStatus==='received' || safe.status==='complete') && !requestShipments(previous).every(row=>shipmentFinished(previous,row)))
         throw createError({statusCode:409,statusMessage:'Select individual shipments to confirm receipt.'});
     if (safe.shipments) safe.shipments=safe.shipments.map(({receivedAt,receivedBy,receiptConfirmed,dispatched,receivedCases,receivedUnits,damagedUnits,dispositions,receiptCountHistory,replacedAt,replacedBy,replacementClosureNote,issue,deletedIssues,distributorPolicy,policyHistory,replacementBasis,replacementIssueId,...shipment})=>shipment);
