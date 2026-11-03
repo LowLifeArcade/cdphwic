@@ -58,3 +58,23 @@ it('inserts a replacement before unrelated private drafts and keeps it editable'
  expect(saved.shipmentDrafts).toHaveLength(extra?3:2);
  }
 });
+it('moves sent ETAs to Shipped and completes only after every shipment is fully received',async()=>{
+ const {updateSubmittedShipmentReceipt}=await import('../server/utils/submittedRequests');
+ const {shipmentReceiptKey}=await import('../shared/shipmentReceipts');
+ const {receiptQuantityKey}=await import('../shared/shipmentQuantities');
+ for(const count of [1,2]){
+  const {db}=surplusDb();
+  let request=await ensureSubmittedRequest(db,{id:9980+count,submissionId:`verify-status-${count}`,agencyId:10,agencyMemberId:100,participantName:'Synthetic status verification',productName:'Example',approved:true,status:'in_progress'});
+  const plans=Array.from({length:count},(_,index)=>({eta:`2026-11-${10+index}`,casesShipped:2,unitsPerCase:6,carrier:'ups' as const,trackingNumbers:[`SYNTHETIC-${index}`]}));
+  for(let index=0;index<count;index++){
+   request=await updateSubmittedRequest(db,request,{shipmentDrafts:plans.map((plan,i)=>({...request.shipmentDrafts?.[i],...plan}))},false,index,3,undefined,false);
+   expect(request.status).toBe('shipped');
+  }
+  for(let index=0;index<count;index++){
+   const row=request.shipments![index]!;
+   request=await updateSubmittedShipmentReceipt(db,request,[{index,key:shipmentReceiptKey(row),receivedCases:2,receivedLooseUnits:0,damagedCases:0,damagedLooseUnits:0,expectedReceipt:receiptQuantityKey(row)}],100);
+   expect(request.status).toBe(index===count-1?'complete':'shipped');
+  }
+  expect(request.receivedStatus).toBe('received');
+ }
+});

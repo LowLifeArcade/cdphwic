@@ -228,9 +228,11 @@ it('sends ETA without requiring hidden packaging fields when quantity tracking i
 });
 it('persists separate formula issuance values and restricts them to reviewers',async()=>{
  const event=await fixture();
+ const {updateSubmittedRequest}=await import('../server/utils/submittedRequests');
+ await updateSubmittedRequest(event.db,(await submittedRequest(event.db,1000998,getDemoUser('agency')))!,{specialOrder:true});
  const rows=[{productName:'First',productForm:'powder',approvedCases:2,benefitIssuances:[{month:'2026-09',quantity:100}]},{productName:'Second',productForm:'ready-to-feed',approvedCases:4,benefitIssuances:[{month:'2026-09',quantity:200}]}];
  event.body={formulaAuthorizations:rows};await expect(put(event as never)).rejects.toMatchObject({statusCode:403});
- event.identity='internal';const saved=await put(event as never);expect(saved.request.formulaAuthorizations).toEqual(rows);
+ event.identity='internal';const saved=await put(event as never);expect(saved.request.formulaAuthorizations).toEqual(rows);expect(saved.request.status).toBe('in_progress');expect(saved.request.specialOrder).toBe(false);
  const loaded=await submittedRequest(event.db,1000998,getDemoUser('agency'));expect(loaded!.formulaAuthorizations).toEqual(rows);
  event.body={formulaAuthorizations:[{...rows[1],approvedCases:-1}]};await expect(put(event as never)).rejects.toMatchObject({statusCode:400});
 });

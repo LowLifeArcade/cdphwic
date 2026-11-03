@@ -93,6 +93,8 @@ export default defineEventHandler(async (event) => {
     if(updates.formulaAuthorizations!==undefined){
         if(!isReviewer(user))throw createError({statusCode:403,statusMessage:'Only CDPH/WIC or Admin can edit issuance.'});
         const errors=validateFormulaAuthorizations(updates.formulaAuthorizations);if(errors.length)throw createError({statusCode:400,statusMessage:errors[0]});
+        updates.status='in_progress';
+        updates.specialOrder=false;
     }
     if (!isReviewer(user) && (updates.shipmentDrafts!==undefined || updates.shipments!==undefined || updates.approvedCases!==undefined))
         throw createError({statusCode:403,statusMessage:'Only CDPH/WIC or Admin can edit shipment plans or Approved Cases.'});

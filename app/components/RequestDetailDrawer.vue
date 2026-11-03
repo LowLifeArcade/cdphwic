@@ -452,6 +452,10 @@ async function saveStaffFields() {
 
 function changeStatus(event: Event) {
     const select = event.target as HTMLSelectElement;
+    if(select.value==='special_order'){
+        save({specialOrder:true});
+        return;
+    }
     const status = select.value as RequestStatus;
     if (status === 'denied') {
         select.value = draft.status ?? '';
@@ -459,8 +463,7 @@ function changeStatus(event: Event) {
         return;
     }
 
-    draft.status = status;
-    save({ status });
+    save({status,specialOrder:false});
 }
 
 async function chooseReviewDecision(action:'approve'|'deny'|'reopen') {
@@ -824,26 +827,17 @@ async function saveAgencyUpdate() {
             v-if="canStaffEdit"
             class="detail-section cdph-review-section"
         >
-            <div class="panel-heading">
-                <button
-                    class="button button-secondary"
-                    type="button"
-                    :disabled="saving"
-                    @click="save({ specialOrder: !draft.specialOrder })"
-                >
-                    {{ draft.specialOrder ? 'Remove special order' : 'Special order' }}
-                </button>
-            </div>
             <label class="field-label">
                 Status
                 <select
-                    :value="draft.status"
+                    :value="draft.specialOrder ? 'special_order' : draft.status"
                     class="form-input"
                     :disabled="saving"
                     @change="changeStatus"
                 >
                     <option value="opened">Opened</option>
                     <option value="in_progress">In progress</option>
+                    <option value="special_order">Special Order</option>
                     <option v-if="request.status==='needs_info'" value="needs_info" disabled>Pending LA</option>
                     <option
                         v-if="canSelectShippedStatus(request ?? {})"
