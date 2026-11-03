@@ -272,3 +272,28 @@ it('keeps messages unread when only request details are opened',async()=>{
  const result=await get(event as never);expect(result.request.moreInfoRequests![0]!.readAt).toBeUndefined();
  const {requestNotices}=await import('../server/utils/requestNotices');expect((await requestNotices(event.db,getDemoUser('agency'))).some(n=>!n.is_read&&n.kind==='request-info')).toBe(true);
 });
+
+it('requires reviewer decisions with reasons and closes denied requests until explicit reopening',async()=>{
+ const event=await fixture();event.body={reviewDecision:{action:'deny',reason:'Missing documentation'},revision:0};
+ await expect(put(event as never)).rejects.toMatchObject({statusCode:403});
+ event.identity='internal';event.body={reviewDecision:{action:'deny',reason:'  '},revision:0};
+ await expect(put(event as never)).rejects.toMatchObject({statusCode:400});
+ event.body={reviewDecision:{action:'deny',reason:'Missing documentation'},revision:0};
+ const denied=(await put(event as never)).request;expect(denied.status).toBe('denied');expect(denied.denialReason).toBe('Missing documentation');expect(denied.approved).toBe(false);
+ event.body={staffNotes:'Change while closed'};await expect(put(event as never)).rejects.toMatchObject({statusCode:409});
+ event.body={reviewDecision:{action:'reopen'},revision:0};await expect(put(event as never)).rejects.toMatchObject({statusCode:409});
+ event.identity='agency';event.body={reviewDecision:{action:'reopen'},revision:denied.revision};await expect(put(event as never)).rejects.toMatchObject({statusCode:403});
+ event.identity='admin';const reopened=(await put(event as never)).request;expect(reopened.status).toBe('in_progress');expect(reopened.approved).toBe(false);expect(reopened.denialReason).toBe('Missing documentation');
+ event.body={reviewDecision:{action:'approve'},revision:reopened.revision};const approved=(await put(event as never)).request;expect(approved.approved).toBe(true);expect(approved.status).toBe('in_progress');
+});
+it('approval ends pending information exchange without deleting its messages',async()=>{
+ const event=await fixture();event.identity='internal';event.body={requestMoreInfo:{notes:'Please clarify'},revision:0};
+ const pending=(await put(event as never)).request;event.body={reviewDecision:{action:'approve'},revision:pending.revision};
+ const approved=(await put(event as never)).request;expect(approved.approved).toBe(true);expect(approved.status).toBe('in_progress');expect(approved.moreInfoRequests?.[0]?.notes).toBe('Please clarify');expect(approved.moreInfoRequests?.[0]?.resolvedAt).toBeTruthy();
+});
+
+it('blocks generic Local Agency approval and reviewer-status bypasses',async()=>{
+ const event=await fixture();
+ for(const body of [{approved:true},{status:'approved'},{status:'in_progress'}]){event.body=body;await expect(put(event as never)).rejects.toMatchObject({statusCode:403});}
+ expect((await submittedRequest(event.db,1000998,getDemoUser('agency')))?.status).toBe('unopened');
+});

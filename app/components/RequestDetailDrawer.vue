@@ -25,7 +25,7 @@ import {requestFormulas,participantNames,insuranceDetails,requestedMonthLabels,f
 import { validateDiagnoses } from '~/../shared/diagnosisCatalog';
 import {canEditSubmission,hasPendingMoreInfo,canResolveMoreInfo,canReplyToMoreInfo,canReopenMoreInfo,latestMoreInfoRequest} from '~/../shared/requestEditing';
 import type { ProductRecord, RequestRecord, RequestStatus } from '~/../shared/domain';
-import { getNextBenefitMonth, canGenerateAuthorizationForm, getApprovalStatus, canSelectShippedStatus } from '~/../shared/requestOperations';
+import { getNextBenefitMonth, canGenerateAuthorizationForm, canSelectShippedStatus } from '~/../shared/requestOperations';
 import { normalizeRequestedMonths, validateRequestDetailNumbers, validateSurplusItems } from '~/../shared/requestDetailFields';
 import { formatPhoneNumber, normalizePhoneNumber } from '~/../shared/phone';
 
@@ -73,7 +73,11 @@ watch(() => [props.request?.id, identity.value], async () => {
 }, {immediate:true,flush:'post'});
 const agencySaveStatus = ref<'idle' | 'saving' | 'saved' | 'failed'>('idle');
 const reportingSurplus = ref(false);
-const previousDecision = ref<Partial<Pick<RequestRecord, 'status' | 'approved' | 'staffNotes'>> | null>(null);
+const showMoreInfoComposer=ref(false);
+const denialReason=ref('');
+const authorizationSection=ref<HTMLElement>();
+const reviewDecisionSection=ref<HTMLElement>();
+watch(()=>[props.request?.id,identity.value],()=>{showMoreInfoComposer.value=false;pendingDecision.value=null;denialReason.value='';});
 const pendingDecision = ref<'denied' | null>(null);
 const sendingEtaIndex = ref<number | null>(null);
 const editingEtaIndex = ref<number | null>(null);
@@ -240,7 +244,6 @@ watch(
         error.value = '';
         staffSaveStatus.value = 'idle';
         agencySaveStatus.value = 'idle';
-        previousDecision.value = null;
         pendingDecision.value = null;
         deletingShipmentIndex.value=null;
         receiptEditors.value={};
@@ -272,15 +275,6 @@ async function save(updates: Partial<RequestRecord> & {reserveTransferIndex?:num
     } finally {
         saving.value = false;
     }
-}
-
-async function denyRequest() {
-    if (!String(draft.staffNotes ?? '').trim()) {
-        error.value = 'Give a reason above staff notes before denying this request.';
-        return;
-    }
-    draft.status = 'denied';
-    await save({ status: 'denied', staffNotes: draft.staffNotes });
 }
 
 function addBenefitMonth(formulaIndex:number) {
@@ -452,20 +446,14 @@ async function saveStaffFields() {
     staffSaveStatus.value = error.value ? 'failed' : 'saved';
 }
 
-function rememberPreviousDecision() {
-    previousDecision.value = {
-        status: draft.status,
-        approved: draft.approved,
-        staffNotes: draft.staffNotes,
-    };
-}
+
 
 function changeStatus(event: Event) {
     const select = event.target as HTMLSelectElement;
     const status = select.value as RequestStatus;
     if (status === 'denied') {
         select.value = draft.status ?? '';
-        setStaffDecision('denied');
+        chooseReviewDecision('deny');
         return;
     }
 
@@ -473,36 +461,17 @@ function changeStatus(event: Event) {
     save({ status });
 }
 
-function setStaffDecision(status: 'approved' | 'denied') {
-    if (status === 'denied') {
-        pendingDecision.value = 'denied';
-        return;
-    }
-    applyStaffDecision(status);
+async function chooseReviewDecision(action:'approve'|'deny'|'reopen') {
+    if(action==='deny'){denialReason.value='';pendingDecision.value='denied';return;}
+    await save({reviewDecision:{action}} as Partial<RequestRecord>);
+    if(!error.value){await nextTick();(action==='approve'?authorizationSection.value:reviewDecisionSection.value)?.scrollIntoView({block:'start',behavior:'smooth'});}
 }
-
-function applyStaffDecision(status: 'approved' | 'denied') {
-    rememberPreviousDecision();
-    save(
-        status === 'approved'
-            ? { approved: true, status: getApprovalStatus(draft.status ?? props.request!.status), nextSteps: draft.nextSteps, staffNotes: draft.staffNotes }
-            : { approved: false, status: 'denied', nextSteps: draft.nextSteps, staffNotes: draft.staffNotes },
-    );
+async function confirmDenial() {
+    if(!denialReason.value.trim()){error.value='Enter a reason for denial.';return;}
+    await save({reviewDecision:{action:'deny',reason:denialReason.value.trim()}} as Partial<RequestRecord>);
+    if(!error.value){editingSection.value=null;pendingDecision.value=null;showMoreInfoComposer.value=false;await nextTick();reviewDecisionSection.value?.scrollIntoView({block:'start',behavior:'smooth'});}
 }
-
-function confirmDenial() {
-    pendingDecision.value = null;
-    applyStaffDecision('denied');
-}
-
-function undoStaffDecision() {
-    const restoredDecision = previousDecision.value ?? {
-        approved: false,
-        status: draft.status === 'denied' ? 'opened' : draft.status,
-    };
-    previousDecision.value = null;
-    save(restoredDecision);
-}
+async function openMoreInfo(){showMoreInfoComposer.value=true;await nextTick();document.getElementById(`more-info-${props.request?.id}`)?.scrollIntoView({block:'start',behavior:'smooth'});}
 
 async function confirmDeleteShipment(){
     const index=deletingShipmentIndex.value;
@@ -588,7 +557,7 @@ async function saveAgencyUpdate() {
 
 <template>
     <section v-if="request?.prescriptionAttachment&&documentOpen" id="request-document-panel" class="request-document-pane" aria-label="Uploaded medical documentation" @click.stop>
-        <div class="document-pane-header"><strong>{{request.prescriptionAttachment.fileName}}</strong><button type="button" class="button button-ghost" @click="documentOpen=false">Close document</button></div>
+        <div class="document-pane-header"><strong>Medical Documentation</strong><button type="button" class="button button-ghost" @click="documentOpen=false">Close document</button></div>
         <RequestDocumentPreview :key="`${request.id}-${request.prescriptionAttachment.storageKey}-${identity}`" :request-id="request.id" :attachment="request.prescriptionAttachment" />
     </section>
     <aside
@@ -604,7 +573,6 @@ async function saveAgencyUpdate() {
                 <span class="request-tag request-kind-tag">{{ request.requestKind === 'extension' ? 'Extension' : 'New' }}</span>
             </div>
             <div class="drawer-header-tools">
-            <button v-if="request.prescriptionAttachment" type="button" class="button button-secondary attachment-toggle" :title="request.prescriptionAttachment.fileName" :aria-expanded="documentOpen" aria-controls="request-document-panel" @click="documentOpen=!documentOpen">{{request.prescriptionAttachment.fileName}}</button>
             <div class="drawer-header-actions">
                 <button
                     class="button button-ghost"
@@ -633,13 +601,13 @@ async function saveAgencyUpdate() {
                     ×
                 </button>
             </div>
+            <button v-if="request.prescriptionAttachment" type="button" class="attachment-toggle" title="View medical documentation" :aria-expanded="documentOpen" aria-controls="request-document-panel" @click="documentOpen=!documentOpen"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l10-10a4 4 0 0 1 5.66 5.66L9.41 17.41a2 2 0 0 1-2.83-2.83l9.19-9.19" /></svg><span>Rx</span></button>
             </div>
         </div>
-        <div v-if="identity === 'agency' && canEditOriginal && request" class="form-actions"><NuxtLink class="button button-secondary" :to="{path:'/requests/new',query:{request:request.id}}">Edit submission</NuxtLink><small>{{request.status==='needs_info'?'Update the requested information, then Resubmit to CDPH/WIC.':'Editable until Admin/FPU opens the submission.'}}</small></div>
         <div class="drawer-status">
             <div class="request-status-tags">
                 <StatusBadge v-if="!hasPendingMoreInfo(request)" :status="draft.status ?? request.status" />
-                <span v-if="hasPendingMoreInfo(request)" class="request-tag more-info-status" title="Returned to Local Agency for more information" role="status">More Info Requested</span>
+                <span v-if="hasPendingMoreInfo(request)" class="request-tag more-info-status" title="Returned to Local Agency for more information" role="status">Request More Info</span>
                 <span
                     v-if="request.specialOrder"
                     class="request-tag"
@@ -656,7 +624,7 @@ async function saveAgencyUpdate() {
         <section class="detail-section participant-summary">
             <div class="section-heading">
                 <h3>Participant</h3>
-                <button v-if="canStaffEdit && editingSection !== 'participant'" class="text-button" type="button" @click="startEditing('participant')">Edit</button>
+                <button v-if="canStaffEdit && request.status!=='denied' && editingSection !== 'participant'" class="text-button" type="button" @click="startEditing('participant')">Edit</button>
             </div>
             <div v-if="canStaffEdit && ageMilestoneAlerts.length" class="participant-age-alert" role="alert">
                 <strong>Upcoming age milestone</strong>
@@ -712,7 +680,7 @@ async function saveAgencyUpdate() {
         <section ref="prescriptionSection" class="detail-section prescription-detail-section">
             <div class="section-heading">
                 <h3 tabindex="-1">Prescription</h3>
-                <button v-if="canStaffEdit && editingSection !== 'overview'" class="text-button" type="button" @click="startEditing('overview')">Edit</button>
+                <button v-if="canStaffEdit && request.status!=='denied' && editingSection !== 'overview'" class="text-button" type="button" @click="startEditing('overview')">Edit</button>
             </div>
             <div v-if="editingSection === 'overview'" class="form-grid compact-form-grid prescription-editor">
                 <fieldset v-for="(formula,index) in editableFormulas" :key="index" class="detail-field-wide submitted-formula-card formula-edit-card">
@@ -753,7 +721,7 @@ async function saveAgencyUpdate() {
         <section class="detail-section">
             <div class="section-heading">
                 <h3>WIC Food Restrictions</h3>
-                <button v-if="canStaffEdit && editingSection !== 'food'" class="text-button" type="button" @click="startEditing('food')">Edit</button>
+                <button v-if="canStaffEdit && request.status!=='denied' && editingSection !== 'food'" class="text-button" type="button" @click="startEditing('food')">Edit</button>
             </div>
             <div v-if="editingSection === 'food'" class="form-grid compact-form-grid food-restrictions-editor">
                 <label class="field-label detail-field-wide">Health Care Provider Selection
@@ -789,7 +757,7 @@ async function saveAgencyUpdate() {
         <section class="detail-section">
             <div class="section-heading">
                 <h3>Health Care Provider</h3>
-                <button v-if="canStaffEdit && editingSection !== 'prescription'" class="text-button" type="button" @click="startEditing('prescription')">Edit</button>
+                <button v-if="canStaffEdit && request.status!=='denied' && editingSection !== 'prescription'" class="text-button" type="button" @click="startEditing('prescription')">Edit</button>
             </div>
             <div v-if="editingSection === 'prescription'" class="form-grid compact-form-grid provider-editor">
                 <label class="field-label">Provider Name<input v-model="draft.doctorPrintedName" class="form-input" /></label>
@@ -814,24 +782,37 @@ async function saveAgencyUpdate() {
             </div>
         </section>
         </div>
-        <section v-if="canStaffEdit || request.moreInfoRequests?.length" :id="`more-info-${request.id}`" class="detail-section more-info-section">
-            <div class="section-heading"><h3>More Info Requested</h3><div v-if="canStaffEdit" class="more-info-toolbar"><button v-if="canReopenForResubmission" class="button button-secondary" type="button" :disabled="saving" @click="reopenForResubmission">Reopen for Resubmission</button><span v-else-if="latestMoreInfoRequest(request)?.resubmissionOpen && hasPendingMoreInfo(request)" class="more-info-open-status">Open for Resubmission</span><button v-if="hasUnresolvedMoreInfo" class="button button-secondary more-info-resolve" type="button" :disabled="saving" @click="resolveInformationRequest">Resolved</button></div></div>
+        <section v-if="canStaffEdit || request.status==='denied'" ref="reviewDecisionSection" class="detail-section review-decision-section" tabindex="-1">
+            <div class="section-heading"><h3>Review Decision</h3><span v-if="canCollapseReviewDetails && request.status!=='denied'" class="review-approved">Approved</span></div>
+            <template v-if="request.status==='denied'">
+                <p class="review-denied"><strong>Denied</strong></p>
+                <div class="detail-grid"><div class="detail-field-wide"><span>Reason for Denial</span><strong class="preserve-lines">{{request.denialReason || request.staffNotes || '—'}}</strong></div></div>
+                <button v-if="canStaffEdit" class="button button-secondary" type="button" :disabled="saving" @click="chooseReviewDecision('reopen')">Reopen Request</button>
+            </template>
+            <div v-else-if="canStaffEdit" class="review-decision-buttons">
+                <button class="button button-secondary" type="button" :disabled="saving" @click="openMoreInfo">Request More Info</button>
+                <button class="button button-primary" type="button" :disabled="saving || canCollapseReviewDetails" @click="chooseReviewDecision('approve')">Approve</button>
+                <button class="button button-ghost" type="button" :disabled="saving" @click="chooseReviewDecision('deny')">Deny</button>
+            </div>
+        </section>
+        <section v-if="showMoreInfoComposer || request.moreInfoRequests?.some(note=>!note.deletedAt)" :id="`more-info-${request.id}`" class="detail-section more-info-section">
+            <div class="section-heading"><h3>Request More Info</h3><div v-if="canStaffEdit" class="more-info-toolbar"><button v-if="canReopenForResubmission" class="button button-secondary" type="button" :disabled="saving" @click="reopenForResubmission">Reopen for Resubmission</button><span v-else-if="latestMoreInfoRequest(request)?.resubmissionOpen && hasPendingMoreInfo(request)" class="more-info-open-status">Open for Resubmission</span><button v-if="hasUnresolvedMoreInfo" class="button button-secondary more-info-resolve" type="button" :disabled="saving" @click="resolveInformationRequest">Resolved</button></div></div>
             <div v-if="identity==='agency' && canEditOriginal && hasPendingMoreInfo(request)" class="more-info-correction"><MoreInfoReadMarker :notice-id="`followup:${latestMoreInfoRequest(request)?.id}:reopen:${latestMoreInfoRequest(request)?.resubmissionOpenedAt}`" :read-at="latestMoreInfoRequest(request)?.resubmissionReadAt" :incoming="true" @visible="queueMessageRead"><p>CDPH/WIC reopened this request for corrections.</p></MoreInfoReadMarker><NuxtLink class="button button-secondary" :to="{path:'/requests/new',query:{request:request.id}}">Update and Resubmit</NuxtLink></div>
             <component :is="entry.resolvedAt?'details':'div'" v-for="entry in visibleMoreInfoRequests" :key="`${entry.id}-${!!entry.resolvedAt}`" class="more-info-history">
                 <summary v-if="entry.resolvedAt">Resolved {{formatDisplayDate(submissionDateOnly(entry.resolvedAt))}} · {{1+(entry.responses?.length??0)}} {{entry.responses?.length?'messages':'message'}}</summary>
                 <template v-if="canStaffEdit && editingMoreInfoId===entry.id && !entry.deletionLocked && !entry.readAt && !entry.responses?.some(response=>response.readAt)"><label class="field-label">Notes<textarea v-model="editingMoreInfoNotes" class="form-textarea" maxlength="4000" rows="3" /></label><div class="more-info-actions"><button class="button button-secondary" type="button" :disabled="saving || !editingMoreInfoNotes.trim()" @click="saveMoreInfoNote('edit',entry.id)">Save Note</button><button class="button button-ghost" type="button" :disabled="saving" @click="editingMoreInfoId=''">Cancel</button></div></template>
-                <template v-else><MoreInfoReadMarker :notice-id="`followup:${entry.id}`" :read-at="entry.readAt" :incoming="identity==='agency'" @visible="queueMessageRead"><strong class="more-info-sender">CDPH/WIC</strong></MoreInfoReadMarker><p class="more-info-notes">{{entry.notes}}</p><div v-if="canStaffEdit && !entry.deletionLocked && !entry.readAt && !entry.responses?.some(response=>response.readAt)" class="more-info-actions"><button class="text-button" type="button" :disabled="saving" @click="startMoreInfoEdit(entry)">Edit</button><button class="text-button" type="button" :disabled="saving" @click="deletingMoreInfoId=entry.id">Delete</button></div></template>
+                <template v-else><MoreInfoReadMarker :notice-id="`followup:${entry.id}`" :read-at="entry.readAt" :incoming="identity==='agency'" @visible="queueMessageRead"><strong class="more-info-sender">CDPH/WIC</strong></MoreInfoReadMarker><p class="more-info-notes">{{entry.notes}}</p><div v-if="canStaffEdit && request.status!=='denied' && !entry.deletionLocked && !entry.readAt && !entry.responses?.some(response=>response.readAt)" class="more-info-actions"><button class="text-button" type="button" :disabled="saving" @click="startMoreInfoEdit(entry)">Edit</button><button class="text-button" type="button" :disabled="saving" @click="deletingMoreInfoId=entry.id">Delete</button></div></template>
                 <small>Requested {{formatDisplayDate(submissionDateOnly(entry.requestedAt))}}<template v-if="entry.readAt"> · Read {{formatDisplayDate(submissionDateOnly(entry.readAt))}}</template><template v-if="entry.editedAt"> · Edited {{formatDisplayDate(submissionDateOnly(entry.editedAt))}}</template><template v-if="entry.resubmittedAt"> · Resubmitted {{formatDisplayDate(submissionDateOnly(entry.resubmittedAt))}}</template><template v-if="entry.resolvedAt"> · ✓ Resolved {{formatDisplayDate(submissionDateOnly(entry.resolvedAt))}}</template></small>
-                <div v-if="entry.responses?.length" class="more-info-responses"><article v-for="response in entry.responses" :key="response.id" class="more-info-response" :class="response.respondedAs==='reviewer'?'from-reviewer':'from-agency'"><MoreInfoReadMarker :notice-id="`followup-response:${response.id}`" :read-at="response.readAt" :incoming="(response.respondedAs==='reviewer')!==canStaffEdit" @visible="queueMessageRead"><strong class="more-info-sender">{{response.respondedAs==='reviewer'?'CDPH/WIC':'Local Agency'}}</strong></MoreInfoReadMarker><template v-if="editingResponseId===response.id"><label class="field-label">Message<textarea v-model="editingResponseNotes" class="form-textarea" maxlength="4000" rows="3" /></label><div class="more-info-actions"><button class="button button-secondary" type="button" :disabled="saving||!editingResponseNotes.trim()" @click="saveResponseEdit(entry.id,response.id)">Save Message</button><button class="text-button" type="button" @click="editingResponseId=''">Cancel</button></div></template><p v-else>{{response.notes}}</p><small>{{formatDisplayDate(submissionDateOnly(response.respondedAt))}}<template v-if="response.editedAt"> · Edited</template><template v-if="response.readAt"> · Read {{formatDisplayDate(submissionDateOnly(response.readAt))}}</template></small><button v-if="!response.readAt&&!entry.resolvedAt&&(response.respondedAs==='reviewer')===canStaffEdit&&editingResponseId!==response.id" class="text-button" type="button" @click="startResponseEdit(response)">Edit Message</button></article></div>
+                <div v-if="entry.responses?.length" class="more-info-responses"><article v-for="response in entry.responses" :key="response.id" class="more-info-response" :class="response.respondedAs==='reviewer'?'from-reviewer':'from-agency'"><MoreInfoReadMarker :notice-id="`followup-response:${response.id}`" :read-at="response.readAt" :incoming="(response.respondedAs==='reviewer')!==canStaffEdit" @visible="queueMessageRead"><strong class="more-info-sender">{{response.respondedAs==='reviewer'?'CDPH/WIC':'Local Agency'}}</strong></MoreInfoReadMarker><template v-if="editingResponseId===response.id"><label class="field-label">Message<textarea v-model="editingResponseNotes" class="form-textarea" maxlength="4000" rows="3" /></label><div class="more-info-actions"><button class="button button-secondary" type="button" :disabled="saving||!editingResponseNotes.trim()" @click="saveResponseEdit(entry.id,response.id)">Save Message</button><button class="text-button" type="button" @click="editingResponseId=''">Cancel</button></div></template><p v-else>{{response.notes}}</p><small>{{formatDisplayDate(submissionDateOnly(response.respondedAt))}}<template v-if="response.editedAt"> · Edited</template><template v-if="response.readAt"> · Read {{formatDisplayDate(submissionDateOnly(response.readAt))}}</template></small><button v-if="request.status!=='denied'&&!response.readAt&&!entry.resolvedAt&&(response.respondedAs==='reviewer')===canStaffEdit&&editingResponseId!==response.id" class="text-button" type="button" @click="startResponseEdit(response)">Edit Message</button></article></div>
                 <div v-if="(identity==='agency' || canStaffEdit) && canReplyToMoreInfo(request,entry.id) && !unreadOutgoingMessage(entry,canStaffEdit)" class="more-info-reply"><label class="field-label" :for="`more-info-reply-${entry.id}`">Response<textarea :id="`more-info-reply-${entry.id}`" v-model="moreInfoReplies[entry.id]" class="form-textarea" maxlength="4000" rows="3" placeholder="Type your message here." :disabled="saving" /></label><button class="button button-secondary" type="button" :disabled="saving || !moreInfoReplies[entry.id]?.trim()" @click="sendMoreInfoReply(entry.id)">Send Response</button></div>
                 <p v-if="unreadOutgoingMessage(entry,canStaffEdit)" class="muted-copy">Your message has not been read yet. Click Edit Message above to make changes.</p>
                 <div v-if="canStaffEdit && deletingMoreInfoId===entry.id" class="more-info-delete-confirmation"><p>Are you sure you want to delete this note?</p><div class="more-info-actions"><button class="button button-danger" type="button" :disabled="saving" @click="saveMoreInfoNote('delete',entry.id)">Delete Note</button><button class="button button-ghost" type="button" :disabled="saving" @click="deletingMoreInfoId=''">Cancel</button></div></div>
             </component>
-            <div v-if="canStaffEdit && !hasActiveMoreInfoConversation" class="more-info-compose"><label class="field-label">Notes<textarea v-model="moreInfoNotes" class="form-textarea" maxlength="4000" rows="3" placeholder="Describe what is missing and/or what needs to be addressed." /></label><button class="button button-secondary" type="button" :disabled="saving || !moreInfoNotes.trim()" @click="sendMoreInfo">Send to LA</button></div>
+            <div v-if="canStaffEdit && request.status!=='denied' && showMoreInfoComposer && !hasActiveMoreInfoConversation" class="more-info-compose"><label class="field-label">Notes<textarea v-model="moreInfoNotes" class="form-textarea" maxlength="4000" rows="3" placeholder="Describe what is missing and/or what needs to be addressed." /></label><button class="button button-secondary" type="button" :disabled="saving || !moreInfoNotes.trim()" @click="sendMoreInfo">Send to LA</button></div>
             <p v-if="moreInfoNotice" role="status">{{moreInfoNotice}}</p>
         </section>
-        <hr class="cdph-section-divider" />
-        <section class="cdph-workspace" aria-label="State-Issued Formula Authorization">
+        <hr v-if="canCollapseReviewDetails && request.status!=='denied'" class="cdph-section-divider" />
+        <section v-if="canCollapseReviewDetails && request.status!=='denied'" ref="authorizationSection" class="cdph-workspace" aria-label="State-Issued Formula Authorization" tabindex="-1">
             <header class="cdph-workspace-header"><h3>State-Issued Formula Authorization</h3></header>
         <section
             v-if="canStaffEdit"
@@ -858,28 +839,12 @@ async function saveAgencyUpdate() {
                     <option value="opened">Opened</option>
                     <option value="in_progress">In progress</option>
                     <option v-if="request.status==='needs_info'" value="needs_info" disabled>Pending LA</option>
-                    <option value="denied">Denied</option>
                     <option
                         v-if="canSelectShippedStatus(request ?? {})"
                         value="shipped"
                     >Shipped</option>
                 </select>
             </label>
-            <div class="decision-actions">
-                <span class="decision-label">Decision</span>
-                <div v-if="draft.approved === true" class="decision-selected decision-selected-approved">
-                    <span>Approved</span>
-                    <button class="icon-button" type="button" aria-label="Undo approval or denial" :disabled="saving" @click="undoStaffDecision">×</button>
-                </div>
-                <div v-else-if="draft.status === 'denied'" class="decision-selected decision-selected-denied">
-                    <span>Denied</span>
-                    <button class="icon-button" type="button" aria-label="Undo approval or denial" :disabled="saving" @click="undoStaffDecision">×</button>
-                </div>
-                <div v-else class="decision-buttons">
-                    <button class="button button-secondary" type="button" :disabled="saving" @click="setStaffDecision('approved')">Approve</button>
-                    <button class="button button-danger" type="button" :disabled="saving" @click="setStaffDecision('denied')">Deny</button>
-                </div>
-            </div>
             <fieldset class="cdph-fields" :disabled="draft.status === 'denied'">
             <div class="issuance-heading"><h3>Issuance</h3></div>
             <fieldset v-for="(authorization,formulaIndex) in draft.formulaAuthorizations" :key="`${authorization.productName}-${authorization.productForm}-${authorization.flavor}`" class="authorization-formula">
@@ -961,17 +926,6 @@ async function saveAgencyUpdate() {
                     {{ staffSaveStatus === 'saving' ? 'Saving…' : staffSaveStatus === 'saved' ? 'Saved' : 'Save failed' }}
                 </span>
             </div>
-            <label
-                v-if="draft.status === 'denied'"
-                class="field-label"
-            >
-                Give reason
-                <textarea
-                    v-model="draft.staffNotes"
-                    class="form-textarea"
-                    placeholder="Explain the decision or next step."
-                />
-            </label>
             <a
                 v-if="canGenerateAuthorizationForm(request)"
                 class="button button-secondary"
@@ -986,7 +940,7 @@ async function saveAgencyUpdate() {
 
         <section ref="shippingSection" class="detail-section" tabindex="-1">
             <div v-if="canGenerateAuthorizationForm(request)" class="authorization-downloads"><a class="button button-secondary" :href="`/api/requests/${request.id}/authorization-form.pdf`" target="_blank" rel="noopener">Print / Download Authorization</a><details v-if="(request.authorizationVersions?.length??0)>1"><summary>Earlier authorization versions</summary><p v-for="version in request.authorizationVersions" :key="version.id"><a :href="`/api/requests/${request.id}/authorization-form.pdf?version=${version.id}`" target="_blank" rel="noopener">{{formatDisplayDate(submissionDateOnly(version.sentAt))}} · Shipment {{version.shipmentIndex+1}}</a></p></details></div>
-            <div class="section-heading"><h3>Shipping</h3><button v-if="canStaffEdit && editingSection!=='shipping'" class="text-button" type="button" @click="startEditing('shipping')">Edit</button></div>
+            <div class="section-heading"><h3>Shipping</h3><button v-if="canStaffEdit && request.status!=='denied' && editingSection!=='shipping'" class="text-button" type="button" @click="startEditing('shipping')">Edit</button></div>
             <form v-if="editingSection==='shipping' && draft.shipping" class="shipping-detail-editor" @submit.prevent="saveFormSection">
                 <div class="form-grid compact-form-grid">
                     <label class="field-label detail-field-wide">Local Agency<input :value="agency?.name" class="form-input" disabled /></label>
@@ -1133,7 +1087,7 @@ async function saveAgencyUpdate() {
             </div>
         </section>
         </section>
-        <hr class="cdph-section-divider" />
+        <hr v-if="canCollapseReviewDetails && request.status!=='denied'" class="cdph-section-divider" />
 
 
         <div v-if="canStaffEdit && deletingShipmentIndex!==null" class="confirmation-backdrop" @click.self="!saving && (deletingShipmentIndex=null)" @keydown.esc="!saving && (deletingShipmentIndex=null)">
@@ -1150,9 +1104,11 @@ async function saveAgencyUpdate() {
         <div v-if="pendingDecision" class="confirmation-backdrop" @click.self="pendingDecision = null">
             <div class="confirmation-modal" role="dialog" aria-modal="true" aria-labelledby="deny-decision-title">
                 <h3 id="deny-decision-title">Are you sure you want to deny this request?</h3>
+                <label class="field-label">Reason for Denial<textarea v-model="denialReason" class="form-textarea" maxlength="4000" rows="3" required placeholder="Enter the reason for denial." :disabled="saving" /></label>
+                <p v-if="error" class="form-error" role="alert">{{error}}</p>
                 <div class="form-actions">
                     <button class="button button-ghost" type="button" @click="pendingDecision = null">Cancel</button>
-                    <button class="button button-danger" type="button" @click="confirmDenial">Confirm Denial</button>
+                    <button class="button button-danger" type="button"  :disabled="saving || !denialReason.trim()" @click="confirmDenial">Confirm Denial</button>
                 </div>
             </div>
         </div>
@@ -1173,6 +1129,11 @@ async function saveAgencyUpdate() {
 </template>
 
 <style scoped>
+.review-decision-section {border:1px solid var(--line);border-radius:10px;padding:16px;}
+.review-decision-buttons {display:flex;flex-wrap:wrap;gap:10px;}
+.review-approved {color:#007888;font-weight:600;}
+.review-denied {color:#AE5018;}
+.review-decision-section > .button {margin-top:12px;}
 .more-info-section {background:color-mix(in srgb,#007888 6%,var(--surface));border:1px solid color-mix(in srgb,#007888 45%,var(--line));border-radius:10px;padding:18px;margin:16px 0;}
 .more-info-section > .section-heading {margin:-18px -18px 16px;padding:14px 18px;background:#002595;border-radius:9px 9px 0 0;display:flex;flex-wrap:wrap;gap:12px;}
 .more-info-toolbar {display:flex;flex-wrap:wrap;align-items:center;gap:8px;}

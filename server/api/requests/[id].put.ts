@@ -11,13 +11,13 @@ import {requestShipments} from '../../../shared/requestShipments';
 import {confirmShipmentReceipts,shipmentReceived,shipmentFinished,type ShipmentReceiptSelection} from '../../../shared/shipmentReceipts';
 import type { RequestRecord } from '../../../shared/domain';
 import { getRequestById, updateRequestRecord } from '../../utils/requestStore';
-import { submittedRequest, ensureSubmittedRequest, requestMoreInfo, reopenMoreInfoSubmission, resolveMoreInfo, editMoreInfoNote, editMoreInfoMessage, replyToMoreInfo, deleteSubmittedShipment, updateSubmittedRequest, updateSubmittedShipmentIssue, updateSubmittedShipmentCases, updateSubmittedShipmentReceipt, updateSubmittedShipmentPolicy, updateSubmittedSimpleShipmentReceipt } from '../../utils/submittedRequests';
+import { reviewSubmittedRequest, submittedRequest, ensureSubmittedRequest, requestMoreInfo, reopenMoreInfoSubmission, resolveMoreInfo, editMoreInfoNote, editMoreInfoMessage, replyToMoreInfo, deleteSubmittedShipment, updateSubmittedRequest, updateSubmittedShipmentIssue, updateSubmittedShipmentCases, updateSubmittedShipmentReceipt, updateSubmittedShipmentPolicy, updateSubmittedSimpleShipmentReceipt } from '../../utils/submittedRequests';
 import { getSessionFromHeaders } from '../../utils/session';
 import { canSeeAgency, isReviewer } from '../../../shared/surplus';
 import { submissionFields } from '../../../shared/requestEditing';
 export default defineEventHandler(async (event) => {
     const id = Number(getRouterParam(event, 'id'));
-    const updates = await readBody<Partial<RequestRecord> & {editMoreInfoMessage?:import('../../utils/submittedRequests').MoreInfoMessageEdit;reopenMoreInfo?:boolean;resolveMoreInfo?:boolean;moreInfoReply?:import('../../utils/submittedRequests').MoreInfoReply;moreInfoNote?:import('../../utils/submittedRequests').MoreInfoNoteCommand;requestMoreInfo?:{notes:string};confirmShipmentReceipt?:SimpleShipmentReceiptCommand;shipmentPolicy?:ShipmentPolicyCommand;reserveTransferIndex?:number;deleteShipmentIndex?:number;sendEtaShipmentIndex?:number;confirmShipmentReceipts?:ShipmentReceiptSelection[];shipmentIssue?:ShipmentIssueCommand;shipmentCases?:ShipmentCaseCommand}>(event);
+    const updates = await readBody<Partial<RequestRecord> & {reviewDecision?:import('../../utils/submittedRequests').ReviewDecisionCommand;editMoreInfoMessage?:import('../../utils/submittedRequests').MoreInfoMessageEdit;reopenMoreInfo?:boolean;resolveMoreInfo?:boolean;moreInfoReply?:import('../../utils/submittedRequests').MoreInfoReply;moreInfoNote?:import('../../utils/submittedRequests').MoreInfoNoteCommand;requestMoreInfo?:{notes:string};confirmShipmentReceipt?:SimpleShipmentReceiptCommand;shipmentPolicy?:ShipmentPolicyCommand;reserveTransferIndex?:number;deleteShipmentIndex?:number;sendEtaShipmentIndex?:number;confirmShipmentReceipts?:ShipmentReceiptSelection[];shipmentIssue?:ShipmentIssueCommand;shipmentCases?:ShipmentCaseCommand}>(event);
     const user = getSessionFromHeaders({ 'x-demo-user': getHeader(event, 'x-demo-user') });
     const env = event.context.cloudflare?.env as Partial<Env> | undefined;
     if (!env?.CDPHWIC) throw createError({ statusCode: 503, statusMessage: 'Request database unavailable.' });
@@ -26,6 +26,11 @@ export default defineEventHandler(async (event) => {
     if (!raw || !canSeeAgency(user, raw.agencyId))
         throw createError({ statusCode: 404, statusMessage: 'Request not found.' });
     const previous = saved ?? (await ensureSubmittedRequest(env.CDPHWIC, raw));
+    if(updates.reviewDecision!==undefined){const request=await reviewSubmittedRequest(env.CDPHWIC,previous,user,updates.reviewDecision,updates.revision!);updateRequestRecord(id,request);return {request};}
+    if(previous.status==='denied')throw createError({statusCode:409,statusMessage:'Reopen this request before making changes.'});
+    if(!isReviewer(user) && (updates.approved!==undefined || (updates.status!==undefined && updates.status!=='complete')))throw createError({statusCode:403,statusMessage:'Only CDPH/WIC or Admin can make review decisions.'});
+    if(updates.approved!==undefined)throw createError({statusCode:400,statusMessage:'Use the review decision controls to change approval.'});
+    if(updates.status==='denied')throw createError({statusCode:400,statusMessage:'Use Deny and provide a reason for denial.'});
     if(updates.editMoreInfoMessage!==undefined){const request=await editMoreInfoMessage(env.CDPHWIC,previous,user,updates.editMoreInfoMessage,updates.revision!);updateRequestRecord(id,request);return {request};}
     if(updates.reopenMoreInfo!==undefined){
         if(updates.reopenMoreInfo!==true)throw createError({statusCode:400,statusMessage:'Select a valid reopen action.'});
@@ -101,7 +106,7 @@ export default defineEventHandler(async (event) => {
             statusCode: 409,
             statusMessage: 'Use Edit submission to update the complete form before Admin/FPU opens it.',
         });
-    const {editMoreInfoMessage:_editMoreInfoMessage,reopenMoreInfo:_reopenMoreInfo,resolveMoreInfo:_resolveMoreInfo,moreInfoReply:_moreInfoReply,moreInfoNote:_moreInfoNote,moreInfoRequests:_moreInfo,authorizationVersions:_authorizationVersions,requestMoreInfo:_requestMoreInfo, confirmShipmentReceipt:_simpleReceipt, reserveTransferIndex:_reserveTransferIndex, deletedShipments:_deletedShipments, deleteShipmentIndex:_deleteShipmentIndex, prescriptionAttachment, openedAt, revision, shipmentPolicy:_policy, sendEtaShipmentIndex, confirmShipmentReceipts: _receiptSelection, shipmentIssue: _shipmentIssue, shipmentCases: _shipmentCases, originalApprovedCases: _originalApproval, ...safe } = updates;
+    const {reviewDecision:_reviewDecision,denialReason:_denialReason,editMoreInfoMessage:_editMoreInfoMessage,reopenMoreInfo:_reopenMoreInfo,resolveMoreInfo:_resolveMoreInfo,moreInfoReply:_moreInfoReply,moreInfoNote:_moreInfoNote,moreInfoRequests:_moreInfo,authorizationVersions:_authorizationVersions,requestMoreInfo:_requestMoreInfo, confirmShipmentReceipt:_simpleReceipt, reserveTransferIndex:_reserveTransferIndex, deletedShipments:_deletedShipments, deleteShipmentIndex:_deleteShipmentIndex, prescriptionAttachment, openedAt, revision, shipmentPolicy:_policy, sendEtaShipmentIndex, confirmShipmentReceipts: _receiptSelection, shipmentIssue: _shipmentIssue, shipmentCases: _shipmentCases, originalApprovedCases: _originalApproval, ...safe } = updates;
     if (!isReviewer(user) && (safe.receivedStatus==='received' || safe.status==='complete') && !requestShipments(previous).every(row=>shipmentFinished(previous,row)))
         throw createError({statusCode:409,statusMessage:'Select individual shipments to confirm receipt.'});
     if (safe.shipments) safe.shipments=safe.shipments.map(({receivedAt,receivedBy,receiptConfirmed,dispatched,receivedCases,receivedUnits,damagedUnits,dispositions,receiptCountHistory,replacedAt,replacedBy,replacementClosureNote,issue,deletedIssues,distributorPolicy,policyHistory,replacementBasis,replacementIssueId,...shipment})=>shipment);

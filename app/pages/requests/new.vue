@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import {breastfeedingOptions,type BreastfeedingStatus,validateBreastfeeding} from '~/../shared/breastfeeding';
 import { hasMedicalDocumentation, medicalDocumentationRequiredMessage } from '~/../shared/medicalDocumentation';
-import {blankClinicAddress,validateShipping,type RequestShipping} from '~/../shared/shipping';
+import {shippingContact,blankClinicAddress,validateShipping,type RequestShipping} from '~/../shared/shipping';
 import {canEditSubmission,hasPendingMoreInfo,restoreSubmittedForm} from '~/../shared/requestEditing';
 import { benefitMonthLabels, toggleRequestedMonth, serializeRequestedMonths, validateRequestedMonths } from '~/../shared/requestMonthSelection';
 import { formulaCatalog, findFormula, availableFormulaForms, defaultFormulaForm, requiresReadyToFeedReason } from '~/../shared/formulaCatalog';
@@ -54,6 +54,28 @@ const submitted = ref(false);
 const validationAttempted = ref(false);
 const submissionError = ref('');
 const diagnosisInput = ref('');
+const editingDiagnosisIndex=ref<number|null>(null);
+const editingDiagnosisValue=ref('');
+const diagnosisEditError=ref('');
+function finishDiagnosisEdit(validate=true){
+    if(editingDiagnosisIndex.value===null)return true;
+    const value=editingDiagnosisValue.value.trim();
+    const error=validate?validateDiagnoses(value):'';
+    if(error){diagnosisEditError.value=error;return false;}
+    const entries=[...diagnoses.value];
+    entries[editingDiagnosisIndex.value]=value;
+    form.diagnosis=entries.filter(Boolean).join('\n');
+    editingDiagnosisIndex.value=null;
+    diagnosisEditError.value='';
+    return true;
+}
+function startDiagnosisEdit(index:number){
+    if(!finishDiagnosisEdit())return;
+    editingDiagnosisValue.value=diagnoses.value[index]??'';
+    editingDiagnosisIndex.value=index;
+    diagnosisEditError.value='';
+}
+function cancelDiagnosisEdit(){editingDiagnosisIndex.value=null;diagnosisEditError.value='';}
 const diagnoses = computed(() => form.diagnosis.split(/[\n;]/).map((value) => value.trim()).filter(Boolean));
 
 const pendingDiagnosis = computed(() => findDiagnosis(diagnosisInput.value));
@@ -91,6 +113,8 @@ function handleDiagnosisEnter() {
 }
 
 function removeDiagnosis(index: number) {
+    if(editingDiagnosisIndex.value===index)editingDiagnosisIndex.value=null;
+    else if(editingDiagnosisIndex.value!==null && editingDiagnosisIndex.value>index)editingDiagnosisIndex.value--;
     form.diagnosis = diagnoses.value.filter((_, itemIndex) => itemIndex !== index).join('\n');
 }
 const parsing = ref(false);
@@ -106,10 +130,18 @@ const products = computed(() => productData.value?.products ?? []);
 const {data:agencyOptions}=await useFetch('/api/agencies');
 const {data:shippingProfile}=await useFetch('/api/profile',{headers:computed(()=>({'x-demo-user':identity.value}))});
 const requestAgencyId=ref(shippingProfile.value?.user?.agencyId??10);
-const shipping=ref<RequestShipping>({...blankClinicAddress(),email:'',phone:''});
+const enteredShipping=ref<RequestShipping>({...blankClinicAddress()});
 const selectedAgencyMemberId=ref<number|''>(shippingProfile.value?.user?.agencyMemberId??agencyOptions.value?.members.find(m=>m.agencyId===requestAgencyId.value)?.id??'');
 const agencyMembers=computed(()=>agencyOptions.value?.members.filter(m=>m.agencyId===requestAgencyId.value)??[]);
 const requestAgencyMemberId=computed(()=>identity.value==='agency'?shippingProfile.value?.user?.agencyMemberId:agencyMembers.value.find(m=>m.id===selectedAgencyMemberId.value)?.id);
+const savedShippingContact=computed<{attention?:string;email?:string;phone?:string}>(()=>{
+    if(identity.value==='agency')return shippingProfile.value?.identity==='agency'?{attention:shippingProfile.value.user?.name,email:shippingProfile.value.user?.email,phone:shippingProfile.value.user?.phone}:{};
+    const member=agencyMembers.value.find(member=>member.id===requestAgencyMemberId.value);
+    return {attention:member?.name,email:member?.email,phone:member?.phone};
+});
+const shipping=computed<RequestShipping>({get:()=>({...enteredShipping.value,...shippingContact(enteredShipping.value,savedShippingContact.value)}),set:value=>{enteredShipping.value=value;}});
+watch([identity,requestAgencyMemberId],()=>{enteredShipping.value={...enteredShipping.value,attention:undefined,email:undefined,phone:undefined};},{flush:'sync'});
+
 const form = reactive({
     patientFirstName: '',
     patientLastName: '',
@@ -260,11 +292,12 @@ if(editingId.value){
  if(request.prescriptionAttachment)selectedPrescription.value=new File([],request.prescriptionAttachment.fileName);
 }
 
-watch(requestAgencyId,()=>{shipping.value={...blankClinicAddress(),email:shipping.value.email,phone:shipping.value.phone};selectedAgencyMemberId.value=agencyMembers.value[0]?.id??'';},{flush:'sync'});
+watch(requestAgencyId,()=>{shipping.value={...blankClinicAddress(),attention:shipping.value.attention,email:shipping.value.email,phone:shipping.value.phone};selectedAgencyMemberId.value=agencyMembers.value[0]?.id??'';},{flush:'sync'});
 watch(()=>shippingProfile.value?.user?.agencyId,agencyId=>{if(identity.value==='agency'&&agencyId)requestAgencyId.value=agencyId;});
 
 async function saveRequest() {
     if (saving.value || parsing.value) return;
+    finishDiagnosisEdit(false);
     draftSavedNotice.value = '';
     saving.value = true;
     submissionError.value = '';
@@ -534,7 +567,8 @@ async function submitRequest() {
     submitted.value = false;
     if (saving.value || parsing.value) return;
     validationAttempted.value = true;
-    const diagnosisCommitted = commitDiagnosis();
+    const diagnosisEdited=finishDiagnosisEdit();
+    const diagnosisCommitted = commitDiagnosis() && diagnosisEdited;
     await nextTick();
     syncFieldValidity();
     const invalid = requestForm.value?.querySelector<HTMLElement>('input:invalid, select:invalid, textarea:invalid, [data-required-group][aria-invalid="true"]');
@@ -589,7 +623,7 @@ async function submitRequest() {
             >Cancel</NuxtLink
         >
     </div>
-    <div v-if="correctingRequest" class="correction-request-note"><strong>More Info Requested</strong><p>{{correctionNotes}}</p></div>
+    <div v-if="correctingRequest" class="correction-request-note"><strong>Request More Info</strong><p>{{correctionNotes}}</p></div>
     <p v-if="editLocked" role="alert">Admin/FPU has opened this submission. Its submitted form can no longer be edited.</p>
     <form v-else
         ref="requestForm"
@@ -989,9 +1023,16 @@ async function submitRequest() {
                         <small>Specify the condition or nutrient, then press Enter to add this diagnosis.</small>
                     </div>
                     <ul v-if="diagnoses.length" class="diagnosis-list" aria-label="Added diagnoses" aria-live="polite">
-                        <li v-for="(diagnosis, index) in diagnoses" :key="diagnosis">
-                            <span>{{ diagnosis }}</span>
-                            <button type="button" class="text-button" :aria-label="`Remove diagnosis: ${diagnosis}`" @click="removeDiagnosis(index)">Remove</button>
+                        <li v-for="(diagnosis, index) in diagnoses" :key="index" :class="{'diagnosis-is-editing':editingDiagnosisIndex===index}">
+                            <RequestDiagnosisEditor v-if="editingDiagnosisIndex===index" v-model="editingDiagnosisValue" :index="index" />
+                            <span v-else>{{ diagnosis }}</span>
+                            <div class="diagnosis-entry-actions">
+                                <button v-if="editingDiagnosisIndex===index" type="button" class="text-button" :aria-label="`Done editing diagnosis ${index+1}`" @click="finishDiagnosisEdit()">Done</button>
+                                <button v-else type="button" class="text-button" :aria-label="`Edit diagnosis: ${diagnosis}`" @click="startDiagnosisEdit(index)">Edit</button>
+                                <button v-if="editingDiagnosisIndex===index" type="button" class="text-button" @click="cancelDiagnosisEdit">Cancel</button>
+                                <button type="button" class="text-button" :aria-label="`Remove diagnosis: ${diagnosis}`" @click="removeDiagnosis(index)">Remove</button>
+                            </div>
+                            <p v-if="editingDiagnosisIndex===index && diagnosisEditError" class="form-error diagnosis-edit-error" role="alert">{{diagnosisEditError}}</p>
                         </li>
                     </ul>
                 </div>
@@ -1229,3 +1270,11 @@ async function submitRequest() {
 </style>
 
 <style scoped>.correction-request-note{border-left:3px solid #902A92;padding:12px 16px;margin-bottom:16px;}.correction-request-note p{white-space:pre-wrap;overflow-wrap:anywhere;}</style>
+
+<style scoped>
+.diagnosis-entry-actions {display:flex;gap:12px;flex-shrink:0;}
+.diagnosis-list .diagnosis-is-editing {align-items:flex-start;flex-wrap:wrap;}
+.diagnosis-edit-error {flex-basis:100%;margin:0;}
+.diagnosis-is-editing .diagnosis-entry-actions {padding-top:5px;}
+@media (max-width:600px){.diagnosis-list .diagnosis-is-editing {flex-wrap:wrap;}}
+</style>

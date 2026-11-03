@@ -12,7 +12,7 @@ const matches = computed(() => name.value && !choice.value ? diagnosisCatalog.fi
 function updateName(value: string) {
     matchIndex.value = 0;
     const matched = findDiagnosis(value);
-    emit('update:modelValue', (!matched || matched.detail) && details.value ? `${matched.name}: ${details.value}` : matched?.name ?? value);
+    emit('update:modelValue', (!matched || matched.detail) && details.value ? `${matched?.name ?? value}: ${details.value}` : matched?.name ?? value);
 }
 function selectName(value: string) {
     updateName(value);

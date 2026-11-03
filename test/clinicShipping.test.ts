@@ -82,3 +82,18 @@ it('requires a representative in the selected agency and keeps unassigned drafts
     expect(requestAgency(getDemoUser('admin'), 12, undefined, true)).toEqual({ agencyId: 12, agencyMemberId: 0 });
     expect(requestAgency(getDemoUser('agency'), 10, undefined)).toEqual({ agencyId: 10, agencyMemberId: 100 });
 });
+
+it('defaults shipping contacts from the submitting account and preserves corrected values independently',async()=>{
+ const {shippingContact}=await import('../shared/shipping');
+ const saved={attention:'Submitting User',email:' account@example.test ',phone:'17075550100'};
+ expect(shippingContact({},saved)).toEqual({attention:'Submitting User',email:'account@example.test',phone:'(707) 555-0100'});
+ expect(shippingContact({attention:'Receiving Staff',email:'typed@example.test',phone:'9165550123'},saved)).toEqual({attention:'Receiving Staff',email:'typed@example.test',phone:'(916) 555-0123'});
+ expect(shippingContact({email:'typed@example.test'},saved)).toEqual({attention:'Submitting User',email:'typed@example.test',phone:'(707) 555-0100'});
+ expect(shippingContact({email:'',phone:''},saved)).toEqual({attention:'Submitting User',email:'',phone:''});
+});
+it('takes Local Agency contacts from the submitting account rather than another representative',async()=>{
+ const {requestContact}=await import('../server/utils/requestAgency');
+ expect(requestContact({...getDemoUser('agency'),email:'account@example.test',phone:'9165550123'},10,101)).toEqual({attention:getDemoUser('agency').name,email:'account@example.test',phone:'9165550123'});
+ expect(requestContact(getDemoUser('admin'),10,101)).toMatchObject({email:'david@mendocino.example',phone:'(707) 555-0101'});
+ expect(()=>requestContact(getDemoUser('admin'),11,101)).toThrow('representative');
+});

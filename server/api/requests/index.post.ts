@@ -1,5 +1,6 @@
 import { hasMedicalDocumentation, medicalDocumentationRequiredMessage } from '../../../shared/medicalDocumentation';
-import {requestAgency} from '../../utils/requestAgency';
+import {shippingContact} from '../../../shared/shipping';
+import {requestAgency,requestContact} from '../../utils/requestAgency';
 import {resolveShipping} from '../../utils/clinicStore';
 import { persistSurplusSubmission } from '../../utils/surplusReports';
 import { validateRequestSubmission } from '../../../shared/requestSubmission';
@@ -25,11 +26,12 @@ export default defineEventHandler(async (event) => {
         prescriptionKey?: string;
         draftId?: number;
     };
+    const user = getSessionFromHeaders({ 'x-demo-user': getHeader(event, 'x-demo-user') });
+    const membership=requestAgency(user,requestBody.agencyId,requestBody.agencyMemberId);
+    if(requestBody.shipping)requestBody.shipping={...requestBody.shipping,...shippingContact(requestBody.shipping,requestContact(user,membership.agencyId,membership.agencyMemberId))};
     const validationError = validateRequestSubmission(requestBody);
     if (validationError) throw createError({ statusCode: 400, statusMessage: validationError });
     const environment = event.context.cloudflare?.env as Partial<Env> | undefined;
-    const user = getSessionFromHeaders({ 'x-demo-user': getHeader(event, 'x-demo-user') });
-    const membership=requestAgency(user,requestBody.agencyId,requestBody.agencyMemberId);
     const submissionId = body.submissionId ?? crypto.randomUUID();
     const submissionPayload = JSON.stringify(requestBody);
     if (!environment?.CDPHWIC) throw createError({ statusCode: 503, statusMessage: 'Request database unavailable.' });

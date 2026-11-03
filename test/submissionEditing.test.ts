@@ -141,3 +141,9 @@ it('does not rewrite reconciled surplus when resubmitting unrelated corrections'
  const resubmitted=await store.editSubmittedRequest(db,agency,saved,{},saved.revision!);
  expect(resubmitted.status).toBe('unopened');expect(await db.prepare('SELECT status FROM surplus_reports WHERE submission_id=?').bind(original.submissionId).first('status')).toBe('reconciled');
 });
+
+it('preserves corrected shipping contact details instead of overwriting them with account defaults',async()=>{
+ const db=await fixture();
+ const edited=await store.editSubmittedRequest(db,{...agency,phone:'7075550100'},request,{shipping:{...request.shipping!,attention:'Receiving Staff',email:'receiving@example.test',phone:'9165550123'}},0);
+ expect(edited.shipping).toMatchObject({attention:'Receiving Staff',email:'receiving@example.test',phone:'(916) 555-0123'});
+});

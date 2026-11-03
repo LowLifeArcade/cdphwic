@@ -22,3 +22,10 @@ export function requestAgency(
     }
     return { agencyId, agencyMemberId: memberId! };
 }
+
+export function requestContact(user:SessionUser,agencyId:number,agencyMemberId?:number){
+    if(user.memberType==='agency')return {attention:user.name,email:user.email,phone:user.phone};
+    const member=SEED_MEMBERS.find(member=>member.id===agencyMemberId && member.agencyId===agencyId);
+    if(!member)throw Object.assign(new Error('Select a local agency representative belonging to this agency.'),{statusCode:400});
+    return {attention:member.name,email:member.email,phone:member.phone};
+}

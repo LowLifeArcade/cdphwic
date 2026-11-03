@@ -1,3 +1,4 @@
+import {formatPhoneNumber} from './phone';
 export interface ClinicAddress {
     clinicName: string;
     addressLine1: string;
@@ -63,4 +64,8 @@ export function formatShippingAddress(address?: Partial<ClinicAddress>): string 
 /** Normalize a request-specific snapshot independently of address-book access. */
 export function normalizeShipping(input:Partial<RequestShipping>):RequestShipping {
     return {...normalizeClinic(input),...(input.clinicId?{clinicId:input.clinicId}:{}),...(typeof input.attention==='string'?{attention:input.attention.trim()}:{}),email:typeof input.email==='string'?input.email.trim():'',phone:typeof input.phone==='string'?input.phone.trim():''};
+}
+
+export function shippingContact(entered:Pick<RequestShipping,'attention'|'email'|'phone'>={},saved:Pick<RequestShipping,'attention'|'email'|'phone'>={}){
+    return {attention:(entered.attention ?? saved.attention ?? '').trim(),email:(entered.email ?? saved.email ?? '').trim(),phone:formatPhoneNumber(entered.phone ?? saved.phone ?? '')};
 }

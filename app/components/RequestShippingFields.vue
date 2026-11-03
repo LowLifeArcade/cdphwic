@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import {formatPhoneNumber} from '~/../shared/phone';
 import { blankClinicAddress, formatClinic, type ClinicRecord, type RequestShipping } from '~/../shared/shipping';
 const props = defineProps<{ modelValue: RequestShipping; agencyId: number; allowSavedSnapshot?: boolean }>();
 const emit = defineEmits<{ 'update:modelValue': [value: RequestShipping] }>();
@@ -18,7 +19,7 @@ watch(
     () => props.agencyId,
     () => {
         mode.value = '';
-        emit('update:modelValue', { ...blankClinicAddress(), email: props.modelValue.email, phone: props.modelValue.phone });
+        emit('update:modelValue', { ...blankClinicAddress(), attention: props.modelValue.attention, email: props.modelValue.email, phone: props.modelValue.phone });
     },
 );
 const selectedSnapshot = computed(
@@ -40,9 +41,9 @@ function choose(event: Event) {
                   city: clinic.city,
                   state: clinic.state,
                   postalCode: clinic.postalCode,
-                  email: props.modelValue.email, phone: props.modelValue.phone,
+                  attention: props.modelValue.attention, email: props.modelValue.email, phone: props.modelValue.phone,
               }
-            : { ...blankClinicAddress(), email: props.modelValue.email, phone: props.modelValue.phone },
+            : { ...blankClinicAddress(), attention: props.modelValue.attention, email: props.modelValue.email, phone: props.modelValue.phone },
     );
 }
 </script>
@@ -115,7 +116,7 @@ function choose(event: Event) {
             :model-value="modelValue"
             prefix="shipping"
             required
-            @update:model-value="emit('update:modelValue', { ...$event, email: modelValue.email, phone: modelValue.phone })"
+            @update:model-value="emit('update:modelValue', { ...$event, attention: modelValue.attention, email: modelValue.email, phone: modelValue.phone })"
         />
         <p class="muted-copy">
             This address will be saved with this request. Add it to the agency address book separately to use it on
@@ -133,13 +134,18 @@ function choose(event: Event) {
         ><br />{{ modelValue.city }}, {{ modelValue.state }} {{ modelValue.postalCode }}
     </address>
     <div class="form-field">
+        <label for="shipping-contact">Local Agency Contact Name</label>
+        <input id="shipping-contact" :value="modelValue.attention" class="form-input" maxlength="250" autocomplete="name"
+            @input="emit('update:modelValue', { ...modelValue, attention: ($event.target as HTMLInputElement).value })" />
+    </div>
+    <div class="form-field">
         <label for="shipping-email">E-Mail</label>
         <input id="shipping-email" :value="modelValue.email" class="form-input" type="email" maxlength="254" autocomplete="email"
             @input="emit('update:modelValue', { ...modelValue, email: ($event.target as HTMLInputElement).value })" />
     </div>
     <div class="form-field">
         <label for="shipping-phone">Phone Number</label>
-        <input id="shipping-phone" :value="modelValue.phone" class="form-input" type="tel" maxlength="30" autocomplete="tel"
-            @input="emit('update:modelValue', { ...modelValue, phone: ($event.target as HTMLInputElement).value })" />
+        <input id="shipping-phone" :value="formatPhoneNumber(modelValue.phone ?? '')" class="form-input" type="tel" maxlength="14" autocomplete="tel" placeholder="(XXX) XXX-XXXX"
+            @input="emit('update:modelValue', { ...modelValue, phone: formatPhoneNumber(($event.target as HTMLInputElement).value) })" />
     </div>
 </template>

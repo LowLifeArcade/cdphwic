@@ -1,3 +1,5 @@
+import {shippingContact} from '../../shared/shipping';
+import {requestContact} from './requestAgency';
 import {unreadOutgoingMessage} from '../../shared/moreInfoMessages';
 import {publishAuthorization} from '../../shared/authorizationPublication';
 import {resolveShipmentFormula,requireShipmentFormula,shipmentFormulaKey} from '../../shared/shipmentFormulas';
@@ -22,6 +24,7 @@ import {requestShipments,shipmentUpdates,validateShipments} from '../../shared/r
 import {resolveShipping} from './clinicStore';
 import { canEditSubmission, canReplyToMoreInfo, canReopenMoreInfo, canResolveMoreInfo, hasPendingMoreInfo, latestMoreInfoRequest, submissionFields } from '../../shared/requestEditing';
 import { validateRequestSubmission } from '../../shared/requestSubmission';
+import {getApprovalStatus} from '../../shared/requestOperations';
 import { validDate, localDate } from '../../shared/surplus';
 import type { RequestRecord, SessionUser } from '../../shared/domain';
 import { canSeeAgency } from '../../shared/surplus';
@@ -270,6 +273,7 @@ export async function editSubmittedRequest(
     )
         throw conflict();
     const request = nextRecord(previous, submissionFields(updates));
+    if(request.shipping)request.shipping={...request.shipping,...shippingContact(request.shipping,requestContact(user,previous.agencyId,previous.agencyMemberId))};
     if (options.attachment !== undefined) request.prescriptionAttachment = options.attachment ?? undefined;
     if(!options.saveOnly || request.shipping?.clinicId)request.shipping = await resolveShipping(db,user,previous.agencyId,request.shipping,previous.shipping);
     const validation = options.saveOnly ? '' : validateRequestSubmission(request);
@@ -363,6 +367,22 @@ export function commitRequestTransfer(db:D1Database,previous:RequestRecord,updat
 export async function updateSubmittedSimpleShipmentReceipt(db:D1Database,previous:RequestRecord,command:SimpleShipmentReceiptCommand,actorId:number){
  const updates=confirmSimpleShipmentReceipt(previous,command,actorId);
  return writeRecord(db,previous,nextRecord(previous,updates),false,await transferReceiptSteps(db,previous,updates));
+}
+
+export interface ReviewDecisionCommand {action:'approve'|'deny'|'reopen';reason?:string}
+export async function reviewSubmittedRequest(db:D1Database,previous:RequestRecord,user:SessionUser,command:ReviewDecisionCommand,revision:number){
+ if(user.role!=='admin'&&user.memberType!=='internal')throw Object.assign(new Error('Only CDPH/WIC or Admin can make review decisions.'),{statusCode:403,statusMessage:'Only CDPH/WIC or Admin can make review decisions.'});
+ if(!command||!['approve','deny','reopen'].includes(command.action))throw Object.assign(new Error('Select a valid review decision.'),{statusCode:400});
+ if(revision!==(previous.revision??0))throw conflict();
+ if(command.action==='reopen'){
+  if(previous.status!=='denied')throw conflict('Only a denied request can be reopened.');
+  return writeRecord(db,previous,nextRecord(previous,{status:'in_progress',approved:false}),false);
+ }
+ if(previous.status==='denied')throw conflict('Reopen this request before making changes.');
+ if(command.action==='deny'&&(typeof command.reason!=='string'||!command.reason.trim()||command.reason.length>4000))throw Object.assign(new Error('Enter a reason for denial.'),{statusCode:400,statusMessage:'Enter a reason for denial.'});
+ const now=new Date().toISOString();
+ const moreInfoRequests=previous.moreInfoRequests?.map(note=>note.deletedAt||note.resolvedAt?note:{...note,resubmissionOpen:false,resolvedAt:now,resolvedBy:user.id});
+ return writeRecord(db,previous,nextRecord(previous,{approved:command.action==='approve',status:command.action==='deny'?'denied':getApprovalStatus(previous.status),...(command.action==='deny'?{denialReason:command.reason!.trim()}:{}),moreInfoRequests}),false);
 }
 
 export async function requestMoreInfo(db:D1Database,previous:RequestRecord,user:SessionUser,notes:string,revision:number){

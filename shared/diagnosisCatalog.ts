@@ -23,6 +23,7 @@ export function validateDiagnoses(value: string) {
     if (!entries.length) return 'Add at least one Qualifying Diagnosis.';
     for (const entry of entries) {
         const [name, ...details] = entry.split(':');
+        if (!name?.trim()) return 'Enter a diagnosis name.';
         if (findDiagnosis(name!)?.detail && !details.join(':').trim()) return `Provide details for ${name}.`;
     }
     return '';
