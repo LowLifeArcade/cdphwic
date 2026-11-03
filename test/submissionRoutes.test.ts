@@ -297,3 +297,14 @@ it('blocks generic Local Agency approval and reviewer-status bypasses',async()=>
  for(const body of [{approved:true},{status:'approved'},{status:'in_progress'}]){event.body=body;await expect(put(event as never)).rejects.toMatchObject({statusCode:403});}
  expect((await submittedRequest(event.db,1000998,getDemoUser('agency')))?.status).toBe('unopened');
 });
+
+it('lets reviewers revise saved decisions directly while retaining denial and issuance details',async()=>{
+ const event=await fixture();event.identity='internal';
+ event.body={reviewDecision:{action:'deny',reason:'Missing signature'},revision:0};const denied=(await put(event as never)).request;
+ event.body={reviewDecision:{action:'approve'},revision:denied.revision};const approved=(await put(event as never)).request;
+ expect(approved.approved).toBe(true);expect(approved.status).toBe('in_progress');expect(approved.denialReason).toBe('Missing signature');
+ event.body={reviewDecision:{action:'deny',reason:'Updated reason'},revision:approved.revision};const deniedAgain=(await put(event as never)).request;
+ event.body={reviewDecision:{action:'request-info',notes:'Please supply the signature.'},revision:deniedAgain.revision};
+ const pending=(await put(event as never)).request;expect(pending.status).toBe('needs_info');expect(pending.moreInfoRequests?.at(-1)?.notes).toBe('Please supply the signature.');
+ event.identity='agency';event.body={reviewDecision:{action:'approve'},revision:pending.revision};await expect(put(event as never)).rejects.toMatchObject({statusCode:403});
+});

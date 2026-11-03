@@ -74,10 +74,12 @@ watch(() => [props.request?.id, identity.value], async () => {
 const agencySaveStatus = ref<'idle' | 'saving' | 'saved' | 'failed'>('idle');
 const reportingSurplus = ref(false);
 const showMoreInfoComposer=ref(false);
+const editingReviewDecision=ref(false);
+const hasSavedReviewDecision=computed(()=>props.request?.status==='denied'||props.request?.status==='approved'||props.request?.approved===true);
 const denialReason=ref('');
 const authorizationSection=ref<HTMLElement>();
 const reviewDecisionSection=ref<HTMLElement>();
-watch(()=>[props.request?.id,identity.value],()=>{showMoreInfoComposer.value=false;pendingDecision.value=null;denialReason.value='';});
+watch(()=>[props.request?.id,identity.value],()=>{showMoreInfoComposer.value=false;editingReviewDecision.value=false;pendingDecision.value=null;denialReason.value='';});
 const pendingDecision = ref<'denied' | null>(null);
 const sendingEtaIndex = ref<number | null>(null);
 const editingEtaIndex = ref<number | null>(null);
@@ -144,7 +146,7 @@ function startMoreInfoEdit(entry:NonNullable<RequestRecord['moreInfoRequests']>[
 async function saveMoreInfoNote(action:'edit'|'delete',noteId:string){await save({moreInfoNote:{noteId,action,...(action==='edit'?{notes:editingMoreInfoNotes.value.trim()}:{})}} as Partial<RequestRecord>);if(!error.value){editingMoreInfoId.value='';deletingMoreInfoId.value='';moreInfoNotice.value=action==='edit'?'Note updated.':'Note deleted.';}}
 
 watch(()=>props.request?.id,()=>{moreInfoNotes.value='';moreInfoNotice.value='';editingMoreInfoId.value='';deletingMoreInfoId.value='';moreInfoReplies.value={};});
-async function sendMoreInfo(){if(!props.request||!moreInfoNotes.value.trim())return;await save({requestMoreInfo:{notes:moreInfoNotes.value.trim()}} as Partial<RequestRecord>);if(!error.value){moreInfoNotes.value='';moreInfoNotice.value='Sent to Local Agency.';}}
+async function sendMoreInfo(){if(!props.request||!moreInfoNotes.value.trim())return;await save({reviewDecision:{action:'request-info',notes:moreInfoNotes.value.trim()}} as Partial<RequestRecord>);if(!error.value){moreInfoNotes.value='';showMoreInfoComposer.value=false;editingReviewDecision.value=false;moreInfoNotice.value='Sent to Local Agency.';}}
 const canEditOriginal= computed(()=>!!props.request&&canEditSubmission(props.request));
 const {data:distributorData}=await useFetch<{distributors:import('~/../shared/distributors').DistributorProfile[]}>('/api/distributors',{headers:computed(()=>({'x-demo-user':identity.value})),watch:[identity]});
 function selectDistributor(shipment:import('~/../shared/requestShipments').RequestShipment,id:string){shipment.distributorId=id||undefined;const found=distributorData.value?.distributors.find(d=>d.id===id);shipment.supplier=found?.name??'';}
@@ -462,15 +464,17 @@ function changeStatus(event: Event) {
 }
 
 async function chooseReviewDecision(action:'approve'|'deny'|'reopen') {
-    if(action==='deny'){denialReason.value='';pendingDecision.value='denied';return;}
+    if(action==='deny'){denialReason.value=props.request?.denialReason??'';pendingDecision.value='denied';return;}
     await save({reviewDecision:{action}} as Partial<RequestRecord>);
-    if(!error.value){await nextTick();(action==='approve'?authorizationSection.value:reviewDecisionSection.value)?.scrollIntoView({block:'start',behavior:'smooth'});}
+    if(!error.value){cancelReviewDecisionEdit();await nextTick();(action==='approve'?authorizationSection.value:reviewDecisionSection.value)?.scrollIntoView({block:'start',behavior:'smooth'});}
 }
 async function confirmDenial() {
     if(!denialReason.value.trim()){error.value='Enter a reason for denial.';return;}
     await save({reviewDecision:{action:'deny',reason:denialReason.value.trim()}} as Partial<RequestRecord>);
-    if(!error.value){editingSection.value=null;pendingDecision.value=null;showMoreInfoComposer.value=false;await nextTick();reviewDecisionSection.value?.scrollIntoView({block:'start',behavior:'smooth'});}
+    if(!error.value){editingSection.value=null;pendingDecision.value=null;cancelReviewDecisionEdit();await nextTick();reviewDecisionSection.value?.scrollIntoView({block:'start',behavior:'smooth'});}
 }
+function cancelMoreInfoDraft(){showMoreInfoComposer.value=false;moreInfoNotes.value='';moreInfoNotice.value='';}
+function cancelReviewDecisionEdit(){editingReviewDecision.value=false;cancelMoreInfoDraft();}
 async function openMoreInfo(){showMoreInfoComposer.value=true;await nextTick();document.getElementById(`more-info-${props.request?.id}`)?.scrollIntoView({block:'start',behavior:'smooth'});}
 
 async function confirmDeleteShipment(){
@@ -785,15 +789,15 @@ async function saveAgencyUpdate() {
         </section>
         </div>
         <section v-if="canStaffEdit || request.status==='denied'" ref="reviewDecisionSection" class="detail-section review-decision-section" tabindex="-1">
-            <div class="section-heading"><h3>Review Decision</h3><span v-if="canCollapseReviewDetails && request.status!=='denied'" class="review-approved">Approved</span></div>
+            <div class="section-heading"><h3>Review Decision</h3><button v-if="canStaffEdit && hasSavedReviewDecision && !editingReviewDecision" type="button" class="text-button review-decision-edit" aria-label="Edit review decision" :disabled="saving" @click="editingReviewDecision=true">Edit</button><button v-else-if="canStaffEdit && editingReviewDecision" type="button" class="text-button review-decision-edit" :disabled="saving" @click="cancelReviewDecisionEdit">Cancel</button></div>
+            <p v-if="canCollapseReviewDetails && request.status!=='denied'" class="review-approved"><strong>{{request.status==='needs_info'?'Request More Info':'Approved'}}</strong></p>
             <template v-if="request.status==='denied'">
                 <p class="review-denied"><strong>Denied</strong></p>
                 <div class="detail-grid"><div class="detail-field-wide"><span>Reason for Denial</span><strong class="preserve-lines">{{request.denialReason || request.staffNotes || '—'}}</strong></div></div>
-                <button v-if="canStaffEdit" class="button button-secondary" type="button" :disabled="saving" @click="chooseReviewDecision('reopen')">Reopen Request</button>
             </template>
-            <div v-else-if="canStaffEdit" class="review-decision-buttons">
+            <div v-if="canStaffEdit && (!hasSavedReviewDecision || editingReviewDecision)" class="review-decision-buttons">
                 <button class="button button-secondary" type="button" :disabled="saving" @click="openMoreInfo">Request More Info</button>
-                <button class="button button-primary" type="button" :disabled="saving || canCollapseReviewDetails" @click="chooseReviewDecision('approve')">Approve</button>
+                <button class="button button-primary" type="button" :disabled="saving" @click="chooseReviewDecision('approve')">Approve</button>
                 <button class="button button-ghost" type="button" :disabled="saving" @click="chooseReviewDecision('deny')">Deny</button>
             </div>
         </section>
@@ -810,7 +814,7 @@ async function saveAgencyUpdate() {
                 <p v-if="unreadOutgoingMessage(entry,canStaffEdit)" class="muted-copy">Your message has not been read yet. Click Edit Message above to make changes.</p>
                 <div v-if="canStaffEdit && deletingMoreInfoId===entry.id" class="more-info-delete-confirmation"><p>Are you sure you want to delete this note?</p><div class="more-info-actions"><button class="button button-danger" type="button" :disabled="saving" @click="saveMoreInfoNote('delete',entry.id)">Delete Note</button><button class="button button-ghost" type="button" :disabled="saving" @click="deletingMoreInfoId=''">Cancel</button></div></div>
             </component>
-            <div v-if="canStaffEdit && request.status!=='denied' && showMoreInfoComposer && !hasActiveMoreInfoConversation" class="more-info-compose"><label class="field-label">Notes<textarea v-model="moreInfoNotes" class="form-textarea" maxlength="4000" rows="3" placeholder="Describe what is missing and/or what needs to be addressed." /></label><button class="button button-secondary" type="button" :disabled="saving || !moreInfoNotes.trim()" @click="sendMoreInfo">Send to LA</button></div>
+            <div v-if="canStaffEdit && showMoreInfoComposer && !hasActiveMoreInfoConversation" class="more-info-compose"><label class="field-label">Notes<textarea v-model="moreInfoNotes" class="form-textarea" maxlength="4000" rows="3" placeholder="Describe what is missing and/or what needs to be addressed." /></label><div class="more-info-compose-actions"><button class="button button-secondary" type="button" :disabled="saving || !moreInfoNotes.trim()" @click="sendMoreInfo">Send to LA</button><button class="button button-ghost" type="button" :disabled="saving" @click="cancelMoreInfoDraft">Cancel</button></div></div>
             <p v-if="moreInfoNotice" role="status">{{moreInfoNotice}}</p>
         </section>
         <hr v-if="canCollapseReviewDetails && request.status!=='denied'" class="cdph-section-divider" />
@@ -1131,7 +1135,12 @@ async function saveAgencyUpdate() {
 </template>
 
 <style scoped>
-.review-decision-section {border:1px solid var(--line);border-radius:10px;padding:16px;}
+.review-decision-section {border:1px solid color-mix(in srgb,#002595 35%,var(--line));border-radius:10px;padding:16px;background:color-mix(in srgb,#002595 4%,var(--surface));}
+.review-decision-section > .section-heading {background:#141F68;margin:-16px -16px 14px;padding:12px 16px;border-radius:9px 9px 0 0;}
+.review-decision-section > .section-heading h3 {color:#fff;margin:0;}
+.review-decision-section .review-decision-edit {color:#fff;text-decoration:underline;text-underline-offset:3px;}
+.review-decision-section .review-approved,.review-decision-section .review-denied {margin:0 0 12px;}
+.more-info-compose-actions {display:flex;flex-wrap:wrap;gap:8px;}
 .review-decision-buttons {display:flex;flex-wrap:wrap;gap:10px;}
 .review-approved {color:#007888;font-weight:600;}
 .review-denied {color:#AE5018;}

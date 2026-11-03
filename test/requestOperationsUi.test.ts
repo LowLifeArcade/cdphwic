@@ -58,7 +58,7 @@ describe('request operations UI', () => {
         expect(drawer).not.toContain('window.confirm');
         expect(drawer).toContain('Review Decision');
         expect(drawer).toContain('Reason for Denial');
-        expect(drawer).toContain('Reopen Request');
+        expect(drawer).toContain('Edit review decision');
         expect(drawer).not.toContain('Undo approval or denial');
         expect(drawer.indexOf('<h3>Health Care Provider</h3>')).toBeLessThan(drawer.indexOf('<h3>Review Decision</h3>'));
         expect(drawer.indexOf('<h3>Review Decision</h3>')).toBeLessThan(drawer.indexOf('<h3>Request More Info</h3>'));

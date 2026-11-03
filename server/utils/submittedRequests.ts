@@ -369,16 +369,16 @@ export async function updateSubmittedSimpleShipmentReceipt(db:D1Database,previou
  return writeRecord(db,previous,nextRecord(previous,updates),false,await transferReceiptSteps(db,previous,updates));
 }
 
-export interface ReviewDecisionCommand {action:'approve'|'deny'|'reopen';reason?:string}
+export interface ReviewDecisionCommand {action:'approve'|'deny'|'reopen'|'request-info';reason?:string;notes?:string}
 export async function reviewSubmittedRequest(db:D1Database,previous:RequestRecord,user:SessionUser,command:ReviewDecisionCommand,revision:number){
  if(user.role!=='admin'&&user.memberType!=='internal')throw Object.assign(new Error('Only CDPH/WIC or Admin can make review decisions.'),{statusCode:403,statusMessage:'Only CDPH/WIC or Admin can make review decisions.'});
- if(!command||!['approve','deny','reopen'].includes(command.action))throw Object.assign(new Error('Select a valid review decision.'),{statusCode:400});
+ if(!command||!['approve','deny','reopen','request-info'].includes(command.action))throw Object.assign(new Error('Select a valid review decision.'),{statusCode:400});
  if(revision!==(previous.revision??0))throw conflict();
  if(command.action==='reopen'){
   if(previous.status!=='denied')throw conflict('Only a denied request can be reopened.');
   return writeRecord(db,previous,nextRecord(previous,{status:'in_progress',approved:false}),false);
  }
- if(previous.status==='denied')throw conflict('Reopen this request before making changes.');
+ if(command.action==='request-info')return requestMoreInfo(db,previous,user,command.notes!,revision);
  if(command.action==='deny'&&(typeof command.reason!=='string'||!command.reason.trim()||command.reason.length>4000))throw Object.assign(new Error('Enter a reason for denial.'),{statusCode:400,statusMessage:'Enter a reason for denial.'});
  const now=new Date().toISOString();
  const moreInfoRequests=previous.moreInfoRequests?.map(note=>note.deletedAt||note.resolvedAt?note:{...note,resubmissionOpen:false,resolvedAt:now,resolvedBy:user.id});
