@@ -4,6 +4,7 @@ import {
     getApprovalStatus,
     canSelectShippedStatus,
     getNextBenefitMonth,
+    subsequentIssuanceMonths,
     validateBenefitIssuances,
 } from '../shared/requestOperations';
 
@@ -51,4 +52,11 @@ describe('request operations', () => {
         expect(canGenerateAuthorizationForm({ status: 'approved' })).toBe(false);
         expect(canGenerateAuthorizationForm({ status: 'pending', dateOrdered: '2026-10-07' })).toBe(false);
     });
+});
+
+it('keeps issuance months after their preceding row, including year rollover and blank resets',()=>{
+ const rows=[{month:'2026-12',quantity:12},{month:'2026-11',quantity:8},{month:'2026-12',quantity:4}];
+ expect(subsequentIssuanceMonths(rows,0)).toEqual([{month:'2026-12',quantity:12},{month:'2027-01',quantity:8},{month:'2027-02',quantity:4}]);
+ expect(subsequentIssuanceMonths([{month:'',quantity:12},...rows.slice(1)],0).map(row=>row.month)).toEqual(['','','']);
+ expect(rows[1]!.month).toBe('2026-11');
 });

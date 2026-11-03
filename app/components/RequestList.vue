@@ -99,7 +99,7 @@ watch([()=>route.query.request,()=>props.requests],async([id],[previousId])=>{co
             <span
                 ><span class="request-status-tags">
                     <StatusBadge v-if="!hasPendingMoreInfo(request)" :status="request.status" />
-                <span v-if="hasPendingMoreInfo(request)" class="request-tag more-info-status" title="Returned to Local Agency for more information" role="status">Request More Info</span>
+                <span v-if="hasPendingMoreInfo(request)" class="request-tag more-info-status" title="Returned to Local Agency for more information" role="status">Pending More Info</span>
                     <span v-if="identity!=='agency' && needsCaseReview(request)" class="request-tag shipping-issue-tag">Case Count Review</span>
                     <span v-if="deliveryCategory(request) === 'issue'" class="request-tag shipping-issue-tag">Shipping Issue</span>
                     <span

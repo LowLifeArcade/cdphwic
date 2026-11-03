@@ -7,11 +7,11 @@ export interface FormulaAuthorization {
  approvedCases?:number;approvedMonths?:number;agencyUnitsOnHand?:number;agencyUnitsOnHandUnit?:'units'|'cases';expectedSurplus?:number;expectedSurplusUnit?:'units'|'cases';benefitIssuances:Array<{month:string;quantity:number}>;
 }
 const key=(row:{productName:string;productForm?:ProductForm;flavor?:string})=>JSON.stringify([row.productName.trim().toLowerCase(),row.productForm,row.flavor?.trim().toLowerCase()??'']);
-export function formulaAuthorizations(request:Partial<RequestRecord>,initialMonth:string):FormulaAuthorization[]{
+export function formulaAuthorizations(request:Partial<RequestRecord>):FormulaAuthorization[]{
  return requestFormulas(request).map((formula,index)=>{
   const saved=request.formulaAuthorizations?.find(row=>key(row)===key(formula));
   const source:Partial<FormulaAuthorization>=saved??(!request.formulaAuthorizations?.length&&index===0?request:{});
-  return {productName:formula.productName,productForm:formula.productForm,flavor:formula.flavor,approvedCases:source.approvedCases,approvedMonths:source.approvedMonths,agencyUnitsOnHand:source.agencyUnitsOnHand,agencyUnitsOnHandUnit:source.agencyUnitsOnHandUnit??'units',expectedSurplus:source.expectedSurplus,expectedSurplusUnit:source.expectedSurplusUnit??'units',benefitIssuances:source.benefitIssuances?.map(row=>({...row}))??[{month:initialMonth,quantity:0}]};
+  return {productName:formula.productName,productForm:formula.productForm,flavor:formula.flavor,approvedCases:source.approvedCases,approvedMonths:source.approvedMonths,agencyUnitsOnHand:source.agencyUnitsOnHand,agencyUnitsOnHandUnit:source.agencyUnitsOnHandUnit??'units',expectedSurplus:source.expectedSurplus,expectedSurplusUnit:source.expectedSurplusUnit??'units',benefitIssuances:source.benefitIssuances?.map(row=>({...row}))??[{month:'',quantity:0}]};
  });
 }
 export function formatIssuanceMonth(value:string){const [year,month]=value.split('-').map(Number);return year&&month>=1&&month<=12?`${['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'][month-1]} ${year}`:value;}

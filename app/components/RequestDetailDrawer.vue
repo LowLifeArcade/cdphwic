@@ -25,7 +25,7 @@ import {requestFormulas,participantNames,insuranceDetails,requestedMonthLabels,f
 import { validateDiagnoses } from '~/../shared/diagnosisCatalog';
 import {canEditSubmission,hasPendingMoreInfo,canResolveMoreInfo,canReplyToMoreInfo,canReopenMoreInfo,latestMoreInfoRequest} from '~/../shared/requestEditing';
 import type { ProductRecord, RequestRecord, RequestStatus } from '~/../shared/domain';
-import { getNextBenefitMonth, canGenerateAuthorizationForm, canSelectShippedStatus } from '~/../shared/requestOperations';
+import { subsequentIssuanceMonths, getNextBenefitMonth, canGenerateAuthorizationForm, canSelectShippedStatus } from '~/../shared/requestOperations';
 import { normalizeRequestedMonths, validateRequestDetailNumbers, validateSurplusItems } from '~/../shared/requestDetailFields';
 import { formatPhoneNumber, normalizePhoneNumber } from '~/../shared/phone';
 
@@ -138,7 +138,7 @@ watch([()=>props.request?.id,canCollapseReviewDetails],()=>{reviewDetailsExpande
 async function sendMoreInfoReply(noteId:string){const notes=moreInfoReplies.value[noteId]?.trim();if(!notes)return;await save({moreInfoReply:{noteId,notes}} as Partial<RequestRecord>);if(!error.value){moreInfoReplies.value[noteId]='';moreInfoNotice.value=canStaffEdit.value?'Response sent to Local Agency.':'Response sent to CDPH/WIC.';}}
 async function reopenForResubmission(){await save({reopenMoreInfo:true} as Partial<RequestRecord>);if(!error.value)moreInfoNotice.value='Reopened for Local Agency resubmission.';}
 const canReopenForResubmission=computed(()=>props.request?canReopenMoreInfo(props.request):false);
-async function resolveInformationRequest(){await save({resolveMoreInfo:true} as Partial<RequestRecord>);if(!error.value)moreInfoNotice.value='Resolved. Request returned to In Progress.';}
+async function resolveInformationRequest(){await save({resolveMoreInfo:true} as Partial<RequestRecord>);if(!error.value)moreInfoNotice.value='Resolved.';}
 const hasUnresolvedMoreInfo=computed(()=>props.request?canResolveMoreInfo(props.request):false);
 const hasActiveMoreInfoConversation=computed(()=>!!props.request?.moreInfoRequests?.some(entry=>canReplyToMoreInfo(props.request!,entry.id)));
 const visibleMoreInfoRequests=computed(()=>props.request?.moreInfoRequests?.filter(entry=>!entry.deletedAt)??[]);
@@ -189,7 +189,7 @@ function copyRequest(request: RequestRecord): Partial<RequestRecord> {
         ...request,
         genericFields:{...request.genericFields},
         shipping:request.shipping?{...request.shipping}:undefined,
-        formulaAuthorizations:formulaAuthorizations(request,benefitMonths.value[0]?.value??''),
+        formulaAuthorizations:formulaAuthorizations(request),
         shipments:staffShipmentRows(request).map(row=>{const size=row.unitsPerCase ?? ((request.requestedFormulas?.length ?? 1)<=1?selectedProduct.value?.unitsPerCase:undefined);return {...row,unitsPerCase:size,...transferDraftFields(row,size)};}),
         requestedFormulas: request.requestedFormulas?.map(formula=>({...formula})),
         participantFirstName: participantNames(request).first,
@@ -198,7 +198,7 @@ function copyRequest(request: RequestRecord): Partial<RequestRecord> {
         receivedPhotos: request.receivedPhotos ? [...request.receivedPhotos] : undefined,
         benefitIssuances:
             request.benefitIssuances?.map((issuance) => ({ ...issuance })) ??
-            [{ month: benefitMonths.value[0]?.value ?? '', quantity: 0 }],
+            [{ month: '', quantity: 0 }],
         benefitMonthsRequested: normalizeRequestedMonths(request.benefitMonthsRequested),
         surplusItems: request.surplusItems?.map((item) => ({ ...item })) ?? [],
     };
@@ -282,11 +282,20 @@ async function save(updates: Partial<RequestRecord> & {reserveTransferIndex?:num
 function addBenefitMonth(formulaIndex:number) {
     const authorization=draft.formulaAuthorizations![formulaIndex]!;
     const issuances = authorization.benefitIssuances;
-    const month = getNextBenefitMonth(issuances) || benefitMonths.value[0]?.value || '';
-    if (!month || issuances.some((issuance) => issuance.month === month)) {
+    const month = getNextBenefitMonth(issuances);
+    if(issuances.length && !month)return;
+    if (issuances.some((issuance) => issuance.month === month)) {
         return;
     }
     authorization.benefitIssuances = [...issuances, { month, quantity: 0 }];
+}
+
+function updateFollowingIssuanceMonths(formulaIndex:number,index:number){
+    const authorization=draft.formulaAuthorizations![formulaIndex]!;
+    authorization.benefitIssuances=subsequentIssuanceMonths(authorization.benefitIssuances,index);
+}
+function issuanceMonthOptions(authorization:{benefitIssuances:Array<{month:string}>}){
+    return [...new Set([...benefitMonths.value.map(month=>month.value),...authorization.benefitIssuances.map(row=>row.month).filter(Boolean)])].sort().map(value=>({value,label:formatIssuanceMonth(value)}));
 }
 
 function removeBenefitMonth(formulaIndex:number,index: number) {
@@ -836,7 +845,7 @@ async function saveAgencyUpdate() {
                     @change="changeStatus"
                 >
                     <option value="opened">Opened</option>
-                    <option value="in_progress">In progress</option>
+                    <option value="in_progress">In Progress</option>
                     <option value="special_order">Special Order</option>
                     <option v-if="request.status==='needs_info'" value="needs_info" disabled>Pending LA</option>
                     <option
@@ -889,12 +898,12 @@ async function saveAgencyUpdate() {
             <div class="benefit-allocation-editor">
                 <div class="issuance-row-heading">
                     <h4>Select Month and Quantity</h4>
-                    <button class="text-button" type="button" @click="addBenefitMonth(formulaIndex)">+ Add issuance month</button>
+                    <button class="text-button" type="button" :disabled="authorization.benefitIssuances.some(row=>!row.month)" @click="addBenefitMonth(formulaIndex)">+ Add issuance month</button>
                 </div>
                 <div v-for="(issuance, index) in authorization.benefitIssuances" :key="`${issuance.month}-${index}`" class="month-row">
-                    <select v-model="issuance.month" class="form-input month-select" :aria-label="`Formula ${formulaIndex+1} issuance month ${index+1}`">
+                    <select v-model="issuance.month" class="form-input month-select" :aria-label="`Formula ${formulaIndex+1} issuance month ${index+1}`" @change="updateFollowingIssuanceMonths(formulaIndex,index)">
                         <option value="">Select month</option>
-                        <option v-for="month in benefitMonths" :key="month.value" :value="month.value">{{ month.label }}</option>
+                        <option v-for="month in issuanceMonthOptions(authorization)" :key="month.value" :value="month.value" :disabled="index>0 && (!authorization.benefitIssuances[index-1]?.month || month.value<=authorization.benefitIssuances[index-1]!.month)">{{ month.label }}</option>
                     </select>
                     <div class="quantity-input">
                         <input v-model.number="issuance.quantity" class="form-input month-quantity" type="number" inputmode="numeric" min="1" placeholder="Quantity" :aria-label="`Formula ${formulaIndex+1} issuance quantity ${index+1}`" />
@@ -976,7 +985,7 @@ async function saveAgencyUpdate() {
                     <div class="detail-grid">
                         <label v-if="editingShipmentPlan(shipment,index) && !shipment.etaSentAt" class="field-label detail-field-wide">Formula<select :value="shipmentFormulaKey(shipmentFormula(shipment))" class="form-input" :aria-label="`Shipment ${index+1} Formula`" :disabled="saving || shipmentFormulaChoices.length===1" @change="selectShipmentFormula(shipment,($event.target as HTMLSelectElement).value)"><option value="">Select Formula</option><option v-for="formula in shipmentFormulaChoices" :key="shipmentFormulaKey(formula)" :value="shipmentFormulaKey(formula)">{{shipmentFormulaLabel(formula)}}</option></select></label>
                         <div v-else class="detail-field-wide"><span>Formula</span><strong>{{shipmentFormulaLabel(shipmentFormula(shipment))}}</strong></div>
-                        <label v-if="editingShipmentPlan(shipment,index)" class="field-label detail-field-wide">Shipment Source<select :value="shipment.shipmentSource??'distributor'" class="form-input" :aria-label="`Shipment ${index+1} Source`" :disabled="saving || !!requestShipments(request)[index]?.etaSentAt" @change="changeShipmentSource(shipment,($event.target as HTMLSelectElement).value)"><option value="distributor">Distributor</option><option value="agency">Local Agency Transfer</option></select></label>
+                        <label v-if="editingShipmentPlan(shipment,index)" class="field-label detail-field-wide">Shipment Source<select :value="shipment.shipmentSource??''" class="form-input" :aria-label="`Shipment ${index+1} Source`" :disabled="saving || !!requestShipments(request)[index]?.etaSentAt" @change="changeShipmentSource(shipment,($event.target as HTMLSelectElement).value)"><option disabled value="">Select source</option><option value="distributor">Distributor</option><option value="agency">Local Agency Transfer</option></select></label>
                         <template v-if="shipment.shipmentSource==='agency'">
                             <label v-if="editingShipmentPlan(shipment,index)" class="field-label">Sending Local Agency<select :value="shipment.sourceAgencyId??''" class="form-input" :aria-label="`Shipment ${index+1} Sending Local Agency`" :disabled="saving" @change="shipment.sourceAgencyId=Number(($event.target as HTMLSelectElement).value);shipment.sourceLotId=undefined"><option value="">Select Local Agency</option><option v-for="item in transferAgencies?.agencies.filter(a=>a.id!==request.agencyId)" :key="item.id" :value="item.id">{{item.name}}</option></select></label>
                             <div v-else><span>From</span><strong>{{shipment.sourceAgencyName}}</strong></div>

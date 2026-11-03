@@ -52,3 +52,13 @@ export function getNextBenefitMonth(issuances: BenefitIssuance[]): string {
 export function canGenerateAuthorizationForm(request: Pick<RequestRecord, 'status' | 'approved' | 'dateOrdered' | 'authorizationVersions'>): boolean {
     return !!request.authorizationVersions?.length || (request.approved === true || request.status === 'approved') && Boolean(request.dateOrdered);
 }
+
+export function subsequentIssuanceMonths(issuances:BenefitIssuance[],changedIndex:number):BenefitIssuance[]{
+    const rows=issuances.map(row=>({...row}));
+    for(let index=changedIndex+1;index<rows.length;index++){
+        const previous=rows[index-1]!.month;
+        if(!previous)rows[index]!.month='';
+        else if(!rows[index]!.month || rows[index]!.month<=previous)rows[index]!.month=getNextBenefitMonth(rows.slice(0,index));
+    }
+    return rows;
+}
