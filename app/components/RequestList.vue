@@ -56,8 +56,9 @@ async function openRequest(request: RequestRecord) {
         if(import.meta.client)window.dispatchEvent(new Event('request-messages-changed'));
     } catch {openError.value='The request could not be opened. Please refresh and try again.';return;}
     selected.value=request;
+    if(import.meta.client&&route.hash===`#more-info-${request.id}`){await nextTick();document.getElementById(`more-info-${request.id}`)?.scrollIntoView({block:'start'});}
 }
-async function openMessageRequest(event:Event){const id=(event as CustomEvent<number>).detail;if(String(route.query.request)!==String(id))return;const request=props.requests.find(row=>row.id===id);if(request)await openRequest(request);}
+async function openMessageRequest(event:Event){const id=(event as CustomEvent<number>).detail;if(String(route.query.request)!==String(id))return;const request=props.requests.find(row=>row.id===id);if(request){await openRequest(request);await nextTick();document.getElementById(`more-info-${id}`)?.scrollIntoView({block:'start'});}}
 onMounted(()=>window.addEventListener('open-request-message',openMessageRequest));
 onBeforeUnmount(()=>window.removeEventListener('open-request-message',openMessageRequest));
 watch([()=>route.query.request,()=>props.requests],async([id],[previousId])=>{const request=props.requests.find(r=>String(r.id)===String(id));if(!request)return;if(selected.value?.id===request.id && id===previousId){if(selected.value!==request)Object.assign(selected.value,request);}else await openRequest(request);},{immediate:true});

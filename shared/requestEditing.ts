@@ -1,12 +1,19 @@
 import type { RequestRecord } from './domain';
 import { blankFormula, type FormulaEntry } from './formulaEntries';
 import { formatPhoneNumber } from './phone';
+export const latestMoreInfoRequest=(request:Pick<RequestRecord,'moreInfoRequests'>)=>request.moreInfoRequests?.findLast(entry=>!entry.deletedAt);
 export const canEditSubmission = (request: Pick<RequestRecord, 'status' | 'openedAt' | 'moreInfoRequests'>) =>
-    (request.status === 'unopened' && !request.openedAt && !request.moreInfoRequests?.length) || (hasPendingMoreInfo(request) && request.moreInfoRequests?.at(-1)?.resubmissionOpen===true);
+    (request.status === 'unopened' && !request.openedAt && !request.moreInfoRequests?.length) || (hasPendingMoreInfo(request) && latestMoreInfoRequest(request)?.resubmissionOpen===true);
 export const canReplyToMoreInfo=(request:Pick<RequestRecord,'status'|'moreInfoRequests'>,noteId:string)=>['needs_info','unopened','opened','in_progress'].includes(request.status) && !!request.moreInfoRequests?.some(entry=>entry.id===noteId&&!entry.deletedAt&&!entry.resolvedAt);
-export const canReopenMoreInfo=(request:Pick<RequestRecord,'status'|'moreInfoRequests'>)=>['needs_info','unopened','opened','in_progress','approved'].includes(request.status) && !!request.moreInfoRequests?.length && !request.moreInfoRequests.at(-1)?.resolvedAt && !request.moreInfoRequests.at(-1)?.deletedAt && !request.moreInfoRequests.at(-1)?.resubmissionOpen;
-export const canResolveMoreInfo=(request:Pick<RequestRecord,'status'|'moreInfoRequests'>)=>['needs_info','unopened','opened','in_progress'].includes(request.status) && !!request.moreInfoRequests?.some(entry=>!entry.resolvedAt);
-export const hasPendingMoreInfo=(request:Pick<RequestRecord,'status'|'moreInfoRequests'>)=>request.status==='needs_info' && !!request.moreInfoRequests?.length && (!request.moreInfoRequests.at(-1)?.resubmittedAt || request.moreInfoRequests.at(-1)?.resubmissionOpen===true) && !request.moreInfoRequests.at(-1)?.resolvedAt;
+export const canReopenMoreInfo=(request:Pick<RequestRecord,'status'|'moreInfoRequests'>)=>['needs_info','unopened','opened','in_progress','approved'].includes(request.status) && !!latestMoreInfoRequest(request) && !latestMoreInfoRequest(request)?.resolvedAt && !latestMoreInfoRequest(request)?.resubmissionOpen;
+export const canResolveMoreInfo=(request:Pick<RequestRecord,'status'|'moreInfoRequests'>)=>{
+ const latest=latestMoreInfoRequest(request);
+ return ['needs_info','unopened','opened','in_progress'].includes(request.status) && !!latest && !latest.resolvedAt && !!latest.responses?.some(response=>response.respondedAs!=='reviewer');
+};
+export const hasPendingMoreInfo=(request:Pick<RequestRecord,'status'|'moreInfoRequests'>)=>{
+ const latest=latestMoreInfoRequest(request);
+ return request.status==='needs_info' && !!latest && (!latest.resubmittedAt || latest.resubmissionOpen===true) && !latest.resolvedAt;
+};
 export const submissionFieldKeys = [
     'shipping',
     'participantName',

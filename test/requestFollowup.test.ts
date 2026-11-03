@@ -24,7 +24,7 @@ it('publishes immutable authorization versions and scopes notices to the request
  await db.prepare('INSERT INTO surplus_notice_reads(notice_id,user_id) VALUES(?,?)').bind(`followup:${pending.moreInfoRequests![0]!.id}`,getDemoUser('agency').id).run();
  expect((await requestNotices(db,getDemoUser('agency'))).find(n=>n.kind==='request-info')?.is_read).toBe(1);
 });
-it('allows reviewers to edit or remove notes with revision checks while preserving the return workflow',async()=>{
+it('allows reviewers to edit or withdraw unread notes with revision checks',async()=>{
  const {editMoreInfoNote}=await import('../server/utils/submittedRequests');
  const {requestNotices}=await import('../server/utils/requestNotices');
  const {db}=surplusDb();const original=await ensureSubmittedRequest(db,{id:9935,submissionId:'edit-followup',agencyId:10,agencyMemberId:100,participantName:'Synthetic',productName:'Fortini',status:'opened'});
@@ -35,7 +35,7 @@ it('allows reviewers to edit or remove notes with revision checks while preservi
  expect(edited.moreInfoRequests![0]!.notes).toBe('Corrected note');expect(edited.status).toBe('needs_info');expect((await requestNotices(db,getDemoUser('agency')))[0]?.notes).toBe('Corrected note');
  await expect(editMoreInfoNote(db,edited,getDemoUser('admin'),{noteId:id,action:'delete'},sent.revision!)).rejects.toMatchObject({statusCode:409});
  const deleted=await editMoreInfoNote(db,edited,getDemoUser('admin'),{noteId:id,action:'delete'},edited.revision!);
- expect(deleted.moreInfoRequests![0]!.deletedAt).toBeTruthy();expect(deleted.status).toBe('needs_info');expect(await requestNotices(db,getDemoUser('agency'))).toHaveLength(0);
+ expect(deleted.moreInfoRequests![0]!.deletedAt).toBeTruthy();expect(deleted.status).toBe('opened');expect(await requestNotices(db,getDemoUser('agency'))).toHaveLength(0);
  const {canEditSubmission}=await import('../shared/requestEditing');expect(canEditSubmission(deleted)).toBe(false);
 });
 it('lets the request agency answer an active note without clearing the return status and notifies reviewers',async()=>{
@@ -126,7 +126,8 @@ it('records only the selected incoming notification as read and treats replies a
  expect(request.moreInfoRequests![0]!.readAt).toBeTruthy();
  request=await replyToMoreInfo(db,request,getDemoUser('internal'),{noteId,notes:'Follow-up one'},request.revision!);
  expect(request.moreInfoRequests![0]!.responses![0]!.readAt).toBeTruthy();
- request=await replyToMoreInfo(db,request,getDemoUser('internal'),{noteId,notes:'Follow-up two'},request.revision!);
+ // Legacy conversations may contain multiple consecutive unread messages.
+ request=await updateSubmittedRequest(db,request,{moreInfoRequests:request.moreInfoRequests!.map(note=>({...note,responses:[...note.responses!,{id:'legacy-second-followup',notes:'Follow-up two',respondedAt:new Date().toISOString(),respondedBy:getDemoUser('internal').id,respondedAs:'reviewer'}]}))});
  const responses=request.moreInfoRequests![0]!.responses!;
  const read=await markMoreInfoRead(db,request,getDemoUser('agency'),`followup-response:${responses[1]!.id}`);
  expect(read.moreInfoRequests![0]!.responses![1]!.readAt).toBeTruthy();expect(read.moreInfoRequests![0]!.responses![2]!.readAt).toBeUndefined();
@@ -161,4 +162,63 @@ it('requires CDPH/WIC or Admin to explicitly reopen the form, independently of m
  const replied=await replyToMoreInfo(db,opened,getDemoUser('agency'),{noteId:opened.moreInfoRequests![0]!.id,notes:'I will update the form.'},opened.revision!);expect(canEditSubmission(replied)).toBe(true);
  const resolved=await resolveMoreInfo(db,replied,getDemoUser('admin'),replied.revision!);expect(canEditSubmission(resolved)).toBe(false);
  await expect(reopenMoreInfoSubmission(db,resolved,getDemoUser('internal'),resolved.revision!)).rejects.toMatchObject({statusCode:409});
+});
+it('withdraws an unread deleted message without notifying LA or leaving a pending information request',async()=>{
+ const {editMoreInfoNote}=await import('../server/utils/submittedRequests');const {requestNotices}=await import('../server/utils/requestNotices');const {hasPendingMoreInfo,canResolveMoreInfo}=await import('../shared/requestEditing');
+ const {db}=surplusDb();const original=await ensureSubmittedRequest(db,{id:9947,submissionId:'withdraw-unread',agencyId:10,agencyMemberId:100,participantName:'Synthetic',productName:'Fortini',status:'opened'});
+ const sent=await requestMoreInfo(db,original,getDemoUser('internal'),'Sent by mistake',0);expect((await requestNotices(db,getDemoUser('agency'))).some(n=>n.kind==='request-info')).toBe(true);
+ const removed=await editMoreInfoNote(db,sent,getDemoUser('internal'),{noteId:sent.moreInfoRequests![0]!.id,action:'delete'},sent.revision!);
+ expect(await requestNotices(db,getDemoUser('agency'))).toHaveLength(0);expect(hasPendingMoreInfo(removed)).toBe(false);expect(canResolveMoreInfo(removed)).toBe(false);expect(removed.status).toBe('opened');
+});
+it('makes Resolved available only after LA has answered the current conversation',async()=>{
+ const {replyToMoreInfo,resolveMoreInfo,editMoreInfoNote}=await import('../server/utils/submittedRequests');const {canResolveMoreInfo}=await import('../shared/requestEditing');
+ const {db}=surplusDb();let request=await ensureSubmittedRequest(db,{id:9948,submissionId:'resolve-after-answer',agencyId:10,agencyMemberId:100,participantName:'Synthetic',productName:'Fortini',status:'opened'});
+ request=await requestMoreInfo(db,request,getDemoUser('internal'),'Please clarify',0);let noteId=request.moreInfoRequests![0]!.id;
+ expect(canResolveMoreInfo(request)).toBe(false);await expect(resolveMoreInfo(db,request,getDemoUser('admin'),request.revision!)).rejects.toMatchObject({statusCode:409});
+ request=await editMoreInfoNote(db,request,getDemoUser('internal'),{noteId,action:'edit',notes:'Please clarify — additional detail'},request.revision!);expect(canResolveMoreInfo(request)).toBe(false);
+ request=await replyToMoreInfo(db,request,getDemoUser('agency'),{noteId,notes:'Here is the answer'},request.revision!);expect(canResolveMoreInfo(request)).toBe(true);
+ request=await resolveMoreInfo(db,request,getDemoUser('admin'),request.revision!);expect(canResolveMoreInfo(request)).toBe(false);
+ request=await requestMoreInfo(db,request,getDemoUser('internal'),'A new question',request.revision!);expect(canResolveMoreInfo(request)).toBe(false);
+});
+it('keeps an earlier pending conversation active when a later unread message is withdrawn',async()=>{
+ const {editMoreInfoNote,reopenMoreInfoSubmission}=await import('../server/utils/submittedRequests');const {hasPendingMoreInfo,latestMoreInfoRequest,canEditSubmission}=await import('../shared/requestEditing');const {requestNotices}=await import('../server/utils/requestNotices');
+ const {db}=surplusDb();let request=await ensureSubmittedRequest(db,{id:9949,submissionId:'withdraw-latest',agencyId:10,agencyMemberId:100,participantName:'Synthetic',productName:'Fortini',status:'in_progress'});
+ request=await requestMoreInfo(db,request,getDemoUser('internal'),'Earlier pending question',0);const firstId=request.moreInfoRequests![0]!.id;
+ request=await requestMoreInfo(db,request,getDemoUser('internal'),'Later mistaken message',request.revision!);const secondId=request.moreInfoRequests![1]!.id;
+ request=await editMoreInfoNote(db,request,getDemoUser('internal'),{noteId:secondId,action:'delete'},request.revision!);
+ expect(hasPendingMoreInfo(request)).toBe(true);expect(latestMoreInfoRequest(request)?.id).toBe(firstId);
+ expect((await requestNotices(db,getDemoUser('agency'))).map(n=>n.notes)).toEqual(['Earlier pending question']);
+ request=await reopenMoreInfoSubmission(db,request,getDemoUser('internal'),request.revision!);expect(canEditSubmission(request)).toBe(true);expect(request.moreInfoRequests![0]!.resubmissionOpen).toBe(true);expect(request.moreInfoRequests![1]!.resubmissionOpen).toBe(false);
+});
+it('edits the sender’s unread reply in place and keeps a single recipient notification',async()=>{
+ const {replyToMoreInfo,editMoreInfoMessage,markMoreInfoRead}=await import('../server/utils/submittedRequests');const {requestNotices}=await import('../server/utils/requestNotices');
+ const {db}=surplusDb();let request=await ensureSubmittedRequest(db,{id:9950,submissionId:'edit-unread-response',agencyId:10,agencyMemberId:100,participantName:'Synthetic',productName:'Fortini',status:'opened'});
+ request=await requestMoreInfo(db,request,getDemoUser('internal'),'Question',0);const noteId=request.moreInfoRequests![0]!.id;
+ request=await replyToMoreInfo(db,request,getDemoUser('agency'),{noteId,notes:'Original answer'},request.revision!);const responseId=request.moreInfoRequests![0]!.responses![0]!.id;
+ await expect(replyToMoreInfo(db,request,getDemoUser('agency'),{noteId,notes:'Duplicate answer'},request.revision!)).rejects.toMatchObject({statusCode:409});
+ await expect(editMoreInfoMessage(db,request,getDemoUser('internal'),{noteId,responseId,notes:'Wrong sender'},request.revision!)).rejects.toMatchObject({statusCode:403});
+ request=await editMoreInfoMessage(db,request,getDemoUser('agency'),{noteId,responseId,notes:'Corrected answer'},request.revision!);
+ expect(request.moreInfoRequests![0]!.responses).toHaveLength(1);expect(request.moreInfoRequests![0]!.responses![0]!.id).toBe(responseId);
+ expect((await requestNotices(db,getDemoUser('internal'))).filter(n=>n.kind==='request-response').map(n=>n.notes)).toEqual(['Corrected answer']);
+ request=await markMoreInfoRead(db,request,getDemoUser('internal'),`followup-response:${responseId}`);
+ await expect(editMoreInfoMessage(db,request,getDemoUser('agency'),{noteId,responseId,notes:'Too late'},request.revision!)).rejects.toMatchObject({statusCode:409});
+ request=await replyToMoreInfo(db,request,getDemoUser('internal'),{noteId,notes:'Reviewer follow-up'},request.revision!);const secondId=request.moreInfoRequests![0]!.responses![1]!.id;
+ request=await editMoreInfoMessage(db,request,getDemoUser('internal'),{noteId,responseId:secondId,notes:'Corrected follow-up'},request.revision!);
+ expect((await requestNotices(db,getDemoUser('agency'))).find(n=>n.kind==='request-response')?.notes).toBe('Corrected follow-up');
+});
+it('marks only visible incoming messages read with agency and revision protection',async()=>{
+ const {readVisibleMoreInfoMessages}=await import('../server/utils/submittedRequests');const {requestNotices}=await import('../server/utils/requestNotices');
+ const {db}=surplusDb();const initial=await ensureSubmittedRequest(db,{id:9951,submissionId:'visible-read',agencyId:10,agencyMemberId:100,participantName:'Synthetic',productName:'Fortini',status:'opened'});
+ const sent=await requestMoreInfo(db,initial,getDemoUser('internal'),'Visible question',0);const id=`followup:${sent.moreInfoRequests![0]!.id}`;
+ await expect(readVisibleMoreInfoMessages(db,sent,getDemoUser('internal'),[id],sent.revision!)).rejects.toMatchObject({statusCode:404});
+ await expect(readVisibleMoreInfoMessages(db,sent,{...getDemoUser('agency'),agencyId:11},[id],sent.revision!)).rejects.toMatchObject({statusCode:404});
+ await expect(readVisibleMoreInfoMessages(db,sent,getDemoUser('agency'),[id],0)).rejects.toMatchObject({statusCode:409});
+ const read=await readVisibleMoreInfoMessages(db,sent,getDemoUser('agency'),[id],sent.revision!);
+ expect(read.moreInfoRequests![0]!.readAt).toBeTruthy();expect((await requestNotices(db,getDemoUser('agency'))).find(n=>n.id===id)?.is_read).toBe(1);
+});
+it('does not treat a concurrent form change as a message-only revision',async()=>{
+ const {sameRequestOutsideMessages}=await import('../shared/moreInfoMessages');
+ const original={id:9952,agencyId:10,agencyMemberId:100,participantName:'Synthetic',productName:'Fortini',status:'opened' as const,revision:1,durationMonths:2};
+ expect(sameRequestOutsideMessages(original,{...original,revision:2,moreInfoRequests:[]})).toBe(true);
+ expect(sameRequestOutsideMessages(original,{...original,revision:2,durationMonths:3})).toBe(false);
 });

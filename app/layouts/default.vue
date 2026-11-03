@@ -35,5 +35,6 @@ const demoUser = computed<SessionUser>(() => {
             <AppTopbar :user="demoUser" />
             <main class="page-content"><slot /></main>
         </div>
+        <NotificationInbox />
     </div>
 </template>

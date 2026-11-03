@@ -1,3 +1,4 @@
+import {unreadOutgoingMessage} from '../../shared/moreInfoMessages';
 import {publishAuthorization} from '../../shared/authorizationPublication';
 import {resolveShipmentFormula,requireShipmentFormula,shipmentFormulaKey} from '../../shared/shipmentFormulas';
 import {confirmSimpleShipmentReceipt,type SimpleShipmentReceiptCommand} from '../../shared/simpleShipmentReceipts';
@@ -19,7 +20,7 @@ import {validateRequestedMonths} from '../../shared/requestMonthSelection';
 import {validateFormulaSelection} from '../../shared/formulaEntries';
 import {requestShipments,shipmentUpdates,validateShipments} from '../../shared/requestShipments';
 import {resolveShipping} from './clinicStore';
-import { canEditSubmission, canReplyToMoreInfo, canReopenMoreInfo, canResolveMoreInfo, hasPendingMoreInfo, submissionFields } from '../../shared/requestEditing';
+import { canEditSubmission, canReplyToMoreInfo, canReopenMoreInfo, canResolveMoreInfo, hasPendingMoreInfo, latestMoreInfoRequest, submissionFields } from '../../shared/requestEditing';
 import { validateRequestSubmission } from '../../shared/requestSubmission';
 import { validDate, localDate } from '../../shared/surplus';
 import type { RequestRecord, SessionUser } from '../../shared/domain';
@@ -78,7 +79,7 @@ async function writeRecord(
     unopened: boolean,
     extra: D1PreparedStatement[] = [],
 ) {
-    if(hasPendingMoreInfo(previous) && (!request.moreInfoRequests?.at(-1)?.resubmittedAt || request.moreInfoRequests?.at(-1)?.resubmissionOpen===true) && !request.moreInfoRequests?.at(-1)?.resolvedAt) request.status='needs_info';
+    if(hasPendingMoreInfo(previous) && hasPendingMoreInfo({...request,status:'needs_info'})) request.status='needs_info';
     const condition = unopened
         ? " AND json_extract(request_json,'$.status')='unopened' AND json_extract(request_json,'$.openedAt') IS NULL"
         : '';
@@ -284,7 +285,7 @@ export async function editSubmittedRequest(
             ]),
         );
     const steps: D1PreparedStatement[] = [...(options.statements ?? [])];
-    const originalSurplus=hasPendingMoreInfo(previous)?previous.moreInfoRequests?.at(-1)?.originalSurplusItems:previous.surplusItems;
+    const originalSurplus=hasPendingMoreInfo(previous)?latestMoreInfoRequest(previous)?.originalSurplusItems:previous.surplusItems;
     if (!options.saveOnly && rows({...previous,surplusItems:originalSurplus}) !== rows(request)) {
         steps.push(
             db
@@ -325,7 +326,7 @@ export async function editSubmittedRequest(
             );
         }
     }
-    if(hasPendingMoreInfo(previous) && !options.saveOnly){request.status='unopened';request.openedAt=undefined;request.moreInfoRequests=previous.moreInfoRequests!.map((entry,index)=>index===previous.moreInfoRequests!.length-1?{...entry,resubmissionOpen:false,resubmittedAt:new Date().toISOString(),resubmittedBy:user.id}:entry);}
+    if(hasPendingMoreInfo(previous) && !options.saveOnly){request.status='unopened';request.openedAt=undefined;request.moreInfoRequests=previous.moreInfoRequests!.map(entry=>entry.id===latestMoreInfoRequest(previous)?.id?{...entry,resubmissionOpen:false,resubmittedAt:new Date().toISOString(),resubmittedBy:user.id}:entry);}
     return writeRecord(db, previous, request, !hasPendingMoreInfo(previous), steps);
 }
 
@@ -368,7 +369,7 @@ export async function requestMoreInfo(db:D1Database,previous:RequestRecord,user:
  if(user.role!=='admin'&&user.memberType!=='internal')throw Object.assign(new Error('Only CDPH/WIC or Admin can request more information.'),{statusCode:403});
  if(typeof notes!=='string'||!notes.trim()||notes.length>4000)throw Object.assign(new Error('Enter notes describing what needs to be addressed.'),{statusCode:400,statusMessage:'Enter notes describing what needs to be addressed.'});
  if(revision!==(previous.revision??0))throw conflict();
- const moreInfoRequests=[...(previous.moreInfoRequests??[]),{id:crypto.randomUUID(),notes:notes.trim(),requestedAt:new Date().toISOString(),requestedBy:user.id,originalSurplusItems:structuredClone(previous.surplusItems??[])}];
+ const moreInfoRequests=[...(previous.moreInfoRequests??[]),{id:crypto.randomUUID(),notes:notes.trim(),requestedAt:new Date().toISOString(),requestedBy:user.id,statusBeforeRequest:previous.status==='unopened'?'opened' as const:previous.status,originalSurplusItems:structuredClone(previous.surplusItems??[])}];
  return writeRecord(db,previous,nextRecord(previous,{status:'needs_info',moreInfoRequests}),false);
 }
 
@@ -384,9 +385,12 @@ export async function editMoreInfoNote(db:D1Database,previous:RequestRecord,user
  if(note.deletionLocked||note.readAt||note.responses?.some(response=>response.readAt)||reads)throw Object.assign(new Error('A message that has been read cannot be edited or deleted.'),{statusCode:409,statusMessage:'A message that has been read cannot be edited or deleted.'});
  if(command.action==='edit'&&(typeof command.notes!=='string'||!command.notes.trim()||command.notes.length>4000))throw Object.assign(new Error('Enter a note of up to 4000 characters.'),{statusCode:400,statusMessage:'Enter a note of up to 4000 characters.'});
  const now=new Date().toISOString();
- const moreInfoRequests=previous.moreInfoRequests!.map(entry=>entry.id!==note.id?entry:command.action==='delete'?{...entry,deletedAt:now,deletedBy:user.id}:{...entry,notes:command.notes!.trim(),editedAt:now,editedBy:user.id,noteHistory:[...(entry.noteHistory??[]),{notes:entry.notes,changedAt:now,changedBy:user.id}]});
+ const moreInfoRequests=previous.moreInfoRequests!.map(entry=>entry.id!==note.id?entry:command.action==='delete'?{...entry,resubmissionOpen:false,deletedAt:now,deletedBy:user.id}:{...entry,notes:command.notes!.trim(),editedAt:now,editedBy:user.id,noteHistory:[...(entry.noteHistory??[]),{notes:entry.notes,changedAt:now,changedBy:user.id}]});
  const steps=command.action==='edit'?[db.prepare('DELETE FROM surplus_notice_reads WHERE notice_id=?').bind(`followup:${note.id}`)]:[];
- return writeRecord(db,previous,nextRecord(previous,{moreInfoRequests}),false,steps);
+ const withdrawing=command.action==='delete' && note.id===latestMoreInfoRequest(previous)?.id && previous.status==='needs_info';
+ const stillPending=hasPendingMoreInfo({status:'needs_info',moreInfoRequests});
+ const status=withdrawing&&!stillPending?(note.statusBeforeRequest&&note.statusBeforeRequest!=='needs_info'?note.statusBeforeRequest:'in_progress'):previous.status;
+ return writeRecord(db,previous,nextRecord(previous,{moreInfoRequests,status}),false,steps);
 }
 
 export interface MoreInfoReply {noteId:string;notes:string}
@@ -398,6 +402,8 @@ export async function replyToMoreInfo(db:D1Database,previous:RequestRecord,user:
  if(!reply||typeof reply.notes!=='string'||!reply.notes.trim()||reply.notes.length>4000)throw Object.assign(new Error('Enter an answer of up to 4000 characters.'),{statusCode:400,statusMessage:'Enter an answer of up to 4000 characters.'});
  const note=previous.moreInfoRequests?.find(entry=>entry.id===reply.noteId&&!entry.deletedAt&&!entry.resolvedAt);
  if(!canReplyToMoreInfo(previous,reply.noteId)||!note)throw Object.assign(new Error('This information request is no longer awaiting a response.'),{statusCode:409,statusMessage:'This information request is no longer awaiting a response.'});
+ const outgoing=unreadOutgoingMessage(note,reviewer);
+ if(outgoing){const id=outgoing.type==='initial'?`followup:${note.id}`:`followup-response:${outgoing.id}`;const read=await db.prepare('SELECT notice_id FROM surplus_notice_reads WHERE notice_id=? LIMIT 1').bind(id).first();if(!read)throw Object.assign(new Error('Edit your unread message instead of sending another.'),{statusCode:409,statusMessage:'Edit your unread message instead of sending another.'});}
  const response={id:crypto.randomUUID(),notes:reply.notes.trim(),respondedAt:new Date().toISOString(),respondedBy:user.id,respondedAs:reviewer?'reviewer' as const:'agency' as const};
  const readHistory=moreInfoReadHistory(previous,user);
  const moreInfoRequests=readHistory!.map(entry=>entry.id===note.id?{...entry,responses:[...(entry.responses??[]),response]}:entry);
@@ -418,11 +424,12 @@ function moreInfoReadHistory(previous:RequestRecord,user:SessionUser,noticeId?:s
  return previous.moreInfoRequests?.map(note=>{
   if(note.deletedAt)return note;
   const initialRead=!reviewer&&!note.readAt&&(!noticeId||noticeId===`followup:${note.id}`||noticeId===`followup:${note.id}:reopen:${note.resubmissionOpenedAt}`);
+  const reopenedRead=!reviewer&&note.resubmissionOpen&&!note.resubmissionReadAt&&(!noticeId||noticeId===`followup:${note.id}:reopen:${note.resubmissionOpenedAt}`);
   const responses=note.responses?.map(response=>{
    const incoming=reviewer?response.respondedAs!=='reviewer':response.respondedAs==='reviewer';
    return incoming&&!response.readAt&&(!noticeId||noticeId===`followup-response:${response.id}`)?{...response,readAt:now,readBy:user.id}:response;
   });
-  return {...note,...(initialRead?{readAt:now,readBy:user.id}:{}),...(responses?{responses}:{})};
+  return {...note,...(initialRead?{readAt:now,readBy:user.id}:{}),...(reopenedRead?{resubmissionReadAt:now,resubmissionReadBy:user.id}:{}),...(responses?{responses}:{})};
  });
 }
 export async function markMoreInfoRead(db:D1Database,previous:RequestRecord,user:SessionUser,noticeId?:string){
@@ -452,6 +459,34 @@ export async function reopenMoreInfoSubmission(db:D1Database,previous:RequestRec
  if(user.role!=='admin'&&user.memberType!=='internal')throw Object.assign(new Error('Only CDPH/WIC or Admin can reopen a request for resubmission.'),{statusCode:403,statusMessage:'Only CDPH/WIC or Admin can reopen a request for resubmission.'});
  if(revision!==(previous.revision??0))throw conflict();
  if(!canReopenMoreInfo(previous))throw Object.assign(new Error('This information request cannot be reopened for resubmission.'),{statusCode:409,statusMessage:'This information request cannot be reopened for resubmission.'});
- const moreInfoRequests=previous.moreInfoRequests!.map((entry,index)=>index===previous.moreInfoRequests!.length-1?{...entry,resubmissionOpen:true,resubmissionOpenedAt:new Date().toISOString(),resubmissionOpenedBy:user.id,originalSurplusItems:structuredClone(previous.surplusItems??[])}:entry);
+ const moreInfoRequests=previous.moreInfoRequests!.map(entry=>entry.id===latestMoreInfoRequest(previous)?.id?{...entry,resubmissionOpen:true,resubmissionReadAt:undefined,resubmissionReadBy:undefined,resubmissionOpenedAt:new Date().toISOString(),resubmissionOpenedBy:user.id,originalSurplusItems:structuredClone(previous.surplusItems??[])}:entry);
  return writeRecord(db,previous,nextRecord(previous,{status:'needs_info',moreInfoRequests}),false);
+}
+
+export interface MoreInfoMessageEdit {noteId:string;responseId:string;notes:string}
+export async function editMoreInfoMessage(db:D1Database,previous:RequestRecord,user:SessionUser,command:MoreInfoMessageEdit,revision:number){
+ if(!canSeeAgency(user,previous.agencyId))throw Object.assign(new Error('Request not found.'),{statusCode:404});
+ const reviewer=user.role==='admin'||user.memberType==='internal';
+ if(!reviewer&&user.memberType!=='agency')throw Object.assign(new Error('Not authorized.'),{statusCode:403});
+ if(revision!==(previous.revision??0))throw conflict();
+ const note=previous.moreInfoRequests?.find(entry=>entry.id===command?.noteId&&!entry.deletedAt);
+ const response=note?.responses?.find(entry=>entry.id===command?.responseId);
+ if(!note||!response)throw Object.assign(new Error('Message not found.'),{statusCode:404});
+ if((response.respondedAs==='reviewer')!==reviewer)throw Object.assign(new Error('Only the sender can edit this message.'),{statusCode:403,statusMessage:'Only the sender can edit this message.'});
+ const read=await db.prepare('SELECT notice_id FROM surplus_notice_reads WHERE notice_id=? LIMIT 1').bind(`followup-response:${response.id}`).first();
+ if(response.readAt||read||!canReplyToMoreInfo(previous,note.id))throw Object.assign(new Error('A read or resolved message cannot be edited.'),{statusCode:409,statusMessage:'A read or resolved message cannot be edited.'});
+ if(typeof command.notes!=='string'||!command.notes.trim()||command.notes.length>4000)throw Object.assign(new Error('Enter a message of up to 4000 characters.'),{statusCode:400,statusMessage:'Enter a message of up to 4000 characters.'});
+ const now=new Date().toISOString();
+ const moreInfoRequests=previous.moreInfoRequests!.map(entry=>entry.id===note.id?{...entry,responses:entry.responses!.map(item=>item.id===response.id?{...item,notes:command.notes.trim(),editedAt:now,editedBy:user.id,noteHistory:[...(item.noteHistory??[]),{notes:item.notes,changedAt:now,changedBy:user.id}]}:item)}:entry);
+ return writeRecord(db,previous,nextRecord(previous,{moreInfoRequests}),false);
+}
+export async function readVisibleMoreInfoMessages(db:D1Database,previous:RequestRecord,user:SessionUser,noticeIds:string[],revision:number){
+ if(!canSeeAgency(user,previous.agencyId))throw Object.assign(new Error('Request not found.'),{statusCode:404});
+ if(revision!==(previous.revision??0))throw conflict();
+ if(!Array.isArray(noticeIds)||!noticeIds.length||noticeIds.length>20||noticeIds.some(id=>typeof id!=='string'))throw Object.assign(new Error('Select valid messages.'),{statusCode:400});
+ const reviewer=user.role==='admin'||user.memberType==='internal';
+ const allowed=new Set((previous.moreInfoRequests??[]).filter(note=>!note.deletedAt).flatMap(note=>[...(!reviewer?[`followup:${note.id}`,...(note.resubmissionOpen?[`followup:${note.id}:reopen:${note.resubmissionOpenedAt}`]:[])]:[]),...(note.responses??[]).filter(response=>(response.respondedAs==='reviewer')!==reviewer).map(response=>`followup-response:${response.id}`)]));
+ if(noticeIds.some(id=>!allowed.has(id)))throw Object.assign(new Error('Message not found.'),{statusCode:404});
+ let request=previous;for(const id of new Set(noticeIds))request=await markMoreInfoRead(db,request,user,id);
+ return request;
 }

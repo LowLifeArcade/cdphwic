@@ -45,7 +45,6 @@ function toggleMobileNav() {
                 </select>
             </label>
             <AppearanceToggle />
-            <NotificationInbox />
             <NuxtLink
                 class="button button-main"
                 to="/requests/new"
