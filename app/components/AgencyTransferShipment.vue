@@ -13,7 +13,7 @@ async function ship(){busy.value=true;error.value='';try{await $fetch(`/api/requ
  <article :id="`transfer-${transfer.id}`" class="transfer-shipment" tabindex="-1">
   <header class="transfer-heading">
    <h3>{{sourceName}} → {{destinationName}}</h3>
-   <span class="transfer-status" :class="{'shipment-transit-status':transfer.status==='shipped'}">{{transfer.status==='reserved'?'Transfer Requested':transfer.status==='shipped'?'In Transit':transfer.status==='received'?'Received':transfer.status==='cancelled'?'Cancelled':'Blocked — expired'}}</span>
+   <span class="transfer-status" :class="{'shipment-transit-status':transfer.status==='shipped'}">{{transfer.status==='reserved'?'Transfer Requested':transfer.status==='shipped'?'In Transit':transfer.status==='received'?'Confirmed Receipt':transfer.status==='cancelled'?'Cancelled':'Blocked — expired'}}</span>
   </header>
   <strong class="transfer-product">{{formulaLabel}}</strong>
   <div class="transfer-details">

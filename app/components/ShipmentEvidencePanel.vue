@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import {formatDisplayDate} from '~/../shared/requestPresentation';
 import {shipmentFeatureFlags} from '~/../shared/featureFlags';
 const shipmentFeatures=shipmentFeatureFlags(useRuntimeConfig().public);
 import type {RequestRecord} from '~/../shared/domain';
@@ -20,7 +21,7 @@ onBeforeUnmount(()=>{if(preview.value)URL.revokeObjectURL(preview.value);});
 <template>
  <div v-if="shipment.issue && (hasDamage || shipment.issue.labelsSent || shipment.issue.images?.length)" class="shipment-evidence"><strong>Damage Evidence</strong><p class="muted-copy"><template v-if="shipment.shipmentSource==='agency'">Images document the condition of the transferred product.</template><template v-else>Sending labels or images does not mean the damaged product was returned.</template> <template v-if="shipmentFeatures.caseReconciliation">Document any physical return or destruction separately.</template></p>
  <p v-if="identity==='agency' && shipment.distributorPolicy?.labelsRequired && !shipment.issue.labelsSent" class="evidence-pending">Labels must be sent back.</p><p v-if="identity==='agency' && shipment.distributorPolicy?.imagesRequired && !shipment.issue.images?.length" class="evidence-pending">Images required as proof of damage.</p>
- <p v-if="shipment.issue.labelsSent">Labels sent: {{shipment.issue.labelsSent.date}} · {{shipment.issue.labelsSent.reference}}</p>
+ <p v-if="shipment.issue.labelsSent">Labels sent: {{formatDisplayDate(shipment.issue.labelsSent.date)}} · {{shipment.issue.labelsSent.reference}}</p>
  <form v-if="canProvide && shipment.shipmentSource!=='agency'" @submit.prevent="labels" class="evidence-labels"><label class="field-label">Date Labels Sent<input v-model="date" type="date" required class="form-input" :aria-label="`Shipment ${index+1} labels sent date`" /></label><label class="field-label">Labels Reference<input v-model="reference" required maxlength="1000" class="form-input" :aria-label="`Shipment ${index+1} labels reference`" /></label><button class="button button-secondary" :disabled="saving">Record Labels Sent</button></form>
  <label v-if="canProvide" class="field-label evidence-upload">Damage Images (JPEG, PNG or WebP; up to 10 MB each)<input ref="fileInput" type="file" accept="image/jpeg,image/png,image/webp" :disabled="saving || (shipment.issue.images?.length??0)>=10" :aria-label="`Shipment ${index+1} damage image`" @change="upload" /></label>
  <div class="image-links"><button v-for="image in shipment.issue.images" :key="image.id" type="button" class="text-button" @click="view(image.id)">{{image.fileName}}</button></div><div v-if="preview"><img :src="preview" alt="Shipment damage evidence" class="evidence-preview" /><button class="button button-ghost" type="button" @click="closePreview">Close Image</button></div>

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import {formatDisplayDate} from '~/../shared/requestPresentation';
 const { data } = await useFetch('/api/participants');
 </script>
 <template>
@@ -24,11 +25,11 @@ const { data } = await useFetch('/api/participants');
         >
             <span
                 ><strong>{{ participant.name }}</strong
-                ><small>DOB {{ participant.dob }}</small></span
+                ><small>DOB {{ formatDisplayDate(participant.dob) }}</small></span
             ><span
                 ><strong>{{ participant.familyId }}</strong></span
             ><span
-                ><strong>{{ participant.benefitsCycleDate }}</strong></span
+                ><strong>{{ formatDisplayDate(participant.benefitsCycleDate) }}</strong></span
             ><span><StatusBadge :status="participant.medicalStatus" /></span>
         </div>
     </div>

@@ -7,7 +7,7 @@ const drawer = readFileSync(new URL('../app/components/RequestDetailDrawer.vue',
 describe('request operations UI', () => {
     it('shows request type and submitted date while keeping identifiers in the drawer', () => {
         expect(list).toContain('request.requestKind');
-        expect(list).toContain('Submitted {{ formatDate(request.submissionDate) }}');
+        expect(list).toContain('Submitted {{ formatDisplayDate(request.submissionDate) }}');
         expect(list).not.toContain('Rep #{{ request.agencyMemberId }}');
         expect(list).not.toContain('<strong>#{{ request.id }}</strong>');
         expect(drawer).toContain('Request #{{ request.id }}');

@@ -796,6 +796,10 @@ select.form-input {
     font-weight: 800;
     text-transform: capitalize;
 }
+.status-special-order {
+    color: light-dark(#AE5018, #EAAB33);
+    background: color-mix(in srgb, #E2742F 16%, var(--surface));
+}
 .status-pending {
     color: var(--warning-text, #f5dca1);
     background: var(--warning-bg, #5a4828);
@@ -2176,6 +2180,8 @@ label {
 
 .detail-drawer .diagnosis-list li { font-size: calc(0.78rem + 2px); }
 .detail-drawer .shipping-destination { font-size: 1rem; }
+.detail-drawer address.shipping-destination { font-weight: 700; }
+.detail-drawer address.shipping-destination strong { font-weight: inherit; }
 
 .provider-date-signed { grid-column: 2; grid-row: 2; }
 .provider-clinic { grid-column: 1; grid-row: 2; }

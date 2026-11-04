@@ -25,9 +25,9 @@ describe('report store', () => {
         const masterExport = getMasterLogExportRows();
         const mckessonExport = getMcKessonLogExportRows();
 
-        expect(monthlyTotals.find((item) => item.label === '10/1/2026')?.value).toBe(66);
+        expect(monthlyTotals.find((item) => item.label === '10-01-2026')?.value).toBe(66);
         expect(masterExport[0]).toHaveProperty('Date Sent to State');
-        expect(masterExport[0]).toHaveProperty('10/1/2026');
+        expect(masterExport[0]).toHaveProperty('10-01-2026');
         expect(mckessonExport[0]).toMatchObject({ Formula: 'Fortini Infant 4 fl oz RTF', Cs: 11 });
     });
 });

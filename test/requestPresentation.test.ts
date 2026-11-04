@@ -107,3 +107,20 @@ it('calculates participant age on Benefits Start Date with calendar months and d
     expect(participantAgeAtBenefitsStart('2026-02-30', '2026-10-01')).toBe('—');
     expect(participantAgeAtBenefitsStart(undefined, '2026-10-01')).toBe('—');
 });
+
+it('uses zero-padded MM-DD-YYYY dates and Los Angeles dates for timestamps', async () => {
+    const {formatDisplayDate,formatEtaDate}=await import('../shared/requestPresentation');
+    expect(formatDisplayDate('2026-01-09')).toBe('01-09-2026');
+    expect(formatDisplayDate('2026-11-04T01:30:00Z')).toBe('11-03-2026');
+    expect(formatDisplayDate('2024-02-29')).toBe('02-29-2024');
+    expect(formatDisplayDate(undefined)).toBe('—');
+    expect(formatDisplayDate('invalid')).toBe('invalid');
+    expect(formatEtaDate('2026-12-31')).toBe('12-31-2026');
+});
+
+it('abbreviates Ready-to-Feed in read-only form labels', async () => {
+    const {formulaFormLabel}=await import('../shared/requestPresentation');
+    expect(formulaFormLabel('ready-to-feed')).toBe('RTF');
+    expect(formulaFormLabel('powder')).toBe('Powder');
+    expect(formulaFormLabel('concentrate')).toBe('Liquid Concentrate');
+});

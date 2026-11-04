@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import {formatDisplayDate,formulaFormLabel} from '~/../shared/requestPresentation';
 const identity = useState<'admin' | 'agency' | 'internal'>('demo-identity', () => 'admin');
 const open = ref(false);
 const message = ref('');
@@ -92,16 +93,16 @@ async function download(kind: string) {
                     <template v-else><NuxtLink class="button button-secondary" :to="{path:'/requests',query:{request:n.request_id}}" @click="open=false">View Shipment</NuxtLink><a class="button button-secondary" :href="`/api/requests/${n.request_id}/authorization-form.pdf?version=${n.version_id}`" target="_blank" rel="noopener">Print / Download Authorization</a></template>
                 </template>
                 <template v-else-if="n.kind==='transfer'">
-                    <p>{{n.formula_name}} · {{n.form}}<template v-if="n.flavor"> · {{n.flavor}}</template><br />{{n.quantity}} units to ship · Request #{{n.request_id}}</p>
+                    <p>{{n.formula_name}} · {{formulaFormLabel(n.form)}}<template v-if="n.flavor"> · {{n.flavor}}</template><br />{{n.quantity}} units to ship · Request #{{n.request_id}}</p>
                     <NuxtLink class="button button-secondary" :to="{path:'/surplus',query:{transfer:n.transfer_id},hash:`#transfer-${n.transfer_id}`}" @click="open=false">View Transfer</NuxtLink>
                 </template>
                 <p v-else-if="n.kind === 'forecast'">
-                    {{ n.expected_units }} anticipated units · confirmation due {{ n.due_date }}. Confirm actual usable,
+                    {{ n.expected_units }} anticipated units · confirmation due {{ formatDisplayDate(n.due_date) }}. Confirm actual usable,
                     uncommitted units in Formula Surplus.
                 </p>
                 <p v-else>
-                    Agency {{ n.agency_id }} · {{ n.formula_name }} · {{ n.form }} {{ n.flavor }}<br />Expires
-                    {{ n.expiration_date }} ·
+                    Agency {{ n.agency_id }} · {{ n.formula_name }} · {{ formulaFormLabel(n.form) }} {{ n.flavor }}<br />Expires
+                    {{ formatDisplayDate(n.expiration_date) }} ·
                     {{ n.kind === 'donation' ? n.on_hand - n.reserved : n.expired_units }} units
                 </p>
                 <p v-if="n.kind === 'donation' || n.kind === 'destruction'">

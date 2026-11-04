@@ -43,7 +43,7 @@ const mckessonColumns = [
 ] as const;
 
 function monthKey(label: string) {
-    const [month, , year] = label.split('/');
+    const [month, , year] = label.split('-');
     return `${year}-${month.padStart(2, '0')}`;
 }
 

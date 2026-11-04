@@ -21,7 +21,7 @@ import {blankFormula,formulaEntryName,validateFormulaEntry,validateFormulaSelect
 import {shipmentReceived,canConfirmShipment,shipmentReceiptKey,type ShipmentReceiptSelection} from '~/../shared/shipmentReceipts';
 import {staffShipmentRows,shipmentHasUnsentChanges} from '~/../shared/shipmentPublishing';
 import {blankShipment,requestShipments,validateShipments,type RequestShipment} from '~/../shared/requestShipments';
-import {requestFormulas,participantNames,insuranceDetails,requestedMonthLabels,foodRestrictionLabel,formulaFormLabel,providerAddressLines,submissionDateOnly,participantAgeAtBenefitsStart} from '~/../shared/requestPresentation';
+import {formatDisplayDate,requestFormulas,participantNames,insuranceDetails,requestedMonthLabels,foodRestrictionLabel,formulaFormLabel,providerAddressLines,submissionDateOnly,participantAgeAtBenefitsStart} from '~/../shared/requestPresentation';
 import { validateDiagnoses } from '~/../shared/diagnosisCatalog';
 import {canEditSubmission,hasPendingMoreInfo,canResolveMoreInfo,canReplyToMoreInfo,canReopenMoreInfo,latestMoreInfoRequest} from '~/../shared/requestEditing';
 import type { ProductRecord, RequestRecord, RequestStatus } from '~/../shared/domain';
@@ -32,14 +32,6 @@ import { formatPhoneNumber, normalizePhoneNumber } from '~/../shared/phone';
 type Agency = { name: string; shippingAddress: string; city: string; state: string; postalCode: string };
 type Representative = { name: string; email: string; phone?: string };
 
-function formatSubmittedDate(value?: string) {
-    if (!value) {
-        return '—';
-    }
-    value = submissionDateOnly(value);
-    const match = /^(\d{4})-(\d{2})-(\d{2})(?:T.*)?$/.exec(value);
-    return match ? `${match[2]}/${match[3]}/${match[1]}` : value;
-}
 
 const props = defineProps<{
     request: RequestRecord | null;
@@ -225,11 +217,6 @@ const benefitMonths = computed(() => {
     });
 });
 
-function formatDisplayDate(value?: string) {
-    if (!value) return '—';
-    const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
-    return match ? `${match[2]}-${match[3]}-${match[1]}` : value;
-}
 
 function formatTitleCase(value?: string) {
     if (!value) return '—';
@@ -636,18 +623,18 @@ async function saveAgencyUpdate() {
         </div>
         <div class="drawer-status">
             <div class="request-status-tags">
-                <StatusBadge v-if="!hasPendingMoreInfo(request)" :status="draft.status ?? request.status" />
+                <StatusBadge v-if="!hasPendingMoreInfo(request) && !(request.specialOrder && (draft.status ?? request.status)==='in_progress')" :status="draft.status ?? request.status" />
                 <span v-if="hasPendingMoreInfo(request)" class="request-tag more-info-status" title="Returned to Local Agency for more information" role="status">Request More Info</span>
                 <span
                     v-if="request.specialOrder"
-                    class="request-tag"
-                >Special order</span>
+                    class="status-badge status-special-order"
+                >Special Order</span>
                 <span
                     v-if="request.approved"
                     class="request-tag"
                 >Approved</span>
             </div>
-            <span>Submitted {{ formatSubmittedDate(request.submissionDate) }}</span>
+            <span>Submitted {{ formatDisplayDate(request.submissionDate) }}</span>
         </div>
         <button v-if="canCollapseReviewDetails" class="review-details-toggle" type="button" :aria-expanded="reviewDetailsExpanded" :aria-controls="`review-details-${request.id}`" @click="reviewDetailsExpanded=!reviewDetailsExpanded"><span>Participant and Medical Details</span><span aria-hidden="true">{{reviewDetailsExpanded?'⌃':'⌄'}}</span></button>
         <div :id="`review-details-${request.id}`" v-show="!canCollapseReviewDetails || reviewDetailsExpanded">
@@ -658,7 +645,7 @@ async function saveAgencyUpdate() {
             </div>
             <div v-if="canStaffEdit && ageMilestoneAlerts.length" class="participant-age-alert" role="alert">
                 <strong>Upcoming age milestone</strong>
-                <p v-for="alert in ageMilestoneAlerts" :key="alert.milestone">Participant turns {{alert.milestone}} {{alert.daysUntil === 0 ? 'today' : `in ${alert.daysUntil} ${alert.daysUntil === 1 ? 'day' : 'days'}`}} ({{alert.date.slice(5,7)}}/{{alert.date.slice(8,10)}}/{{alert.date.slice(0,4)}}).</p>
+                <p v-for="alert in ageMilestoneAlerts" :key="alert.milestone">Participant turns {{alert.milestone}} {{alert.daysUntil === 0 ? 'today' : `in ${alert.daysUntil} ${alert.daysUntil === 1 ? 'day' : 'days'}`}} ({{formatDisplayDate(alert.date)}}).</p>
             </div>
             <div v-if="editingSection === 'participant'" class="form-grid compact-form-grid">
                 <label class="field-label">WIC Family ID<input v-model.number="draft.participantFamilyId" class="form-input" /></label>
@@ -1038,7 +1025,7 @@ async function saveAgencyUpdate() {
                             <span v-if="shipment.transferEtaSentAt && !editingShipmentLogistics(shipment,index)" class="shipment-sent-status" role="status">✓ ETA Sent</span>
                         </template>
                         <button v-if="canStaffEdit && canDeleteShipment({...request,shipmentDrafts:draft.shipments},index)" type="button" class="text-button" :disabled="saving" :aria-label="`Delete Shipment ${index+1}`" @click="deletingShipmentIndex=index">Delete Shipment</button>
-                        <span v-if="shipment.transferId && shipment.transferStatus==='reserved'" class="shipment-sent-status" role="status"><span aria-hidden="true">✓</span> Transfer Requested</span><span v-else-if="shipment.transferId" :class="shipment.transferStatus==='received'?'shipment-sent-status':'shipment-transit-status'" role="status"><span v-if="shipment.transferStatus!=='received'" aria-hidden="true">→</span> {{shipment.transferStatus==='received'?'Transfer received':'In Transit'}}</span>
+                        <span v-if="shipment.transferId && shipment.transferStatus==='reserved'" class="shipment-sent-status" role="status"><span aria-hidden="true">✓</span> Transfer Requested</span><span v-else-if="shipment.transferId" :class="shipment.transferStatus==='received'?'shipment-sent-status':'shipment-transit-status'" role="status"><span v-if="shipment.transferStatus!=='received'" aria-hidden="true">→</span> {{shipment.transferStatus==='received'?'Confirmed Receipt':'In Transit'}}</span>
                         <NuxtLink v-if="shipment.transferId" to="/surplus" class="text-button">View Transfer</NuxtLink>
                         <p v-if="transferAuthorizationIndex===index && transferAuthorizationMessage" class="form-error transfer-authorization-error" role="alert">{{transferAuthorizationMessage}}</p>
                     </div>

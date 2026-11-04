@@ -34,7 +34,7 @@ export function foodRestrictionLabel(value?: RequestRecord['wicFoodRestrictions'
 }
 export function formulaFormLabel(value?: string) {
     return value
-        ? ({ powder: 'Powder', concentrate: 'Liquid Concentrate', 'ready-to-feed': 'Ready-to-Feed' }[value] ?? value)
+        ? ({ powder: 'Powder', concentrate: 'Liquid Concentrate', 'ready-to-feed': 'RTF' }[value] ?? value)
         : '—';
 }
 
@@ -131,8 +131,11 @@ export function participantAgeAtBenefitsStart(dob?: string, benefitsStart?: stri
     return parts.filter(([count]) => count > 0).map(([count, unit]) => `${count} ${unit}${count === 1 ? '' : 's'}`).join(', ') || '0 days';
 }
 
-export function formatEtaDate(value?: string): string {
+export function formatDisplayDate(value?: string): string {
     if (!value) return '—';
-    const match = /^(\d{4})-(\d{2})-(\d{2})(?:T.*)?$/.exec(value);
+    const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(submissionDateOnly(value));
     return match ? `${match[2]}-${match[3]}-${match[1]}` : value;
 }
+
+// Retained for shipment components using the original formatter name.
+export const formatEtaDate = formatDisplayDate;

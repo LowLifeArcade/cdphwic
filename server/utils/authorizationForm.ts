@@ -1,8 +1,7 @@
 import {PDFDocument,StandardFonts,rgb} from 'pdf-lib';
 import {formatIssuanceMonth,formulaAuthorizations} from '../../shared/formulaAuthorizations';
-import {requestFormulas,formulaFormLabel,foodRestrictionLabel,insuranceDetails,requestedMonthLabels} from '../../shared/requestPresentation';
+import {formatDisplayDate as date,requestFormulas,formulaFormLabel,foodRestrictionLabel,insuranceDetails,requestedMonthLabels} from '../../shared/requestPresentation';
 import type {AgencyMemberRecord,AgencyRecord,RequestRecord} from '../../shared/domain';
-const date=(value?:string)=>{const [y,m,d]=(value??'').slice(0,10).split('-');return y&&m&&d?`${m}/${d}/${y}`:'—';};
 export async function createAuthorizationFormPdf(request:RequestRecord,agency?:AgencyRecord,rep?:AgencyMemberRecord):Promise<Uint8Array>{
  const doc=await PDFDocument.create();const regular=await doc.embedFont(StandardFonts.Helvetica);const bold=await doc.embedFont(StandardFonts.HelveticaBold);
  const blue=rgb(0,37/255,149/255),ink=rgb(.08,.12,.16),muted=rgb(.42,.44,.45);

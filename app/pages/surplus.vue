@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import {formatDisplayDate,formulaFormLabel} from '~/../shared/requestPresentation';
 import { isReviewer, availableUnits, localDate, daysRemaining, variantKey } from '~/../shared/surplus';
 import type { SurplusLot } from '~/../shared/surplus';
 const route = useRoute();
@@ -280,7 +281,7 @@ async function upload(kind: string, event: Event) {
             >
                 <strong>{{ agencyName(t.source_agency_id) }} → {{ agencyName(t.destination_agency_id) }}</strong>
                 <p>
-                    {{ t.formula_name }} · {{ t.quantity }} units · {{ t.status }} · {{ t.request_ref }}
+                    {{ t.formula_name }} · {{ t.quantity }} units · {{ t.status === 'received' ? 'Confirmed Receipt' : t.status }} · {{ t.request_ref }}
                     {{ t.tracking_reference }}
                 </p>
                 <template v-if="reviewer"
@@ -356,9 +357,9 @@ async function upload(kind: string, event: Event) {
                     >
                         <td>
                             {{ agencyName(lot.agencyId) }}<br /><strong>{{ lot.formulaName }}</strong
-                            ><br />{{ lot.form }} {{ lot.flavor }}
+                            ><br />{{ formulaFormLabel(lot.form) }} {{ lot.flavor }}
                         </td>
-                        <td>{{ lot.expirationDate }}</td>
+                        <td>{{ formatDisplayDate(lot.expirationDate) }}</td>
                         <td>{{ lot.onHand }}</td>
                         <td>{{ lot.reserved }}</td>
                         <td>{{ availableUnits(lot) }}</td>
@@ -416,8 +417,8 @@ async function upload(kind: string, event: Event) {
                 v-for="r in data?.reports.filter((r: any) => r.status === 'pending')"
                 :key="r.id"
             >
-                <strong>{{ agencyName(r.agency_id) }} · {{ r.formula_name }}</strong> · {{ r.form }} {{ r.flavor }} ·
-                {{ r.reported_units }} units · expires {{ r.expiration_date }}
+                <strong>{{ agencyName(r.agency_id) }} · {{ r.formula_name }}</strong> · {{ formulaFormLabel(r.form) }} {{ r.flavor }} ·
+                {{ r.reported_units }} units · expires {{ formatDisplayDate(r.expiration_date) }}
                 <p>Counted {{ r.counted_at }} by {{ r.confirmer_name }}. {{ r.reason }}</p>
                 <button
                     v-if="reviewer"
@@ -434,9 +435,9 @@ async function upload(kind: string, event: Event) {
                 v-for="f in data?.forecasts"
                 :key="f.id"
             >
-                <strong>{{ agencyName(f.agency_id) }} · {{ f.formula_name }}</strong> · {{ f.form }} {{ f.flavor }}
+                <strong>{{ agencyName(f.agency_id) }} · {{ f.formula_name }}</strong> · {{ formulaFormLabel(f.form) }} {{ f.flavor }}
                 <p>
-                    {{ f.expected_units }} anticipated units · confirmation due {{ f.due_date }} · {{ f.status }}
+                    {{ f.expected_units }} anticipated units · confirmation due {{ formatDisplayDate(f.due_date) }} · {{ f.status }}
                     <span v-if="f.actual_units !== null"> · actual {{ f.actual_units }}</span>
                 </p>
                 <button
@@ -572,7 +573,7 @@ async function upload(kind: string, event: Event) {
                         {{ proposedCountChange }} units.
                     </p>
                     <p v-if="modal === 'review'">
-                        Reported count: {{ report.reported_units }} units, expires {{ report.expiration_date }}. Confirm
+                        Reported count: {{ report.reported_units }} units, expires {{ formatDisplayDate(report.expiration_date) }}. Confirm
                         this replaces the current balance for this formula, form, flavor and expiration.
                     </p>
                     <label v-if="['new', 'review', 'confirm', 'correct-expiry'].includes(modal)"

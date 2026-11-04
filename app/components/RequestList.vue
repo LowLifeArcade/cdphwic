@@ -3,7 +3,7 @@ import {shipmentFeatureFlags} from '~/../shared/featureFlags';
 import {caseBalance,shipmentListSummary} from '~/../shared/shipmentCaseTracking';
 import {localDate} from '~/../shared/surplus';
 import {deliveryCategory,filterAndSortRequests,type DeliveryFilter,type RequestTagFilter,type RequestListSort} from '~/../shared/requestListFilters';
-import {formatEtaDate,submissionDateOnly} from '~/../shared/requestPresentation';
+import {formatEtaDate,formatDisplayDate} from '~/../shared/requestPresentation';
 import {formatShippingAddress} from '~/../shared/shipping';
 import {canEditSubmission,hasPendingMoreInfo} from '~/../shared/requestEditing';
 import type { ProductForm, ProductRecord, RequestRecord } from '~/../shared/domain';
@@ -30,16 +30,10 @@ const agencies = computed(() => agencyData.value?.agencies ?? []);
 const members = computed(() => agencyData.value?.members ?? []);
 
 function formatForm(form?: ProductForm) {
-    return form ? {powder:'Powder', concentrate:'Liquid Concentrate', 'ready-to-feed':'Ready-to-Feed'}[form] ?? '—' : '—';
+    return form ? {powder:'Powder', concentrate:'Liquid Concentrate', 'ready-to-feed':'RTF'}[form] ?? '—' : '—';
 }
 
-function formatDate(value?: string) {
-    if (!value) {
-        return '—';
-    }
-    const [year, month, day] = submissionDateOnly(value).split('-');
-    return year && month && day ? `${month}/${day}/${year}` : value;
-}
+
 
 const selectedAgency = computed(() => agencies.value.find((agency) => agency.id === selected.value?.agencyId));
 const selectedRep = computed(() => members.value.find((member) => member.id === selected.value?.agencyMemberId));
@@ -98,19 +92,19 @@ watch([()=>route.query.request,()=>props.requests],async([id],[previousId])=>{co
             >
             <span
                 ><span class="request-status-tags">
-                    <StatusBadge v-if="!hasPendingMoreInfo(request)" :status="request.status" />
+                    <StatusBadge v-if="!hasPendingMoreInfo(request) && !(request.specialOrder && request.status==='in_progress')" :status="request.status" />
                 <span v-if="hasPendingMoreInfo(request)" class="request-tag more-info-status" title="Returned to Local Agency for more information" role="status">Pending More Info</span>
                     <span v-if="identity!=='agency' && needsCaseReview(request)" class="request-tag shipping-issue-tag">Case Count Review</span>
                     <span v-if="deliveryCategory(request) === 'issue'" class="request-tag shipping-issue-tag">Shipping Issue</span>
                     <span
                         v-if="request.specialOrder"
-                        class="request-tag"
-                    >Special order</span>
+                        class="status-badge status-special-order"
+                    >Special Order</span>
                     <span
                         v-if="request.approved"
                         class="request-tag"
                     >Approved</span>
-                </span><small v-if="shippingSummary(request).total">{{shippingSummary(request).received}} of {{shippingSummary(request).total}} fully received<template v-if="shippingSummary(request).replaced"> · {{shippingSummary(request).replaced}} replaced</template></small><small>Submitted {{ formatDate(request.submissionDate) }}</small></span
+                </span><small v-if="shippingSummary(request).total">{{shippingSummary(request).received}} of {{shippingSummary(request).total}} fully received<template v-if="shippingSummary(request).replaced"> · {{shippingSummary(request).replaced}} replaced</template></small><small>Submitted {{ formatDisplayDate(request.submissionDate) }}</small></span
             >
             <span class="shipment-eta-cell" :title="shippingSummary(request).nextEta ? `Next ETA: ${formatEtaDate(shippingSummary(request).nextEta)}` : undefined">
                 <strong :class="{'eta-overdue':shippingSummary(request).overdue}">{{shippingSummary(request).nextEta ? formatEtaDate(shippingSummary(request).nextEta) : shippingSummary(request).total && !shippingSummary(request).awaiting ? 'All deliveries closed' : (request.approved === true || request.status === 'approved') && !request.specialOrder ? 'ETA pending' : ''}}</strong>

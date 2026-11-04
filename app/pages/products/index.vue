@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import {formulaFormLabel} from '~/../shared/requestPresentation';
 import type { ProductRecord } from '~/../shared/domain';
 
 const { data } = await useFetch('/api/products');
@@ -208,7 +209,7 @@ onBeforeUnmount(() => document.removeEventListener('click', closeProductMenu));
                     <span>Category</span><strong>{{ product.category }}</strong>
                 </div>
                 <div>
-                    <span>Form</span><strong>{{ product.form }}</strong>
+                    <span>Form</span><strong>{{ formulaFormLabel(product.form) }}</strong>
                 </div>
                 <div>
                     <span>Units / case</span><strong>{{ product.unitsPerCase }}</strong>
@@ -293,7 +294,7 @@ onBeforeUnmount(() => document.removeEventListener('click', closeProductMenu));
             <span>{{ product.productId }}</span>
             <span>{{ product.productCode }}</span>
             <span>{{ product.category }}</span>
-            <span>{{ product.form }}</span>
+            <span>{{ formulaFormLabel(product.form) }}</span>
             <div class="coverage-tags">
                 <span
                     v-for="coverage in product.coverage"

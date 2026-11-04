@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import {formatDisplayDate,formulaFormLabel} from '~/../shared/requestPresentation';
 import type { RequestRecord } from '~/../shared/domain';
 import { availableUnits, isReviewer } from '~/../shared/surplus';
 const props = defineProps<{ request: RequestRecord }>();
@@ -29,9 +30,9 @@ const transfers = computed(() => data.value?.transfers.filter((t: any) => t.requ
             :key="lot.id"
             class="request-lot"
         >
-            <strong>{{ lot.formulaName }}</strong> · {{ lot.form }} {{ lot.flavor }}
+            <strong>{{ lot.formulaName }}</strong> · {{ formulaFormLabel(lot.form) }} {{ lot.flavor }}
             <p>
-                Agency {{ lot.agencyId }} · Expires {{ lot.expirationDate }}<br />Usable {{ lot.onHand }} · Reserved
+                Agency {{ lot.agencyId }} · Expires {{ formatDisplayDate(lot.expirationDate) }}<br />Usable {{ lot.onHand }} · Reserved
                 {{ lot.reserved }} · Available {{ availableUnits(lot as any) }} · Expired {{ lot.expiredUnits }}
             </p>
             <NuxtLink

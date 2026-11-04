@@ -1,3 +1,4 @@
+import {formatDisplayDate} from '../../shared/requestPresentation';
 import type {SessionUser,RequestRecord} from '../../shared/domain';
 import {isReviewer,canSeeAgency} from '../../shared/surplus';
 export async function requestNotices(db:D1Database,user:SessionUser){
@@ -17,11 +18,11 @@ export async function requestNotices(db:D1Database,user:SessionUser){
   for(const note of request.moreInfoRequests??[])if(!note.deletedAt)for(const response of note.responses??[])if(response.respondedAs==='reviewer'){const id=`followup-response:${response.id}`;notices.push({id,kind:'request-response',title:'CDPH/WIC Response — Request More Info',request_id:request.id,notes:response.notes,is_read:seen.has(id)?1:0});}
   const followup=request.moreInfoRequests?.findLast(entry=>!entry.deletedAt&&(!entry.resubmittedAt||entry.resubmissionOpen)&&!entry.resolvedAt);
   if(request.status==='needs_info'&&followup){const id=followup.resubmissionOpen?`followup:${followup.id}:reopen:${followup.resubmissionOpenedAt}`:`followup:${followup.id}`;notices.push({id,kind:'request-info',title:followup.resubmissionOpen?'Request Reopened for Resubmission':'Request More Info — Pending LA',request_id:request.id,notes:followup.notes,is_read:seen.has(id)?1:0});}
-  for(const version of request.authorizationVersions??[]){const id=`authorization:${version.id}`;notices.push({id,kind:'request-eta',title:'Shipment ETA and Authorization Available',request_id:request.id,version_id:version.id,notes:`ETA sent ${version.sentAt.slice(0,10)}. Review the shipment details and print the State-Issued Formula Authorization.`,is_read:seen.has(id)?1:0});}
+  for(const version of request.authorizationVersions??[]){const id=`authorization:${version.id}`;notices.push({id,kind:'request-eta',title:'Shipment ETA and Authorization Available',request_id:request.id,version_id:version.id,notes:`ETA sent ${formatDisplayDate(version.sentAt)}. Review the shipment details and print the State-Issued Formula Authorization.`,is_read:seen.has(id)?1:0});}
  }
  if(reviewer){
   const pickups=await db.prepare("SELECT id,request_id,source_agency_id,formula_name,quantity,shipped_date FROM surplus_transfers WHERE request_id IS NOT NULL AND status IN ('shipped','received') AND shipped_date IS NOT NULL ORDER BY shipped_date DESC").all<{id:string;request_id:number;source_agency_id:number;formula_name:string;quantity:number;shipped_date:string}>();
-  for(const pickup of pickups.results){const id=`transfer-pickup:${pickup.id}`;notices.push({id,kind:'transfer-pickup',title:'Transfer Picked Up',request_id:pickup.request_id,transfer_id:pickup.id,notes:`The sending agency confirmed GSO pickup on ${pickup.shipped_date}: ${pickup.formula_name}, ${pickup.quantity} Unit(s).`,is_read:seen.has(id)?1:0});}
+  for(const pickup of pickups.results){const id=`transfer-pickup:${pickup.id}`;notices.push({id,kind:'transfer-pickup',title:'Transfer Picked Up',request_id:pickup.request_id,transfer_id:pickup.id,notes:`The sending agency confirmed GSO pickup on ${formatDisplayDate(pickup.shipped_date)}: ${pickup.formula_name}, ${pickup.quantity} Unit(s).`,is_read:seen.has(id)?1:0});}
  }
  return notices;
 }

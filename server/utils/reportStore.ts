@@ -1,25 +1,26 @@
+import {formatDisplayDate} from '../../shared/requestPresentation';
 import { SEED_AGENCIES, SEED_INTERNAL_MEMBERS, SEED_MEMBERS, SEED_PARTICIPANTS } from '../data/seed';
 import { getAllRequests } from './requestStore';
 import { listProducts } from './productStore';
 import type { MasterLogRow, McKessonLogRecord } from '../../shared/domain';
 
 export const MASTER_LOG_MONTHS = [
-    '12/1/2025',
-    '1/1/2026',
-    '2/1/2026',
-    '3/1/2026',
-    '4/1/2026',
-    '5/1/2026',
-    '6/1/2026',
-    '7/1/2026',
-    '8/1/2026',
-    '9/1/2026',
-    '10/1/2026',
-    '11/1/2026',
-    '12/1/2026',
-    '1/1/2027',
-    '2/1/2027',
-    '3/1/2027',
+    '12-01-2025',
+    '01-01-2026',
+    '02-01-2026',
+    '03-01-2026',
+    '04-01-2026',
+    '05-01-2026',
+    '06-01-2026',
+    '07-01-2026',
+    '08-01-2026',
+    '09-01-2026',
+    '10-01-2026',
+    '11-01-2026',
+    '12-01-2026',
+    '01-01-2027',
+    '02-01-2027',
+    '03-01-2027',
 ];
 
 function monthKey(date: string) {
@@ -28,14 +29,11 @@ function monthKey(date: string) {
 }
 
 function monthLabelToKey(label: string) {
-    return monthKey(`${label.slice(-4)}-${label.split('/')[0].padStart(2, '0')}-01`);
+    return monthKey(`${label.slice(-4)}-${label.split('-')[0].padStart(2, '0')}-01`);
 }
 
 function formatDate(date?: string) {
-    if (!date) {
-        return '';
-    }
-    return new Date(`${date}T00:00:00Z`).toLocaleDateString('en-US', { timeZone: 'UTC' });
+    return date ? formatDisplayDate(date) : '';
 }
 
 function participantAge(dob: string | undefined, sentDate: string) {
@@ -142,7 +140,7 @@ export function getMasterLogMonthlyTotals() {
 export function getMcKessonLogRows(): McKessonLogRecord[] {
     return [
         {
-            orderDate: '10/1/2026',
+            orderDate: '10-01-2026',
             line: '45',
             formula: 'Fortini Infant 4 fl oz RTF',
             poPrice: 114.25,
