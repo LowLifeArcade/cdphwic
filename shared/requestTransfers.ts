@@ -2,10 +2,19 @@ import type {RequestRecord} from './domain';
 import type {SurplusLot,SurplusTransfer} from './surplus';
 import {localDate,normalizeVariantText} from './surplus';
 import {requestFormulas} from './requestPresentation';
+import {shipmentFormulaOptions} from './shipmentFormulas';
+import type {ProductRecord} from './domain';
+import type {RequestShipment} from './requestShipments';
 export interface RequestAgencyTransfer extends SurplusTransfer {
  request_id:number;units_per_case:number;eta?:string;carrier?:string;destination_shipping?:string;received_units?:number;damaged_units?:number;
 }
 const formKey=(value:string)=>normalizeVariantText(value).replace(/[^a-z]/g,'').replace('liquidconcentrate','concentrate');
+export function surplusShipmentDraft(request:Partial<RequestRecord>,lot:SurplusLot,products:ProductRecord[]):RequestShipment|undefined {
+ if(request.status==='incomplete'||request.status==='denied'||!matchingTransferLot(request,lot)||lot.expirationDate<localDate()||lot.expiredUnits>0||lot.onHand<=lot.reserved)return;
+ const formula=shipmentFormulaOptions(request).find(f=>normalizeVariantText(f.productName)===normalizeVariantText(lot.formulaName)&&formKey(f.productForm??'')===formKey(lot.form)&&normalizeVariantText(f.flavor??'')===normalizeVariantText(lot.flavor));
+ if(!formula)return;
+ return {shipmentSource:'agency',sourceAgencyId:lot.agencyId,sourceLotId:lot.id,shipmentFormula:{...formula},unitsPerCase:transferCatalogUnitsPerCase(lot,products),casesShipped:0,looseUnitsShipped:0,eta:'',carrier:'gso',trackingNumbers:[]};
+}
 export function matchingTransferLot(request:Partial<RequestRecord>,lot:SurplusLot):boolean{
  return lot.agencyId!==request.agencyId && requestFormulas(request).some(formula=>normalizeVariantText(formula.otherFormulaName||formula.productName)===normalizeVariantText(lot.formulaName)&&formKey(formula.productForm??'')===formKey(lot.form)&&normalizeVariantText(formula.flavor??'')===normalizeVariantText(lot.flavor));
 }

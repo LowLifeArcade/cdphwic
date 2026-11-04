@@ -1,8 +1,29 @@
 <script setup lang="ts">
 import {formatDisplayDate,formulaFormLabel} from '~/../shared/requestPresentation';
 import { isReviewer, availableUnits, localDate, daysRemaining, variantKey } from '~/../shared/surplus';
+import {surplusShipmentDraft} from '~/../shared/requestTransfers';
+import type {RequestRecord} from '~/../shared/domain';
 import type { SurplusLot } from '~/../shared/surplus';
 const route = useRoute();
+const view=ref<'inventory'|'transfers'|'counts'>(route.query.transfer?'transfers':'inventory');
+watch(()=>route.query.transfer,id=>{if(id)view.value='transfers';});
+const requestChoices=ref<RequestRecord[]>([]);
+const requestsLoading=ref(false);
+const requestChoiceError=ref('');
+const destinationRequest=ref('');
+const requestSearch=ref('');
+const matchingRequests=computed(()=>selected.value?requestChoices.value.filter(r=>surplusShipmentDraft(r,selected.value!,[])&&(!requestSearch.value||`${r.id} ${r.submissionId??''} ${r.participantName} ${agencyName(r.agencyId)}`.toLowerCase().includes(requestSearch.value.toLowerCase()))):[]);
+async function useInRequest(lot:SurplusLot){
+ start('use-request',lot);destinationRequest.value='';requestSearch.value='';requestChoiceError.value='';requestsLoading.value=true;
+ try{const result=await $fetch<{requests:RequestRecord[]}>('/api/requests',{headers:headers.value});requestChoices.value=result.requests;}
+ catch{requestChoiceError.value='Requests could not be loaded. Close and try again.';requestChoices.value=[];}
+ finally{requestsLoading.value=false;}
+}
+async function openShipment(){
+ const request=matchingRequests.value.find(r=>String(r.id)===destinationRequest.value);
+ if(!request||!selected.value)return;
+ await navigateTo({path:'/requests',query:{request:request.id,surplusLot:selected.value.id},hash:`#shipments-${request.id}`});
+}
 const identity = useState<'admin' | 'agency' | 'internal'>('demo-identity', () => 'admin');
 const headers = computed(() => ({ 'x-demo-user': identity.value }));
 const { data, refresh, error } = await useFetch('/api/surplus', { headers, server: false });
@@ -90,7 +111,7 @@ function start(kind: string, lot?: SurplusLot, item?: any) {
     if (kind === 'confirm') {
         forecast.value = item;
     }
-    if (['ship', 'receive', 'cancel'].includes(kind)) transfer.value = item;
+    if (kind === 'cancel') transfer.value = item;
 }
 const proposedCountChange = computed(
     () =>
@@ -243,9 +264,9 @@ async function upload(kind: string, event: Event) {
         <div class="page-heading">
             <div>
                 <h1>Formula Surplus</h1>
-                <p>Verified agency inventory, transfers and anticipated surplus.</p>
+                <p>View agency inventory and manage surplus counts. Reserve stock and send shipping details from a request’s Shipment section.</p>
             </div>
-            <div v-if="reviewer">
+            <div v-if="reviewer && view==='counts'">
                 <button
                     class="button"
                     @click="start('new')"
@@ -272,8 +293,15 @@ async function upload(kind: string, event: Event) {
         >
             {{ message }}
         </p>
-        <section id="transfers">
+        <nav class="surplus-views" aria-label="Surplus views">
+            <button class="button" :aria-pressed="view==='inventory'" @click="view='inventory'">Inventory</button>
+            <button class="button" :aria-pressed="view==='transfers'" @click="view='transfers'">Transfers</button>
+            <button class="button" :aria-pressed="view==='counts'" @click="view='counts'">Counts &amp; Forecasts</button>
+        </nav>
+        <section v-show="view==='transfers'" id="transfers">
             <h2>Transfers</h2>
+            <p>{{reviewer?'Reserve stock, provide labels, and send shipping details in the request’s Shipment section.':'Confirm reserved product availability here. When CDPH/WIC provides shipping labels, arrange and confirm pickup.'}}</p>
+            <p v-if="!data?.transfers?.length">No transfers yet.</p>
             <AgencyTransferShipment v-for="t in data?.transfers?.filter(t=>t.request_id)" :key="t.id" :transfer="t" :source-name="agencyName(t.source_agency_id)" :destination-name="agencyName(t.destination_agency_id)" :can-ship="data?.user.memberType==='agency' && data?.user.agencyId===t.source_agency_id" @updated="refreshTransferState" />
             <article
                 v-for="t in data?.transfers?.filter(t=>!t.request_id)"
@@ -284,31 +312,12 @@ async function upload(kind: string, event: Event) {
                     {{ t.formula_name }} · {{ t.quantity }} units · {{ t.status === 'received' ? 'Confirmed Receipt' : t.status }} · {{ t.request_ref }}
                     {{ t.tracking_reference }}
                 </p>
-                <template v-if="reviewer"
-                    ><button
-                        v-if="t.status === 'reserved'"
-                        class="button"
-                        @click="start('ship', data?.lots.find((l: any) => l.id === t.source_lot_id) as SurplusLot, t)"
-                    >
-                        Confirm shipment</button
-                    ><button
-                        v-if="t.status === 'reserved'"
-                        class="button"
-                        @click="start('cancel', data?.lots.find((l: any) => l.id === t.source_lot_id) as SurplusLot, t)"
-                    >
-                        Cancel reservation</button
-                    ><button
-                        v-if="t.status === 'shipped'"
-                        class="button"
-                        @click="
-                            start('receive', data?.lots.find((l: any) => l.id === t.source_lot_id) as SurplusLot, t)
-                        "
-                    >
-                        Confirm receipt
-                    </button></template
-                >
+                <p>This transfer was recorded without a linked request. {{reviewer?'Cancel an unshipped reservation and reserve it again in the request’s Shipment section to use agency confirmation and shipping labels.':'Contact CDPH/WIC about this transfer.'}}</p>
+                <button v-if="reviewer && t.status==='reserved'" class="button" @click="start('cancel', data?.lots.find((l: any) => l.id === t.source_lot_id) as SurplusLot, t)">Cancel reservation</button>
             </article>
         </section>
+        <div v-show="view==='inventory'">
+        <h2>Available inventory</h2>
         <div class="surplus-filters">
             <label
                 >Search formula<input
@@ -366,42 +375,14 @@ async function upload(kind: string, event: Event) {
                         <td>{{ lot.expiredUnits }}</td>
                         <td>{{ lot.onHand + lot.expiredUnits }}</td>
                         <td class="row-actions">
-                            <button
-                                class="button"
-                                @click="showHistory(lot)"
-                            >
-                                History</button
-                            ><template v-if="reviewer"
-                                ><button
-                                    class="button"
-                                    @click="start('reconcile', lot)"
-                                >
-                                    Reconcile count</button
-                                ><button
-                                    v-if="availableUnits(lot) > 0"
-                                    class="button"
-                                    @click="start('deduct', lot)"
-                                >
-                                    Deduct</button
-                                ><button
-                                    v-if="availableUnits(lot) > 0"
-                                    class="button"
-                                    @click="start('reserve', lot)"
-                                >
-                                    Request transfer</button
-                                ><button
-                                    v-if="lot.expiredUnits > 0"
-                                    class="button"
-                                    @click="start('destroy', lot)"
-                                >
-                                    Record destruction</button
-                                ><button
-                                    class="button"
-                                    @click="start('correct-expiry', lot)"
-                                >
-                                    Correct expiration
-                                </button></template
-                            >
+                            <button v-if="reviewer && availableUnits(lot)>0 && !lot.expiredUnits && lot.expirationDate>=localDate()" class="button button-secondary" @click="useInRequest(lot)">Use in Request</button>
+                            <button class="text-button" @click="showHistory(lot)">History</button>
+                            <details v-if="reviewer" class="inventory-actions"><summary>Inventory actions</summary><div>
+                                <button class="text-button" @click="start('reconcile',lot)">Reconcile count</button>
+                                <button v-if="availableUnits(lot)>0" class="text-button" @click="start('deduct',lot)">Deduct stock</button>
+                                <button v-if="lot.expiredUnits>0" class="text-button" @click="start('destroy',lot)">Record destruction</button>
+                                <button class="text-button" @click="start('correct-expiry',lot)">Correct expiration</button>
+                            </div></details>
                         </td>
                     </tr>
                     <tr v-if="!lots.length">
@@ -410,7 +391,8 @@ async function upload(kind: string, event: Event) {
                 </tbody>
             </table>
         </div>
-        <section>
+        </div>
+        <section v-show="view==='counts'">
             <h2>Pending physical counts</h2>
             <p>Counts replace the verified balance after review; they are never added to it.</p>
             <article
@@ -429,7 +411,7 @@ async function upload(kind: string, event: Event) {
                 </button>
             </article>
         </section>
-        <section>
+        <section v-show="view==='counts'">
             <h2>Anticipated surplus</h2>
             <article
                 v-for="f in data?.forecasts"
@@ -449,7 +431,7 @@ async function upload(kind: string, event: Event) {
                 </button>
             </article>
         </section>
-        <section v-if="data?.user.role === 'admin'">
+        <section v-if="view==='counts' && data?.user.role === 'admin'">
             <h2>Agency notice forms</h2>
             <p>Upload the current forms used by donation and destruction notices.</p>
             <label
@@ -487,9 +469,7 @@ async function upload(kind: string, event: Event) {
                                 'correct-expiry': 'Correct verified expiration date',
                                 reconcile: 'Reconcile physical count',
                                 deduct: 'Deduct surplus',
-                                reserve: 'Request transfer',
-                                ship: 'Confirm shipment',
-                                receive: 'Confirm receipt',
+                                'use-request': 'Use surplus in a Request',
                                 cancel: 'Cancel reservation',
                                 history: 'Inventory history',
                             } as any
@@ -525,6 +505,17 @@ async function upload(kind: string, event: Event) {
                         Close
                     </button>
                 </div>
+                <form v-else-if="modal==='use-request'" @submit.prevent="openShipment">
+                    <p>Select a matching request. You’ll choose the quantity and reserve stock in its Shipment section.</p>
+                    <p v-if="requestsLoading" role="status">Loading matching requests…</p>
+                    <p v-else-if="requestChoiceError" role="alert">{{requestChoiceError}}</p>
+                    <template v-else>
+                        <label>Find request<input v-model="requestSearch" type="search" placeholder="Request number, participant, or receiving agency" /></label>
+                        <label>Destination request<select v-model="destinationRequest" required><option disabled value="">Select a request</option><option v-for="r in matchingRequests" :key="r.id" :value="String(r.id)">#{{r.id}} · {{r.participantName}} · {{agencyName(r.agencyId)}}</option></select></label>
+                        <p v-if="!matchingRequests.length">No matching requests. The request must include this formula and belong to a different agency.</p>
+                    </template>
+                    <div class="dialog-actions"><button class="button" type="button" @click="modal=''">Cancel</button><button class="button button-secondary" :disabled="requestsLoading || !matchingRequests.some(r=>String(r.id)===destinationRequest)" type="submit">Continue to Shipment</button></div>
+                </form>
                 <form
                     v-else
                     @submit.prevent="submit"
@@ -557,7 +548,7 @@ async function upload(kind: string, event: Event) {
                     ></template>
                     <label
                         v-if="
-                            ['new', 'reconcile', 'deduct', 'reserve', 'destroy', 'confirm', 'forecast'].includes(modal)
+                            ['new', 'reconcile', 'deduct', 'destroy', 'confirm', 'forecast'].includes(modal)
                         "
                         >{{ modal === 'forecast' ? 'Anticipated Unit(s)' : 'Unit(s)'
                         }}<input
@@ -612,29 +603,10 @@ async function upload(kind: string, event: Event) {
                             <option value="Inventory correction">Inventory correction</option>
                         </select></label
                     >
-                    <label v-if="['deduct', 'destroy', 'reserve', 'forecast'].includes(modal)"
+                    <label v-if="['deduct', 'destroy', 'forecast'].includes(modal)"
                         >Request / reference<input
                             v-model="input.requestRef"
                             required /></label
-                    ><label v-if="modal === 'reserve'"
-                        >Destination agency<select
-                            v-model.number="input.destinationAgencyId"
-                            required
-                        >
-                            <option
-                                :value="0"
-                                disabled
-                            >
-                                Select agency
-                            </option>
-                            <option
-                                v-for="a in agencyData?.agencies.filter((a) => a.id !== selected?.agencyId)"
-                                :key="a.id"
-                                :value="a.id"
-                            >
-                                {{ a.name }}
-                            </option>
-                        </select></label
                     >
                     <template v-if="['confirm', 'destroy'].includes(modal)"
                         ><label
@@ -648,12 +620,7 @@ async function upload(kind: string, event: Event) {
                                 type="date"
                                 :max="localDate()"
                                 required /></label></template
-                    ><label v-if="modal === 'ship'"
-                        >Tracking / shipment reference<input v-model="input.trackingReference"
-                    /></label>
-                    <p v-if="modal === 'receive'">
-                        Confirm physical receipt. Expired arrivals will enter the quarantined bucket.
-                    </p>
+                    >
                     <p v-if="modal === 'destroy'">
                         Confirm these units have been physically destroyed and the Formula Destruction Form completed.
                     </p>
@@ -698,6 +665,12 @@ async function upload(kind: string, event: Event) {
     </div>
 </template>
 <style scoped>
+.surplus-views {display:flex;gap:8px;flex-wrap:wrap;margin:20px 0;}
+.surplus-views .button[aria-pressed="true"] {background:var(--purple);color:white;border-color:var(--purple);}
+.inventory-actions {margin-top:8px;font-size:13px;}
+.inventory-actions summary {cursor:pointer;}
+.inventory-actions > div {display:grid;gap:10px;padding-top:10px;justify-items:start;}
+
 .surplus-page {
     padding: 28px;
 }

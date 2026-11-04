@@ -30,7 +30,7 @@ export async function reserveTransferInventory(db:D1Database,request:RequestReco
 }
 export async function linkedTransfer(db:D1Database,id:string){return db.prepare('SELECT * FROM surplus_transfers WHERE id=? AND request_id IS NOT NULL').bind(id).first<RequestAgencyTransfer>();}
 export function shipTransferInventory(db:D1Database,t:RequestAgencyTransfer,row:RequestShipment,actor:number){
- return [guard(db,"EXISTS(SELECT 1 FROM surplus_transfers WHERE id=? AND status='reserved')",[t.id]),guard(db,'EXISTS(SELECT 1 FROM surplus_lots WHERE id=? AND reserved>=? AND on_hand>=? AND expiration_date>=?)',[t.source_lot_id,t.quantity,t.quantity,localDate()]),
+ return [guard(db,"EXISTS(SELECT 1 FROM surplus_transfers t WHERE t.id=? AND t.status='reserved' AND t.stock_confirmed_at IS NOT NULL AND EXISTS(SELECT 1 FROM transfer_shipping_labels s WHERE s.transfer_id=t.id))",[t.id]),guard(db,'EXISTS(SELECT 1 FROM surplus_lots WHERE id=? AND reserved>=? AND on_hand>=? AND expiration_date>=? AND expired_units=0)',[t.source_lot_id,t.quantity,t.quantity,localDate()]),
  db.prepare('UPDATE surplus_lots SET on_hand=on_hand-?,reserved=reserved-?,version=version+1 WHERE id=?').bind(t.quantity,t.quantity,t.source_lot_id),
  db.prepare("UPDATE surplus_transfers SET status='shipped',eta=?,carrier=?,tracking_reference=?,shipped_date=? WHERE id=?").bind(row.eta,row.carrier,row.trackingNumbers.join('\n'),localDate(),t.id),...audit(db,t.source_lot_id,t.request_id,actor,'ship',t.quantity)];
 }

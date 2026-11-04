@@ -113,6 +113,7 @@ export interface RequestRecord {
         transferStatus?:'reserved'|'shipped'|'received';
         unitsToTransfer?:number;
         transferEtaSentAt?:string;
+        transferStockConfirmedAt?:string;
         transferQuantity?:number;
         transferFormulaName?:string;
         transferForm?:string;

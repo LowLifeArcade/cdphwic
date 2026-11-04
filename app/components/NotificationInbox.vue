@@ -85,16 +85,17 @@ async function download(kind: string) {
                           ? 'Formula available for donation'
                           : 'Expired formula — destruction required'
                 }}</strong>
-                <template v-if="n.kind==='request-info' || n.kind==='request-eta' || n.kind==='request-response' || n.kind==='transfer-pickup'">
+                <template v-if="n.kind==='request-info' || n.kind==='request-eta' || n.kind==='request-response' || n.kind==='transfer-pickup' || n.kind==='transfer-confirmed'">
                     <p>Request #{{n.request_id}}</p><p class="request-notice-notes">{{n.notes}}</p>
                     <NuxtLink v-if="n.kind==='request-info'" class="button button-secondary" :to="{path:'/requests',query:{request:n.request_id},hash:`#more-info-${n.request_id}`}" @click="openMessage(n.request_id)">View Message</NuxtLink>
-                    <NuxtLink v-else-if="n.kind==='transfer-pickup'" class="button button-secondary" :to="{path:'/requests',query:{request:n.request_id}}" @click="open=false">View Shipment</NuxtLink>
+                    <NuxtLink v-else-if="n.kind==='transfer-pickup' || n.kind==='transfer-confirmed'" class="button button-secondary" :to="{path:'/requests',query:{request:n.request_id},hash:`#shipments-${n.request_id}`}" @click="open=false">View Shipment</NuxtLink>
                     <NuxtLink v-else-if="n.kind==='request-response'" class="button button-secondary" :to="{path:'/requests',query:{request:n.request_id},hash:`#more-info-${n.request_id}`}" @click="openMessage(n.request_id)">View Message</NuxtLink>
                     <template v-else><NuxtLink class="button button-secondary" :to="{path:'/requests',query:{request:n.request_id}}" @click="open=false">View Shipment</NuxtLink><a class="button button-secondary" :href="`/api/requests/${n.request_id}/authorization-form.pdf?version=${n.version_id}`" target="_blank" rel="noopener">Print / Download Authorization</a></template>
                 </template>
-                <template v-else-if="n.kind==='transfer'">
-                    <p>{{n.formula_name}} · {{formulaFormLabel(n.form)}}<template v-if="n.flavor"> · {{n.flavor}}</template><br />{{n.quantity}} units to ship · Request #{{n.request_id}}</p>
-                    <NuxtLink class="button button-secondary" :to="{path:'/surplus',query:{transfer:n.transfer_id},hash:`#transfer-${n.transfer_id}`}" @click="open=false">View Transfer</NuxtLink>
+                <template v-else-if="n.kind==='transfer-stock' || n.kind==='transfer-ready'">
+                    <p>{{n.formula_name}} · {{formulaFormLabel(n.form)}}<template v-if="n.flavor"> · {{n.flavor}}</template><br />{{n.quantity}} reserved units · Request #{{n.request_id}}</p>
+                    <p>{{n.notes}}</p>
+                    <NuxtLink class="button button-secondary" :to="{path:'/surplus',query:{transfer:n.transfer_id},hash:`#transfer-${n.transfer_id}`}" @click="open=false">{{n.kind==='transfer-stock'?'Confirm Product Availability':'View Labels & Arrange Pickup'}}</NuxtLink>
                 </template>
                 <p v-else-if="n.kind === 'forecast'">
                     {{ n.expected_units }} anticipated units · confirmation due {{ formatDisplayDate(n.due_date) }}. Confirm actual usable,

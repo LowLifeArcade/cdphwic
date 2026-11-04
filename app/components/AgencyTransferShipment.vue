@@ -5,6 +5,8 @@ const props=defineProps<{transfer:SurplusTransfer;canShip:boolean;sourceName:str
 const emit=defineEmits<{updated:[]}>();
 const identity=useState<'admin'|'agency'|'internal'>('demo-identity',()=> 'admin');
 const busy=ref(false);const error=ref('');
+const labelsReady=ref(false);
+async function confirmStock(){busy.value=true;error.value='';try{await $fetch(`/api/request-transfers/${props.transfer.id}/confirm-stock`,{method:'POST',headers:{'x-demo-user':identity.value}});emit('updated');window.dispatchEvent(new Event('request-messages-changed'));}catch(e){error.value=(e as any).data?.statusMessage??'Product availability could not be confirmed.';}finally{busy.value=false;}}
 const formulaLabel=computed(()=>`${props.transfer.formula_name} ${{powder:'Powder',concentrate:'Liquid Concentrate','ready-to-feed':'RTF'}[props.transfer.form]??props.transfer.form}`);
 const destination=computed(()=>{try{return JSON.parse(props.transfer.destination_shipping??'null') as import('~/../shared/shipping').RequestShipping|null;}catch{return null;}});
 async function ship(){busy.value=true;error.value='';try{await $fetch(`/api/request-transfers/${props.transfer.id}/ship`,{method:'POST',headers:{'x-demo-user':identity.value}});emit('updated');}catch(e){error.value=(e as any).data?.statusMessage??'Pickup could not be confirmed.';}finally{busy.value=false;}}
@@ -28,16 +30,22 @@ async function ship(){busy.value=true;error.value='';try{await $fetch(`/api/requ
    <address v-if="destination">{{destinationName}}<template v-if="destination.attention"><br />Attn: {{destination.attention}}</template><br />{{destination.addressLine1}}<template v-if="destination.addressLine2"><br />{{destination.addressLine2}}</template><br />{{destination.city}}, {{destination.state}} {{destination.postalCode}}</address>
    <span v-else class="transfer-label">Shipping address has not been provided.</span>
   </div>
-  <TransferShippingLabels :transfer-id="transfer.id" :can-upload="false" />
-  <TransferPickupInstructions v-if="canShip && transfer.status==='reserved'" />
+  <p v-if="transfer.stock_confirmed_at" class="pickup-confirmed" role="status">✓ Sending agency confirmed stock {{formatDisplayDate(transfer.stock_confirmed_at)}}</p>
+  <TransferShippingLabels :transfer-id="transfer.id" :can-upload="false" @ready="labelsReady=$event" />
+  <TransferPickupInstructions v-if="canShip && transfer.status==='reserved' && transfer.stock_confirmed_at && labelsReady && transfer.eta && transfer.tracking_reference" />
   <p v-if="(transfer.status==='shipped'||transfer.status==='received') && transfer.shipped_date" class="pickup-confirmed" role="status">✓ Pickup confirmed {{formatDisplayDate(transfer.shipped_date)}}</p>
   <div v-if="transfer.status==='reserved'" class="transfer-actions">
-   <template v-if="transfer.eta && transfer.tracking_reference">
+   <template v-if="!transfer.stock_confirmed_at">
+    <template v-if="canShip"><p>Confirm that your agency physically has {{transfer.quantity}} units of this formula, with the expiration shown, available for transfer.</p><button class="button button-secondary" type="button" :disabled="busy" @click="confirmStock">{{busy?'Saving…':'Confirm Product Availability'}}</button><p>If the full quantity is unavailable, contact CDPH/WIC before confirming.</p></template>
+    <p v-else>Awaiting product availability confirmation from {{sourceName}}.</p>
+   </template>
+   <template v-else-if="transfer.eta && transfer.tracking_reference && labelsReady">
     <button v-if="canShip" class="button button-secondary" type="button" :disabled="busy" @click="ship">{{busy?'Saving…':'Confirm Pickup'}}</button>
     <p v-else>Awaiting pickup confirmation from {{sourceName}}.</p>
    </template>
-   <p v-else>Awaiting ETA and tracking details from CDPH/WIC.</p>
+   <p v-else>Stock confirmed. Awaiting shipping labels and shipping details from CDPH/WIC.</p>
   </div>
+  <NuxtLink v-if="!canShip && identity!=='agency'" class="text-button" :to="{path:'/requests',query:{request:transfer.request_id},hash:`#shipments-${transfer.request_id}`}">Open Request Shipment</NuxtLink>
   <p v-if="error" class="form-error" role="alert">{{error}}</p>
  </article>
 </template>

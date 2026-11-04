@@ -1,9 +1,11 @@
 <script setup lang="ts">
 import type {TransferShippingLabel} from '~/../shared/transferShippingLabels';
 const props=defineProps<{transferId:string;canUpload:boolean;allowUpload?:boolean}>();
+const emit=defineEmits<{ready:[boolean]}>();
 const identity=useState<'admin'|'agency'|'internal'>('demo-identity',()=> 'admin');
 const endpoint=computed(()=>`/api/request-transfers/${props.transferId}/labels`);
 const {data,refresh,error:loadError}=await useFetch<{labels:TransferShippingLabel[]}>(endpoint,{headers:computed(()=>({'x-demo-user':identity.value})),server:false});
+watch(()=>data.value?.labels,labels=>emit('ready',!!labels?.length),{immediate:true});
 const busy=ref(false);const error=ref('');const message=ref('');
 let timer:ReturnType<typeof setInterval>|undefined;
 function refreshVisible(){if(!document.hidden)void refresh();}

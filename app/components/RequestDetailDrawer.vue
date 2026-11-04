@@ -7,7 +7,7 @@ const vTrackingSize:Directive<HTMLTextAreaElement>={mounted:fitTrackingNumbers,u
 function fitTrackingNumbers(input:HTMLTextAreaElement){input.style.height='auto';input.style.height=`${input.scrollHeight+input.offsetHeight-input.clientHeight}px`;}
 import {formulaOrders,allFormulasSpecialOrder} from '~/../shared/formulaOrders';
 import {formulaAuthorizations,formatIssuanceMonth,validateFormulaAuthorizations} from '~/../shared/formulaAuthorizations';
-import {transferAuthorizationError,transferEntryQuantity,transferCatalogUnitsPerCase,matchingTransferLot} from '~/../shared/requestTransfers';
+import {transferAuthorizationError,transferEntryQuantity,transferCatalogUnitsPerCase,matchingTransferLot,surplusShipmentDraft} from '~/../shared/requestTransfers';
 import type {SurplusLot} from '~/../shared/surplus';
 import {canDeleteShipment,storedShipmentRows} from '~/../shared/shipmentDeletion';
 import {shipmentFeatureFlags} from '~/../shared/featureFlags';
@@ -45,6 +45,10 @@ const props = defineProps<{
 const emit = defineEmits<{ close: []; previous: []; next: [] }>();
 const identity = useState<'admin' | 'agency' | 'internal'>('demo-identity', () => 'admin');
 const draft = reactive<Partial<RequestRecord>>({});
+const transferRoute=useRoute();
+const transferLabelsReady=reactive<Record<string,boolean>>({});
+const shortcutApplied=ref('');
+const shortcutNotice=ref('');
 const saving = ref(false);
 const documentOpen=ref(false);
 watch(()=>[props.request?.id,props.request?.prescriptionAttachment?.storageKey,identity.value],()=>{documentOpen.value=false;});
@@ -253,6 +257,23 @@ watch(
     },
     { immediate: true },
 );
+
+watch([()=>props.request?.id,()=>transferRoute.query.surplusLot,()=>transferStock.value?.lots,()=>props.products],async()=>{
+ const request=props.request;const lotId=typeof transferRoute.query.surplusLot==='string'?transferRoute.query.surplusLot:'';
+ if(!request||!canStaffEdit.value||String(transferRoute.query.request)!==String(request.id)||!lotId||!transferStock.value?.lots||!props.products)return;
+ const key=`${request.id}:${lotId}`;if(shortcutApplied.value===key)return;
+ const lot=transferStock.value.lots.find(l=>l.id===lotId);
+ const row=lot?surplusShipmentDraft(request,lot,props.products):undefined;
+ shortcutApplied.value=key;
+ if(!row){shortcutNotice.value='This stock is no longer available for this request. Select another available surplus lot.';return;}
+ const rows=draft.shipments??[];
+ const existing=rows.findIndex(r=>r.sourceLotId===lotId&&!r.transferId&&!r.etaSentAt);
+ if(existing<0){const blank=rows.findIndex((r,i)=>canDeleteShipment({...request,shipmentDrafts:rows},i)&&!r.shipmentSource&&!r.supplier&&!r.shipmentFormula&&!r.transferId&&!r.etaSentAt&&!r.sourceLotId&&!r.distributorId&&!r.casesShipped&&!r.trackingNumbers.length&&!r.eta&&!r.issue&&!r.receiptConfirmed&&r.receivedCases===undefined&&r.receivedUnits===undefined);if(blank>=0)rows[blank]=row;else rows.push(row);draft.shipments=rows;}
+ shortcutNotice.value='Surplus selected. Enter the quantity, then Reserve Stock to request confirmation from the sending agency.';
+ await nextTick();document.getElementById(`shipments-${request.id}`)?.scrollIntoView({block:'start'});
+},{immediate:true,flush:'post'});
+watch([()=>props.request?.id,()=>transferRoute.hash],async()=>{if(props.request&&transferRoute.hash===`#shipments-${props.request.id}`){await nextTick();document.getElementById(`shipments-${props.request.id}`)?.scrollIntoView({block:'start'});}},{immediate:true,flush:'post'});
+onMounted(async()=>{if(props.request&&transferRoute.hash===`#shipments-${props.request.id}`){await nextTick();shippingSection.value?.scrollIntoView({block:'start',behavior:'instant'});}});
 
 async function save(updates: Partial<RequestRecord> & {reserveTransferIndex?:number;deleteShipmentIndex?:number;sendEtaShipmentIndex?:number;confirmShipmentReceipts?:ShipmentReceiptSelection[]} = draft) {
     if (!props.request) {
@@ -962,7 +983,7 @@ async function saveAgencyUpdate() {
 
         <RequestIssuanceSummary v-if="identity==='agency'" :request="request" :products="products" />
 
-        <section ref="shippingSection" class="detail-section" tabindex="-1">
+        <section ref="shippingSection" :id="`shipments-${request.id}`" class="detail-section" tabindex="-1">
             <div class="section-heading"><h3>Shipping</h3><button v-if="canStaffEdit && request.status!=='denied' && editingSection!=='shipping'" class="text-button" type="button" @click="startEditing('shipping')">Edit</button></div>
             <form v-if="editingSection==='shipping' && draft.shipping" class="shipping-detail-editor" @submit.prevent="saveFormSection">
                 <div class="form-grid compact-form-grid">
@@ -985,6 +1006,7 @@ async function saveAgencyUpdate() {
                 <p v-if="shipmentFeatures.potentialOverDelivery && shipmentCaseBalance.projectedExcess>0" class="shipment-case-warning" role="alert"><strong>Potential over-delivery:</strong> outstanding original and replacement shipments could exceed the approved limit by {{formatCaseEquivalent(shipmentCaseBalance.projectedExcess)}} cases. Review before sending more product.</p>
                 <p v-if="shipmentFeatures.caseReconciliation && shipmentCaseBalance.needsApproval" class="shipment-case-warning" role="alert">Set the approved case limit so received quantities can be checked.</p>
             </div>
+            <p v-if="canStaffEdit && shortcutNotice" role="status">{{shortcutNotice}}</p>
             <template v-if="editingSection!=='shipping'">
             <div class="detail-grid shipping-contact-details">
                 <div><span>Contact</span><strong>{{request.shipping?.attention || rep?.name || '—'}}</strong></div>
@@ -1036,20 +1058,21 @@ async function saveAgencyUpdate() {
                         <label v-if="editingShipmentLogistics(shipment,index)" class="field-label detail-field-wide">Tracking Numbers<textarea v-tracking-size :value="shipment.trackingNumbers.join('\n')" class="form-textarea shipment-tracking-input" placeholder="Enter one tracking number per line." :aria-label="`Shipment ${index+1} Tracking Numbers`" :disabled="saving" @input="setShipmentTracking(shipment,($event.target as HTMLTextAreaElement).value)" /></label>
                         <div v-else class="detail-field-wide"><span>{{shipment.shipmentSource==='agency'?'Tracking / Delivery Reference':'Tracking Numbers'}}</span><strong>{{shipment.trackingNumbers.join(', ') || 'N/A'}}</strong></div>
                     </div>
-                    <TransferShippingLabels v-if="shipment.transferId" :transfer-id="shipment.transferId" :can-upload="canStaffEdit" :allow-upload="shipment.transferStatus==='reserved'" />
+                    <p v-if="canStaffEdit && shipment.transferId && shipment.transferStatus==='reserved'" role="status">{{shipment.transferStockConfirmedAt?'✓ Sending agency confirmed product availability. Provide the shipping labels and send shipping details.':'Awaiting confirmation that the sending Local Agency physically has the reserved product.'}}</p>
+                    <TransferShippingLabels v-if="shipment.transferId" :transfer-id="shipment.transferId" :can-upload="canStaffEdit" :allow-upload="shipment.transferStatus==='reserved' && !!shipment.transferStockConfirmedAt" @ready="transferLabelsReady[shipment.transferId!]= $event" />
                     <ShipmentReceiptPanel :key="`receipt-${request.id}-${index}`" v-if="requestShipments(request)[index]" :request="request" :shipment="requestShipments(request)[index]!" :index="index" :can-confirm="canRepEdit" @editing="value=>receiptEditors[index]=value" :catalog-units-per-case="shipmentCatalogSize(requestShipments(request)[index]!)" :disabled="saving" @updated="applyShipmentIssueResult" />
                     <ShipmentCasePanel :key="`cases-${request.id}-${index}`" v-if="shipmentFeatures.quantityTracking && requestShipments(request)[index] && (!canStaffEdit || shipmentReceiptKey(shipment)===shipmentReceiptKey(requestShipments(request)[index]!))" :request="request" :shipment="requestShipments(request)[index]!" :index="index" :can-manage="canStaffEdit" :disabled="saving" @updated="applyShipmentIssueResult" />
                     <ShipmentIssuePanel :key="`${request.id}-${index}`" v-if="requestShipments(request)[index] && (!canStaffEdit || shipmentReceiptKey(shipment)===shipmentReceiptKey(requestShipments(request)[index]!))" :request="request" :shipment="requestShipments(request)[index]!" :index="index" :can-report="canRepEdit" :receipt-editing="!!receiptEditors[index]" :catalog-units-per-case="shipmentCatalogSize(requestShipments(request)[index]!)" :disabled="saving" @updated="applyShipmentIssueResult" />
                     <div v-if="shipment.shipmentSource==='agency'" class="shipping-save-action">
-                        <button v-if="canStaffEdit && !shipment.transferId" class="button button-secondary" type="button" :disabled="saving" @click="reserveShipmentTransfer(index)">{{saving && transferAuthorizationIndex===index?'Authorizing…':'Authorize'}}</button>
+                        <button v-if="canStaffEdit && !shipment.transferId" class="button button-secondary" type="button" :disabled="saving" @click="reserveShipmentTransfer(index)">{{saving && transferAuthorizationIndex===index?'Reserving…':'Reserve Stock'}}</button>
                         <template v-if="canStaffEdit && shipment.transferId && shipment.transferStatus==='reserved'">
-                            <button class="button button-secondary" type="button" :disabled="saving" @click="editOrSendTransferEta(index)">{{sendingEtaIndex===index?'Sending…':shipment.transferEtaSentAt?(editingShipmentLogistics(shipment,index)?'Send Update':'Edit ETA'):'Send ETA'}}</button>
+                            <button class="button button-secondary" type="button" :disabled="saving || !shipment.transferStockConfirmedAt || !transferLabelsReady[shipment.transferId!]" @click="editOrSendTransferEta(index)">{{sendingEtaIndex===index?'Sending…':shipment.transferEtaSentAt?(editingShipmentLogistics(shipment,index)?'Send Shipping Update':'Edit Shipping Details'):'Send Labels & Shipping Details'}}</button>
                             <button v-if="shipment.transferEtaSentAt && editingShipmentLogistics(shipment,index)" class="button button-ghost" type="button" :disabled="saving" @click="cancelEtaEdit(index)">Cancel</button>
                             <span v-if="shipment.transferEtaSentAt && !editingShipmentLogistics(shipment,index)" class="shipment-sent-status" role="status">✓ ETA Sent</span>
                         </template>
                         <button v-if="canStaffEdit && canDeleteShipment({...request,shipmentDrafts:draft.shipments},index)" type="button" class="text-button" :disabled="saving" :aria-label="`Delete Shipment ${index+1}`" @click="deletingShipmentIndex=index">Delete Shipment</button>
                         <span v-if="shipment.transferId && shipment.transferStatus==='reserved'" class="shipment-sent-status" role="status"><span aria-hidden="true">✓</span> Transfer Requested</span><span v-else-if="shipment.transferId" :class="shipment.transferStatus==='received'?'shipment-sent-status':'shipment-transit-status'" role="status"><span v-if="shipment.transferStatus!=='received'" aria-hidden="true">→</span> {{shipment.transferStatus==='received'?'Confirmed Receipt':'In Transit'}}</span>
-                        <NuxtLink v-if="shipment.transferId" to="/surplus" class="text-button">View Transfer</NuxtLink>
+                        <NuxtLink v-if="shipment.transferId" :to="{path:'/surplus',query:{transfer:shipment.transferId},hash:`#transfer-${shipment.transferId}`}" class="text-button">View Transfer</NuxtLink>
                         <p v-if="transferAuthorizationIndex===index && transferAuthorizationMessage" class="form-error transfer-authorization-error" role="alert">{{transferAuthorizationMessage}}</p>
                     </div>
                     <div v-else-if="canStaffEdit && !shipmentReceived(request,shipment) && shipment.receivedCases===undefined && !shipment.issue && !shipment.deletedIssues?.length" class="shipping-save-action">

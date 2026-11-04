@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import {formatDisplayDate,formulaFormLabel} from '~/../shared/requestPresentation';
 import type { RequestRecord } from '~/../shared/domain';
+import {surplusShipmentDraft} from '~/../shared/requestTransfers';
 import { availableUnits, isReviewer } from '~/../shared/surplus';
 const props = defineProps<{ request: RequestRecord }>();
 const identity = useState<'admin' | 'agency' | 'internal'>('demo-identity', () => 'admin');
@@ -38,10 +39,11 @@ const transfers = computed(() => data.value?.transfers.filter((t: any) => t.requ
             <NuxtLink
                 class="button"
                 :to="{
-                    path: '/surplus',
-                    query: { formula: lot.formulaName, agency: lot.agencyId, request: reference },
+                    path: data?.user && isReviewer(data.user) && surplusShipmentDraft(request,lot,[]) ? '/requests' : '/surplus',
+                    query: data?.user && isReviewer(data.user) && surplusShipmentDraft(request,lot,[]) ? {request:request.id,surplusLot:lot.id} : {formula:lot.formulaName,agency:lot.agencyId},
+                    hash: data?.user && isReviewer(data.user) && surplusShipmentDraft(request,lot,[]) ? `#shipments-${request.id}` : undefined,
                 }"
-                >{{ data?.user && isReviewer(data.user) ? 'Use surplus / request transfer' : 'View surplus' }}</NuxtLink
+                >{{ data?.user && isReviewer(data.user) && surplusShipmentDraft(request,lot,[]) ? 'Use in Shipment' : 'View inventory' }}</NuxtLink
             >
         </div>
         <p v-if="!lots.length && !error">No verified matching stock.</p>

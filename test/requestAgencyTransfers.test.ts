@@ -3,9 +3,64 @@ import {surplusDb} from './helpers/surplusDb';
 import {ensureSurplusLot,executeSurplusCommand} from '../server/utils/surplusStore';
 import {getDemoUser} from '../server/utils/session';
 import {ensureSubmittedRequest,updateSubmittedShipmentReceipt} from '../server/utils/submittedRequests';
-import {authorizeRequestTransfer,shipRequestTransfer,saveRequestTransferEta} from '../server/utils/requestTransfers';
+import {authorizeRequestTransfer,shipRequestTransfer,saveRequestTransferEta,confirmRequestTransferStock} from '../server/utils/requestTransfers';
 import {shipmentReceiptKey} from '../shared/shipmentReceipts';
 import {receiptQuantityKey} from '../shared/shipmentQuantities';
+
+it('notifies the source immediately on reservation, before any shipping details exist',async()=>{
+ const {listSurplusNotices}=await import('../server/utils/surplusNotices');const f=await fixture();
+ const reserved=await authorizeRequestTransfer(f.db,f.request,[f.row],0,f.admin);const id=reserved.shipments![0]!.transferId!;
+ const source={...getDemoUser('agency'),agencyId:11};
+ const notice=(await listSurplusNotices(f.db,source)).find(n=>n.id===`transfer-stock:${id}`);
+ expect(notice).toMatchObject({kind:'transfer-stock',transfer_id:id,quantity:12,is_read:0});
+ for(const user of [f.admin,getDemoUser('internal'),getDemoUser('agency'),{...source,agencyId:12}])expect((await listSurplusNotices(f.db,user)).some(n=>n.id===`transfer-stock:${id}`)).toBe(false);
+});
+it('records physical stock confirmation only from the sending agency without deducting inventory',async()=>{
+ const {confirmRequestTransferStock}=await import('../server/utils/requestTransfers');const f=await fixture();
+ const reserved=await authorizeRequestTransfer(f.db,f.request,[f.row],0,f.admin);const id=reserved.shipments![0]!.transferId!;
+ await expect(confirmRequestTransferStock(f.db,id,f.admin)).rejects.toMatchObject({statusCode:403});
+ await expect(confirmRequestTransferStock(f.db,id,getDemoUser('agency'))).rejects.toMatchObject({statusCode:404});
+ const sender={...getDemoUser('agency'),agencyId:11};
+ const result=await confirmRequestTransferStock(f.db,id,sender);
+ expect(result.transfer.stock_confirmed_at).toBeTruthy();expect(result.request.shipments![0]!.transferStockConfirmedAt).toBeTruthy();
+ const repeated=await confirmRequestTransferStock(f.db,id,sender);expect(repeated.transfer.stock_confirmed_at).toBe(result.transfer.stock_confirmed_at);
+ expect(f.sqlite.prepare('SELECT on_hand,reserved FROM surplus_lots WHERE id=?').get(f.lot.id)).toMatchObject({on_hand:48,reserved:12});
+ const {listSurplusNotices}=await import('../server/utils/surplusNotices');
+ expect((await listSurplusNotices(f.db,sender)).some(n=>n.kind==='transfer-stock')).toBe(false);
+ expect((await listSurplusNotices(f.db,f.admin)).filter(n=>n.kind==='transfer-confirmed')).toHaveLength(1);
+});
+it('gives shipping readiness a new unread notice after the stock notice is read',async()=>{
+ const {listSurplusNotices}=await import('../server/utils/surplusNotices');const f=await fixture();
+ const reserved=await authorizeRequestTransfer(f.db,f.request,[f.row],0,f.admin);const id=reserved.shipments![0]!.transferId!;
+ const sender={...getDemoUser('agency'),agencyId:11};
+ await f.db.prepare('INSERT INTO surplus_notice_reads(notice_id,user_id) VALUES(?,?)').bind(`transfer-stock:${id}`,sender.id).run();
+ const confirmed=await prepareTransfer(f.db,id,sender);
+ expect((await listSurplusNotices(f.db,sender)).filter(n=>n.kind==='transfer-ready')).toHaveLength(0);
+ await expect(shipRequestTransfer(f.db,id,sender)).rejects.toThrow();
+ await saveRequestTransferEta(f.db,id,f.admin,{eta:'2026-11-10',carrier:'gso',trackingNumbers:['READY']},confirmed.revision!);
+ expect((await listSurplusNotices(f.db,sender)).find(n=>n.id===`transfer-ready:${id}`)).toMatchObject({is_read:0});
+ expect((await listSurplusNotices(f.db,f.admin)).filter(n=>n.kind==='transfer-confirmed')).toHaveLength(0);
+ await f.db.prepare('DELETE FROM transfer_shipping_labels WHERE transfer_id=?').bind(id).run();
+ await expect(shipRequestTransfer(f.db,id,sender)).rejects.toThrow('label');
+ expect(f.sqlite.prepare('SELECT reserved,on_hand FROM surplus_lots WHERE id=?').get(f.lot.id)).toMatchObject({reserved:12,on_hand:48});
+});
+it('requires confirmed stock and labels before CDPH/WIC publishes transfer shipping',async()=>{
+ const {confirmRequestTransferStock}=await import('../server/utils/requestTransfers');const f=await fixture();
+ const reserved=await authorizeRequestTransfer(f.db,f.request,[f.row],0,f.admin);const id=reserved.shipments![0]!.transferId!;
+ const input={eta:'2026-11-10',carrier:'gso' as const,trackingNumbers:['READY']};
+ await expect(saveRequestTransferEta(f.db,id,f.admin,input,reserved.revision!)).rejects.toThrow('confirm');
+ const result=await confirmRequestTransferStock(f.db,id,{...getDemoUser('agency'),agencyId:11});
+ await expect(saveRequestTransferEta(f.db,id,f.admin,input,result.request.revision!)).rejects.toThrow('label');
+});
+it('rejects stock confirmation for expired or cancelled transfers',async()=>{
+ const {confirmRequestTransferStock}=await import('../server/utils/requestTransfers');const f=await fixture();
+ const reserved=await authorizeRequestTransfer(f.db,f.request,[f.row],0,f.admin);const id=reserved.shipments![0]!.transferId!;
+ f.sqlite.prepare("UPDATE surplus_lots SET expiration_date='2000-01-01' WHERE id=?").run(f.lot.id);
+ await expect(confirmRequestTransferStock(f.db,id,{...getDemoUser('agency'),agencyId:11})).rejects.toMatchObject({statusCode:409});
+ f.sqlite.prepare("UPDATE surplus_lots SET expiration_date='2027-06-01' WHERE id=?").run(f.lot.id);
+ const {deleteSubmittedShipment}=await import('../server/utils/submittedRequests');await deleteSubmittedShipment(f.db,reserved,0,f.admin.id);
+ await expect(confirmRequestTransferStock(f.db,id,{...getDemoUser('agency'),agencyId:11})).rejects.toMatchObject({statusCode:409});
+});
 async function fixture(){
  const {db,sqlite}=surplusDb();const admin=getDemoUser('admin');
  const lot=await ensureSurplusLot(db,11,{formulaName:'Nutramigen LGG',form:'powder',flavor:'',expirationDate:'2027-06-01'});
@@ -14,7 +69,15 @@ async function fixture(){
  const row={shipmentSource:'agency' as const,sourceAgencyId:11,sourceLotId:lot.id,unitsPerCase:6,casesShipped:2,eta:'',carrier:'ups' as const,trackingNumbers:[]};
  return {db,sqlite,admin,lot,request,row};
 }
+async function prepareTransfer(db:D1Database,id:string,sender:ReturnType<typeof getDemoUser>){
+ const confirmed=await confirmRequestTransferStock(db,id,sender);
+ const {storeTransferLabel}=await import('../server/utils/transferShippingLabels');
+ const bucket={put:async()=>({}),delete:async()=>{}} as unknown as R2Bucket;
+ if(!await db.prepare('SELECT id FROM transfer_shipping_labels WHERE transfer_id=?').bind(id).first())await storeTransferLabel(db,bucket,'test',getDemoUser('admin'),id,{filename:'label.pdf',type:'application/pdf',data:new TextEncoder().encode('%PDF-1.7 synthetic')});
+ return confirmed.request;
+}
 async function dispatchTransfer(db:D1Database,id:string,sender:ReturnType<typeof getDemoUser>,input:{eta:string;carrier:any;trackingNumbers:string[]}){
+ await prepareTransfer(db,id,sender);
  const stored=await db.prepare("SELECT request_json FROM surplus_submissions WHERE json_extract(request_json,'$.id')=9988").first<string>('request_json');
  await saveRequestTransferEta(db,id,getDemoUser('admin'),input,JSON.parse(stored!).revision??0);
  return shipRequestTransfer(db,id,sender);
@@ -139,15 +202,16 @@ it('notifies only the sending agency of a pending linked transfer and stops afte
  const {listSurplusNotices}=await import('../server/utils/surplusNotices');const f=await fixture();
  const reserved=await authorizeRequestTransfer(f.db,f.request,[f.row],0,f.admin);const id=reserved.shipments![0]!.transferId!;
  const sender={...getDemoUser('agency'),id:111,agencyId:11};
- expect((await listSurplusNotices(f.db,sender)).some(n=>n.kind==='transfer')).toBe(false);
- await saveRequestTransferEta(f.db,id,f.admin,{eta:'2026-11-10',carrier:'agency',trackingNumbers:['DELIVERY']},reserved.revision!);
- const pending=(await listSurplusNotices(f.db,sender)).filter(n=>n.kind==='transfer');
- expect(pending).toHaveLength(1);expect(pending[0]).toMatchObject({id:`transfer:${id}`,title:'Transfer Requested - Product Ready to Ship',transfer_id:id,quantity:12,is_read:0});
- expect((await listSurplusNotices(f.db,getDemoUser('agency'))).some(n=>n.id===`transfer:${id}`)).toBe(false);
- await f.db.prepare('INSERT INTO surplus_notice_reads(notice_id,user_id) VALUES(?,?)').bind(`transfer:${id}`,sender.id).run();
- expect((await listSurplusNotices(f.db,sender)).find(n=>n.id===`transfer:${id}`)?.is_read).toBe(1);
+ expect((await listSurplusNotices(f.db,sender)).some(n=>n.kind==='transfer-stock')).toBe(true);
+ const confirmed=await prepareTransfer(f.db,id,sender);
+ await saveRequestTransferEta(f.db,id,f.admin,{eta:'2026-11-10',carrier:'agency',trackingNumbers:['DELIVERY']},confirmed.revision!);
+ const pending=(await listSurplusNotices(f.db,sender)).filter(n=>n.kind==='transfer-ready');
+ expect(pending).toHaveLength(1);expect(pending[0]).toMatchObject({id:`transfer-ready:${id}`,title:'Shipping Labels Ready — Arrange Pickup',transfer_id:id,quantity:12,is_read:0});
+ expect((await listSurplusNotices(f.db,getDemoUser('agency'))).some(n=>n.id===`transfer-ready:${id}`)).toBe(false);
+ await f.db.prepare('INSERT INTO surplus_notice_reads(notice_id,user_id) VALUES(?,?)').bind(`transfer-ready:${id}`,sender.id).run();
+ expect((await listSurplusNotices(f.db,sender)).find(n=>n.id===`transfer-ready:${id}`)?.is_read).toBe(1);
  await dispatchTransfer(f.db,id,sender,{eta:'2026-11-10',carrier:'agency',trackingNumbers:['DELIVERY']});
- expect((await listSurplusNotices(f.db,sender)).some(n=>n.id===`transfer:${id}`)).toBe(false);
+ expect((await listSurplusNotices(f.db,sender)).some(n=>n.id===`transfer-ready:${id}`)).toBe(false);
 });
 it('reserves an exact unit quantity including loose units',async()=>{
  const f=await fixture();const reserved=await authorizeRequestTransfer(f.db,f.request,[{...f.row,unitsToTransfer:13,casesShipped:0}],0,f.admin);
@@ -158,7 +222,8 @@ it('requires CDPH/WIC logistics before sender confirmation without deducting sto
  const {saveRequestTransferEta}=await import('../server/utils/requestTransfers');const f=await fixture();const reserved=await authorizeRequestTransfer(f.db,f.request,[f.row],0,f.admin);const id=reserved.shipments![0]!.transferId!;const sender={...getDemoUser('agency'),agencyId:11};
  await expect(shipRequestTransfer(f.db,id,sender)).rejects.toThrow();
  await expect(saveRequestTransferEta(f.db,id,sender,{eta:'2026-11-10',carrier:'ups',trackingNumbers:['STAFF-TRACKING']},reserved.revision!)).rejects.toMatchObject({statusCode:403});
- const planned=await saveRequestTransferEta(f.db,id,f.admin,{eta:'2026-11-10',carrier:'ups',trackingNumbers:[' STAFF-TRACKING ','']},reserved.revision!);
+ const confirmed=await prepareTransfer(f.db,id,sender);
+ const planned=await saveRequestTransferEta(f.db,id,f.admin,{eta:'2026-11-10',carrier:'ups',trackingNumbers:[' STAFF-TRACKING ','']},confirmed.revision!);
  expect(planned.shipments![0]!.etaSentAt).toBeUndefined();expect(planned.shipments![0]!.transferEtaSentAt).toBeTruthy();
  const {shipmentDispatched,canConfirmShipment}=await import('../shared/shipmentReceipts');expect(shipmentDispatched(planned,planned.shipments![0]!)).toBe(false);expect(canConfirmShipment(planned,planned.shipments![0]!)).toBe(false);
  await expect(saveRequestTransferEta(f.db,id,f.admin,{eta:'2026-11-11',carrier:'ups',trackingNumbers:['STALE']},reserved.revision!)).rejects.toMatchObject({statusCode:409});
@@ -170,7 +235,8 @@ it('requires CDPH/WIC logistics before sender confirmation without deducting sto
 it('fixes local agency transfer carrier to GSO at reservation and ETA publication',async()=>{
  const f=await fixture();const reserved=await authorizeRequestTransfer(f.db,f.request,[{...f.row,carrier:'ups'}],0,f.admin);
  expect(reserved.shipments![0]!.carrier).toBe('gso');
- const planned=await saveRequestTransferEta(f.db,reserved.shipments![0]!.transferId!,f.admin,{eta:'2026-11-10',carrier:'ups',trackingNumbers:['GSO-TRACKING']},reserved.revision!);
+ const confirmed=await prepareTransfer(f.db,reserved.shipments![0]!.transferId!,{...getDemoUser('agency'),agencyId:11});
+ const planned=await saveRequestTransferEta(f.db,reserved.shipments![0]!.transferId!,f.admin,{eta:'2026-11-10',carrier:'ups',trackingNumbers:['GSO-TRACKING']},confirmed.revision!);
  expect(planned.shipments![0]!.carrier).toBe('gso');
  expect(f.sqlite.prepare('SELECT carrier FROM surplus_transfers WHERE id=?').get(reserved.shipments![0]!.transferId!)).toMatchObject({carrier:'gso'});
 });
