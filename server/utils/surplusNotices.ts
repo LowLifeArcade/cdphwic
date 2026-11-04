@@ -60,7 +60,7 @@ export async function listSurplusNotices(db: D1Database, user: SessionUser) {
             :kind==='transfer-confirmed'?'Agency Confirmed Stock — Provide Shipping Labels'
             :'Shipping Labels Ready — Arrange Pickup';
         return [{...t,id,kind,title,notes:kind==='transfer-confirmed'
-            ?`The sending Local Agency confirmed ${t.quantity} units of ${t.formula_name}. Provide shipping labels and send the shipping details.`
+            ?`The sending Local Agency confirmed ${t.quantity} unit(s) of ${t.formula_name}. Provide shipping labels and send the shipping details.`
             :kind==='transfer-stock'?'Confirm that your agency physically has the reserved formula and quantity.'
             :'Download and print the labels provided by CDPH/WIC, arrange carrier pickup, then confirm pickup after collection.',is_read:seen.has(id)?1:0}];
     });

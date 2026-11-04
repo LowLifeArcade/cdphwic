@@ -306,14 +306,16 @@ async function upload(kind: string, event: Event) {
             <article
                 v-for="t in data?.transfers?.filter(t=>!t.request_id)"
                 :key="t.id"
+                class="legacy-transfer"
             >
-                <strong>{{ agencyName(t.source_agency_id) }} → {{ agencyName(t.destination_agency_id) }}</strong>
-                <p>
-                    {{ t.formula_name }} · {{ t.quantity }} units · {{ t.status === 'received' ? 'Confirmed Receipt' : t.status }} · {{ t.request_ref }}
-                    {{ t.tracking_reference }}
-                </p>
-                <p>This transfer was recorded without a linked request. {{reviewer?'Cancel an unshipped reservation and reserve it again in the request’s Shipment section to use agency confirmation and shipping labels.':'Contact CDPH/WIC about this transfer.'}}</p>
-                <button v-if="reviewer && t.status==='reserved'" class="button" @click="start('cancel', data?.lots.find((l: any) => l.id === t.source_lot_id) as SurplusLot, t)">Cancel reservation</button>
+                <header class="legacy-transfer-heading"><div><strong>{{t.formula_name}} {{t.form==='concentrate'?'Concentrate':formulaFormLabel(t.form)}}</strong>
+                <span class="legacy-transfer-route"><b>{{agencyName(t.source_agency_id)}}</b> → <b>{{agencyName(t.destination_agency_id)}}</b></span></div><span class="legacy-transfer-status">{{t.status==='received'?'Confirmed Receipt':t.status==='reserved'?'Transfer Requested':t.status==='shipped'?'In Transit':t.status==='cancelled'?'Cancelled':'Blocked — expired'}}</span></header>
+                <div class="legacy-transfer-summary"><span><strong>{{t.quantity}}</strong> unit(s)</span><span>Expires {{formatDisplayDate(t.expiration_date)}}</span><span>ETA {{t.eta?formatDisplayDate(t.eta):'Pending'}}</span><span v-if="t.request_ref">Ref {{t.request_ref}}</span></div>
+                <details><summary>Transfer details</summary>
+                    <p v-if="t.tracking_reference">Tracking: {{t.tracking_reference}}</p>
+                    <p>This transfer was recorded without a linked request. {{reviewer?'Cancel an unshipped reservation and reserve it again in the request’s Shipment section to use agency confirmation and shipping labels.':'Contact CDPH/WIC about this transfer.'}}</p>
+                    <button v-if="reviewer && t.status==='reserved'" class="button" @click="start('cancel', data?.lots.find((l: any) => l.id === t.source_lot_id) as SurplusLot, t)">Cancel reservation</button>
+                </details>
             </article>
         </section>
         <div v-show="view==='inventory'">
@@ -342,20 +344,20 @@ async function upload(kind: string, event: Event) {
             </button>
         </div>
         <p>
-            Available units exclude reservations and expired stock. Reported counts require reconciliation; anticipated
+            Available unit(s) exclude reservations and expired stock. Reported counts require reconciliation; anticipated
             quantities become available only after agency confirmation and review.
         </p>
-        <div class="table-scroll">
-            <table>
+        <div class="table-scroll inventory-table-wrap">
+            <table class="inventory-table">
                 <thead>
                     <tr>
                         <th>Agency / Formula</th>
                         <th>Expiration</th>
-                        <th>Usable on hand</th>
+                        <th>On Hand</th>
                         <th>Reserved</th>
                         <th>Available</th>
-                        <th>Expired / Quarantined</th>
-                        <th>Total physical</th>
+                        <th><abbr title="Expired / Quarantined unit(s)">Expired /<br />Quarantined</abbr></th>
+                        <th>Total</th>
                         <th>Actions</th>
                     </tr>
                 </thead>
@@ -364,24 +366,26 @@ async function upload(kind: string, event: Event) {
                         v-for="lot in lots"
                         :key="lot.id"
                     >
-                        <td>
-                            {{ agencyName(lot.agencyId) }}<br /><strong>{{ lot.formulaName }}</strong
-                            ><br />{{ formulaFormLabel(lot.form) }} {{ lot.flavor }}
+                        <td class="inventory-product">
+                            <strong>{{ lot.formulaName }} {{ lot.form === 'concentrate' ? 'Concentrate' : formulaFormLabel(lot.form) }}</strong>
+                            <span><template v-if="lot.flavor">{{ lot.flavor }} · </template>{{ agencyName(lot.agencyId) }}</span>
                         </td>
                         <td>{{ formatDisplayDate(lot.expirationDate) }}</td>
                         <td>{{ lot.onHand }}</td>
                         <td>{{ lot.reserved }}</td>
-                        <td>{{ availableUnits(lot) }}</td>
+                        <td class="inventory-available">{{ availableUnits(lot) }}</td>
                         <td>{{ lot.expiredUnits }}</td>
                         <td>{{ lot.onHand + lot.expiredUnits }}</td>
                         <td class="row-actions">
                             <button v-if="reviewer && availableUnits(lot)>0 && !lot.expiredUnits && lot.expirationDate>=localDate()" class="button button-secondary" @click="useInRequest(lot)">Use in Request</button>
-                            <button class="text-button" @click="showHistory(lot)">History</button>
-                            <details v-if="reviewer" class="inventory-actions"><summary>Inventory actions</summary><div>
+                            <details class="inventory-actions"><summary>More</summary><div>
+                                <button class="text-button" @click="showHistory(lot)">History</button>
+                                <template v-if="reviewer">
                                 <button class="text-button" @click="start('reconcile',lot)">Reconcile count</button>
                                 <button v-if="availableUnits(lot)>0" class="text-button" @click="start('deduct',lot)">Deduct stock</button>
                                 <button v-if="lot.expiredUnits>0" class="text-button" @click="start('destroy',lot)">Record destruction</button>
                                 <button class="text-button" @click="start('correct-expiry',lot)">Correct expiration</button>
+                                </template>
                             </div></details>
                         </td>
                     </tr>
@@ -400,7 +404,7 @@ async function upload(kind: string, event: Event) {
                 :key="r.id"
             >
                 <strong>{{ agencyName(r.agency_id) }} · {{ r.formula_name }}</strong> · {{ formulaFormLabel(r.form) }} {{ r.flavor }} ·
-                {{ r.reported_units }} units · expires {{ formatDisplayDate(r.expiration_date) }}
+                {{ r.reported_units }} unit(s) · expires {{ formatDisplayDate(r.expiration_date) }}
                 <p>Counted {{ r.counted_at }} by {{ r.confirmer_name }}. {{ r.reason }}</p>
                 <button
                     v-if="reviewer"
@@ -419,7 +423,7 @@ async function upload(kind: string, event: Event) {
             >
                 <strong>{{ agencyName(f.agency_id) }} · {{ f.formula_name }}</strong> · {{ formulaFormLabel(f.form) }} {{ f.flavor }}
                 <p>
-                    {{ f.expected_units }} anticipated units · confirmation due {{ formatDisplayDate(f.due_date) }} · {{ f.status }}
+                    {{ f.expected_units }} anticipated unit(s) · confirmation due {{ formatDisplayDate(f.due_date) }} · {{ f.status }}
                     <span v-if="f.actual_units !== null"> · actual {{ f.actual_units }}</span>
                 </p>
                 <button
@@ -491,7 +495,7 @@ async function upload(kind: string, event: Event) {
                         v-for="h in history"
                         :key="h.id"
                     >
-                        {{ h.created_at }} · {{ h.kind }} · {{ h.quantity }} units
+                        {{ h.created_at }} · {{ h.kind }} · {{ h.quantity }} unit(s)
                         <p>
                             Usable {{ h.on_hand }} / reserved {{ h.reserved }} / expired {{ h.expired_units }} ·
                             {{ h.request_ref }}
@@ -561,10 +565,10 @@ async function upload(kind: string, event: Event) {
                     <p v-if="selected && ['review', 'reconcile'].includes(modal)">
                         Current usable count {{ selected.onHand }}, reserved {{ selected.reserved }}, expired
                         {{ selected.expiredUnits }}. Inventory version {{ selected.version }}. Proposed change:
-                        {{ proposedCountChange }} units.
+                        {{ proposedCountChange }} unit(s).
                     </p>
                     <p v-if="modal === 'review'">
-                        Reported count: {{ report.reported_units }} units, expires {{ formatDisplayDate(report.expiration_date) }}. Confirm
+                        Reported count: {{ report.reported_units }} unit(s), expires {{ formatDisplayDate(report.expiration_date) }}. Confirm
                         this replaces the current balance for this formula, form, flavor and expiration.
                     </p>
                     <label v-if="['new', 'review', 'confirm', 'correct-expiry'].includes(modal)"
@@ -622,7 +626,7 @@ async function upload(kind: string, event: Event) {
                                 required /></label></template
                     >
                     <p v-if="modal === 'destroy'">
-                        Confirm these units have been physically destroyed and the Formula Destruction Form completed.
+                        Confirm these unit(s) have been physically destroyed and the Formula Destruction Form completed.
                     </p>
                     <div
                         v-if="modal === 'review'"
@@ -665,15 +669,36 @@ async function upload(kind: string, event: Event) {
     </div>
 </template>
 <style scoped>
-.surplus-views {display:flex;gap:8px;flex-wrap:wrap;margin:20px 0;}
+.legacy-transfer {box-sizing:border-box;display:grid;gap:8px;width:100%;max-width:var(--surplus-content-width);border:1px solid var(--line);border-radius:8px;padding:12px 16px;margin:8px 0;font-size:13px;line-height:1.4;}
+.legacy-transfer-heading {display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:8px 16px;}
+.legacy-transfer-heading > div > strong {display:block;font-size:14px;line-height:1.4;}
+.legacy-transfer-status {font-size:12px;line-height:1.4;font-weight:600;border:1px solid var(--line);border-radius:12px;padding:2px 8px;white-space:nowrap;}
+.legacy-transfer-route {display:block;color:var(--muted);font-size:13px;line-height:1.4;margin-top:4px;}
+.legacy-transfer-route b {font-weight:600;}
+.legacy-transfer-summary {display:grid;grid-template-columns:72px 144px 136px minmax(0,1fr);gap:4px 16px;font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums;}
+.legacy-transfer-summary strong {color:var(--text);}
+.legacy-transfer p {margin:12px 0 0;font-size:13px;line-height:1.4;}
+.legacy-transfer summary {font-size:13px;line-height:1.4;color:var(--muted);cursor:pointer;width:fit-content;}
+@media(max-width:800px){.legacy-transfer-summary{grid-template-columns:repeat(2,minmax(0,1fr));}}
+
+.surplus-views {display:flex;gap:8px;flex-wrap:wrap;margin:16px 0 24px;}
+.surplus-views .button,.surplus-filters .button {font-size:13px;line-height:1.4;padding:6px 12px;min-height:32px;}
+.surplus-page h2 {font-size:20px;line-height:1.4;margin:0 0 12px;}
+#transfers {margin-top:0;}
+#transfers > p {font-size:13px;line-height:1.4;margin:0 0 16px;}
 .surplus-views .button[aria-pressed="true"] {background:var(--purple);color:white;border-color:var(--purple);}
 .inventory-actions {margin-top:8px;font-size:13px;}
 .inventory-actions summary {cursor:pointer;}
 .inventory-actions > div {display:grid;gap:10px;padding-top:10px;justify-items:start;}
 
 .surplus-page {
-    padding: 28px;
+    --surplus-content-width:1120px;
+    padding: 24px;
 }
+.surplus-page :deep(.transfer-labels) {margin-top:12px;padding-top:12px;}
+.surplus-page :deep(.transfer-labels h4) {font-size:13px;line-height:1.4;margin:0 0 8px;}
+.surplus-page :deep(.transfer-labels p) {font-size:13px;line-height:1.4;margin:8px 0 0;}
+.surplus-page :deep(.pickup-instructions) {font-size:13px;line-height:1.4;padding:12px;margin-top:12px;}
 .page-heading,
 .surplus-filters,
 .dialog-actions {
@@ -684,8 +709,27 @@ async function upload(kind: string, event: Event) {
 }
 .surplus-filters {
     justify-content: start;
-    margin: 20px 0;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin: 12px 0 8px;
 }
+.surplus-filters label {margin:0;gap:4px;font-size:13px;}
+.surplus-filters input {width:240px;}
+.surplus-filters :is(input,select) {padding:6px 10px;font-size:13px;line-height:1.4;min-height:32px;box-sizing:border-box;}
+.inventory-table-wrap {max-width:var(--surplus-content-width);}
+.inventory-table {width:auto;min-width:880px;font-size:13px;}
+.inventory-table :is(th,td) {padding:10px 12px;vertical-align:middle;line-height:1.4;}
+.inventory-table th {font-size:12px;white-space:nowrap;line-height:1.3;}
+.inventory-table th abbr {text-decoration:none;}
+.inventory-table :is(th,td):nth-child(n+3):nth-child(-n+7) {text-align:right;font-variant-numeric:tabular-nums;}
+.inventory-table .inventory-product {min-width:230px;max-width:310px;}
+.inventory-product strong {display:block;font-size:14px;line-height:1.4;}
+.inventory-product span {display:block;color:var(--muted);font-size:12px;line-height:1.4;margin-top:4px;}
+.inventory-available {font-weight:700;}
+.inventory-table .row-actions {min-width:165px;white-space:nowrap;}
+.inventory-table .row-actions .button {margin:0 8px 0 0;padding:6px 10px;font-size:13px;line-height:1.4;min-height:32px;}
+.inventory-table .inventory-actions {display:inline-block;margin:0;position:relative;font-size:13px;line-height:1.4;}
+.inventory-table .inventory-actions > div {min-width:150px;padding:10px 0 2px;white-space:normal;}
 label {
     display: grid;
     gap: 6px;

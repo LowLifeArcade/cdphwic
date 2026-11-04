@@ -51,13 +51,13 @@ const transfers = computed(() => data.value?.transfers.filter((t: any) => t.requ
             v-for="m in movements"
             :key="m.id"
         >
-            {{ m.kind }} · {{ m.quantity }} units · {{ m.formula_name }} · Agency {{ m.agency_id }} · {{ m.created_at }}
+            {{ m.kind }} · {{ m.quantity }} unit(s) · {{ m.formula_name }} · Agency {{ m.agency_id }} · {{ m.created_at }}
         </p>
         <p
             v-for="t in transfers"
             :key="t.id"
         >
-            Transfer {{ t.quantity }} units · {{ t.formula_name }} · Agency {{ t.source_agency_id }} →
+            Transfer {{ t.quantity }} unit(s) · {{ t.formula_name }} · Agency {{ t.source_agency_id }} →
             {{ t.destination_agency_id }} · {{ t.status }}
         </p>
         <NuxtLink
