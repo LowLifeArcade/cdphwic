@@ -3,10 +3,11 @@ import {shipmentFeatureFlags} from '~/../shared/featureFlags';
 import {caseBalance,shipmentListSummary} from '~/../shared/shipmentCaseTracking';
 import {localDate} from '~/../shared/surplus';
 import {deliveryCategory,filterAndSortRequests,type DeliveryFilter,type RequestTagFilter,type RequestListSort} from '~/../shared/requestListFilters';
-import {formatEtaDate,formatDisplayDate} from '~/../shared/requestPresentation';
+import {formulaOrders,allFormulasSpecialOrder,hasFormulaAwaitingEta} from '~/../shared/formulaOrders';
+import {formatEtaDate,formatDisplayDate,formulaFormLabel} from '~/../shared/requestPresentation';
 import {formatShippingAddress} from '~/../shared/shipping';
 import {canEditSubmission,hasPendingMoreInfo} from '~/../shared/requestEditing';
-import type { ProductForm, ProductRecord, RequestRecord } from '~/../shared/domain';
+import type { ProductRecord, RequestRecord } from '~/../shared/domain';
 const props = defineProps<{ requests: RequestRecord[]; products: ProductRecord[] }>();
 const identity = useState<'admin' | 'agency' | 'internal'>('demo-identity', () => 'admin');
 const selected = ref<RequestRecord | null>(null);
@@ -15,6 +16,14 @@ const route=useRoute();
 const openError=ref('');
 const listToday=ref(localDate());
 function shippingSummary(request:RequestRecord) {return shipmentListSummary(request,listToday.value);}
+function etaLabel(request:RequestRecord){
+    const summary=shippingSummary(request);
+    if(summary.nextEta)return formatEtaDate(summary.nextEta);
+    if(request.status==='complete' && summary.total && !summary.awaiting)return 'All deliveries closed';
+    if((request.approved===true||request.status==='approved') && hasFormulaAwaitingEta(request,true))return 'ETA pending';
+    if(hasFormulaAwaitingEta(request))return '';
+    return summary.total&&!summary.awaiting?'All deliveries closed':'';
+}
 const shipmentFeatures=shipmentFeatureFlags(useRuntimeConfig().public);
 function needsCaseReview(request:RequestRecord) {if(!shipmentFeatures.caseReconciliation&&!shipmentFeatures.potentialOverDelivery)return false;const balance=caseBalance(request);return (shipmentFeatures.caseReconciliation&&(balance.excess>0||balance.needsApproval))||(shipmentFeatures.potentialOverDelivery&&balance.projectedExcess>0);}
 const deliveryFilter = ref<DeliveryFilter>('all');
@@ -28,12 +37,6 @@ const nextRequest = computed(() => selectedIndex.value < 0 ? undefined : visible
 const { data: agencyData } = await useFetch('/api/agencies');
 const agencies = computed(() => agencyData.value?.agencies ?? []);
 const members = computed(() => agencyData.value?.members ?? []);
-
-function formatForm(form?: ProductForm) {
-    return form ? {powder:'Powder', concentrate:'Liquid Concentrate', 'ready-to-feed':'RTF'}[form] ?? '—' : '—';
-}
-
-
 
 const selectedAgency = computed(() => agencies.value.find((agency) => agency.id === selected.value?.agencyId));
 const selectedRep = computed(() => members.value.find((member) => member.id === selected.value?.agencyMemberId));
@@ -86,18 +89,20 @@ watch([()=>route.query.request,()=>props.requests],async([id],[previousId])=>{co
                 ><strong>{{ agencies.find(agency => agency.id === request.agencyId)?.name || '—' }}</strong
                 ><small>{{ formatShippingAddress(request.shipping) }}</small></span
             >
-            <span
-                ><strong>{{ request.productName }}</strong
-                ><small>{{ formatForm(request.productForm ?? request.requestedFormulas?.[0]?.productForm) }}</small></span
-            >
+            <span class="request-formula-list">
+                <span v-for="(formula,index) in formulaOrders(request)" :key="index" class="request-formula-item">
+                    <strong>{{formula.productName}}</strong>
+                    <small>{{formulaFormLabel(formula.productForm)}}<template v-if="formula.flavor"> · {{formula.flavor}}</template><span v-if="formula.specialOrder" class="status-badge status-special-order formula-order-tag">Special Order</span></small>
+                </span>
+            </span>
             <span
                 ><span class="request-status-tags">
-                    <StatusBadge v-if="!hasPendingMoreInfo(request) && !(request.specialOrder && request.status==='in_progress')" :status="request.status" />
+                    <StatusBadge v-if="!hasPendingMoreInfo(request) && !(allFormulasSpecialOrder(request) && request.status==='in_progress')" :status="request.status" />
                 <span v-if="hasPendingMoreInfo(request)" class="request-tag more-info-status" title="Returned to Local Agency for more information" role="status">Pending More Info</span>
                     <span v-if="identity!=='agency' && needsCaseReview(request)" class="request-tag shipping-issue-tag">Case Count Review</span>
                     <span v-if="deliveryCategory(request) === 'issue'" class="request-tag shipping-issue-tag">Shipping Issue</span>
                     <span
-                        v-if="request.specialOrder"
+                        v-if="allFormulasSpecialOrder(request)"
                         class="status-badge status-special-order"
                     >Special Order</span>
                     <span
@@ -107,7 +112,7 @@ watch([()=>route.query.request,()=>props.requests],async([id],[previousId])=>{co
                 </span><small v-if="shippingSummary(request).total">{{shippingSummary(request).received}} of {{shippingSummary(request).total}} fully received<template v-if="shippingSummary(request).replaced"> · {{shippingSummary(request).replaced}} replaced</template></small><small>Submitted {{ formatDisplayDate(request.submissionDate) }}</small></span
             >
             <span class="shipment-eta-cell" :title="shippingSummary(request).nextEta ? `Next ETA: ${formatEtaDate(shippingSummary(request).nextEta)}` : undefined">
-                <strong :class="{'eta-overdue':shippingSummary(request).overdue}">{{shippingSummary(request).nextEta ? formatEtaDate(shippingSummary(request).nextEta) : shippingSummary(request).total && !shippingSummary(request).awaiting ? 'All deliveries closed' : (request.approved === true || request.status === 'approved') && !request.specialOrder ? 'ETA pending' : ''}}</strong>
+                <strong :class="{'eta-overdue':shippingSummary(request).overdue}">{{etaLabel(request)}}</strong>
                 <small v-if="shippingSummary(request).awaiting">{{shippingSummary(request).awaiting}} awaiting receipt<template v-if="shippingSummary(request).overdue"> · Overdue</template></small>
             </span>
             <span class="row-arrow">›</span>
@@ -144,6 +149,11 @@ watch([()=>route.query.request,()=>props.requests],async([id],[previousId])=>{co
 </template>
 
 <style scoped>
+.request-row > .request-formula-list {gap:12px;}
+.request-formula-item {display:block;min-width:0;max-width:100%;}
+.request-formula-item strong {display:block;white-space:normal;overflow-wrap:anywhere;line-height:1.4;}
+.request-formula-item small {display:flex;align-items:center;flex-wrap:wrap;gap:4px 6px;min-width:0;max-width:100%;white-space:normal;overflow-wrap:anywhere;line-height:1.4;}
+.request-formula-item .formula-order-tag {flex-shrink:0;}
 .request-list-controls {margin-bottom:16px;gap:12px;}
 .request-list-controls label {display:flex;align-items:center;gap:8px;}
 .shipment-eta-cell small {white-space:normal;overflow:visible;text-overflow:clip;}

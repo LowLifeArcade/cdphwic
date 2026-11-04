@@ -151,6 +151,7 @@ export interface RequestRecord {
     trackingNumbers?: Array<{ number: string; carrier: 'fedex' | 'dhl' | 'ups' | 'agency' | 'gso' }>;
     deliveryStatus?: string;
     specialOrder?: boolean;
+    formulaOrders?: import('./formulaOrders').FormulaOrder[];
     approved?: boolean;
     unitsIssued?: number;
     benefitIssuanceStartMonth?: string;

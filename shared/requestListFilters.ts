@@ -1,3 +1,4 @@
+import {hasSpecialOrder} from './formulaOrders';
 import {shipmentQuantities} from './shipmentQuantities';
 import {shipmentListSummary} from './shipmentCaseTracking';
 import type {RequestRecord} from './domain';
@@ -16,7 +17,7 @@ export function deliveryCategory(request:RequestRecord):Exclude<DeliveryFilter,'
     return rows.some(row=>canConfirmShipment(request,row)) ? 'awaiting' : 'none';
 }
 export function filterAndSortRequests(requests:RequestRecord[],delivery:DeliveryFilter,tag:RequestTagFilter,sort:RequestListSort):RequestRecord[] {
-    return requests.filter(r=>(delivery==='all'||deliveryCategory(r)===delivery||delivery==='partial' && requestShipments(r).some(row=>{const q=shipmentQuantities(r,row);return q.receivedUnits>0 && q.missingUnits>0;})) && (tag==='all'||tag==='new' && r.requestKind!=='extension'||tag==='extension' && r.requestKind==='extension'||tag==='approved' && r.approved||tag==='special' && r.specialOrder)).sort((a,b)=>{
+    return requests.filter(r=>(delivery==='all'||deliveryCategory(r)===delivery||delivery==='partial' && requestShipments(r).some(row=>{const q=shipmentQuantities(r,row);return q.receivedUnits>0 && q.missingUnits>0;})) && (tag==='all'||tag==='new' && r.requestKind!=='extension'||tag==='extension' && r.requestKind==='extension'||tag==='approved' && r.approved||tag==='special' && hasSpecialOrder(r))).sort((a,b)=>{
         if (sort==='participant') return a.participantName.localeCompare(b.participantName)||a.id-b.id;
         if (sort==='submitted') return (b.submissionDate ?? '').localeCompare(a.submissionDate ?? '')||a.id-b.id;
         return (shipmentListSummary(a,'').nextEta || '9999').localeCompare(shipmentListSummary(b,'').nextEta || '9999')||a.id-b.id;

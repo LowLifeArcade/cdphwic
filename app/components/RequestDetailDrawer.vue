@@ -5,6 +5,7 @@ import type {Directive} from 'vue';
 import {blankClinicAddress,validateShipping} from '~/../shared/shipping';
 const vTrackingSize:Directive<HTMLTextAreaElement>={mounted:fitTrackingNumbers,updated:fitTrackingNumbers};
 function fitTrackingNumbers(input:HTMLTextAreaElement){input.style.height='auto';input.style.height=`${input.scrollHeight+input.offsetHeight-input.clientHeight}px`;}
+import {formulaOrders,allFormulasSpecialOrder} from '~/../shared/formulaOrders';
 import {formulaAuthorizations,formatIssuanceMonth,validateFormulaAuthorizations} from '~/../shared/formulaAuthorizations';
 import {transferAuthorizationError,transferEntryQuantity,transferCatalogUnitsPerCase,matchingTransferLot} from '~/../shared/requestTransfers';
 import type {SurplusLot} from '~/../shared/surplus';
@@ -469,7 +470,21 @@ function changeStatus(event: Event) {
         return;
     }
 
-    save({status,specialOrder:false});
+    save({status,...(allFormulasSpecialOrder(props.request??{})?{specialOrder:false}:{})});
+}
+
+async function changeFormulaOrder(index:number,value:string){
+    if(!props.request)return;
+    const rows=formulaOrders(props.request);
+    if(!rows[index])return;
+    rows[index]!.specialOrder=value==='special';
+    const requestId=props.request.id;
+    const issuanceDraft=copyRequest(draft as RequestRecord);
+    await save({formulaOrders:rows});
+    if(!error.value && props.request?.id===requestId){
+        draft.formulaAuthorizations=issuanceDraft.formulaAuthorizations;
+        draft.nextSteps=issuanceDraft.nextSteps;
+    }
 }
 
 async function chooseReviewDecision(action:'approve'|'deny'|'reopen') {
@@ -623,10 +638,10 @@ async function saveAgencyUpdate() {
         </div>
         <div class="drawer-status">
             <div class="request-status-tags">
-                <StatusBadge v-if="!hasPendingMoreInfo(request) && !(request.specialOrder && (draft.status ?? request.status)==='in_progress')" :status="draft.status ?? request.status" />
+                <StatusBadge v-if="!hasPendingMoreInfo(request) && !(allFormulasSpecialOrder(request) && (draft.status ?? request.status)==='in_progress')" :status="draft.status ?? request.status" />
                 <span v-if="hasPendingMoreInfo(request)" class="request-tag more-info-status" title="Returned to Local Agency for more information" role="status">Request More Info</span>
                 <span
-                    v-if="request.specialOrder"
+                    v-if="allFormulasSpecialOrder(request)"
                     class="status-badge status-special-order"
                 >Special Order</span>
                 <span
@@ -838,7 +853,7 @@ async function saveAgencyUpdate() {
             <label class="field-label">
                 Status
                 <select
-                    :value="draft.specialOrder ? 'special_order' : draft.status"
+                    :value="allFormulasSpecialOrder(request) ? 'special_order' : draft.status"
                     class="form-input"
                     :disabled="saving"
                     @change="changeStatus"
@@ -853,6 +868,14 @@ async function saveAgencyUpdate() {
                     >Shipped</option>
                 </select>
             </label>
+            <div class="formula-order-controls">
+                <label v-for="(formula,index) in formulaOrders(request)" :key="index" class="field-label">
+                    {{formula.productName}} · {{formulaFormLabel(formula.productForm)}}<template v-if="formula.flavor"> · {{formula.flavor}}</template>
+                    <select class="form-input" :value="formula.specialOrder?'special':'standard'" :aria-label="`Formula ${index+1} Order Type`" :disabled="saving" @change="changeFormulaOrder(index,($event.target as HTMLSelectElement).value)">
+                        <option value="standard">Standard</option><option value="special">Special Order</option>
+                    </select>
+                </label>
+            </div>
             <fieldset class="cdph-fields" :disabled="draft.status === 'denied'">
             <div class="issuance-heading"><h3>Issuance</h3></div>
             <fieldset v-for="(authorization,formulaIndex) in draft.formulaAuthorizations" :key="`${authorization.productName}-${authorization.productForm}-${authorization.flavor}`" class="authorization-formula">
@@ -1136,6 +1159,7 @@ async function saveAgencyUpdate() {
 .review-decision-section .review-decision-edit {color:#fff;text-decoration:underline;text-underline-offset:3px;}
 .review-decision-section .review-approved,.review-decision-section .review-denied {margin:0 0 12px;}
 .more-info-compose-actions {display:flex;flex-wrap:wrap;gap:8px;}
+.formula-order-controls {display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin:12px 0 20px;}
 .review-decision-buttons {display:flex;flex-wrap:wrap;gap:10px;}
 .review-decision-buttons .button.review-decision-selected,
 .review-decision-buttons .button.review-decision-selected:hover {background:#002595;border-color:#002595;color:#fff;}

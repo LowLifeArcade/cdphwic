@@ -712,9 +712,10 @@ select.form-input {
 .request-table-head,
 .request-row {
     display: grid;
-    grid-template-columns: 1.4fr 1.2fr 1.2fr 1.8fr 1fr 24px;
-    min-width: 950px;
-    gap: 15px;
+    grid-template-columns: minmax(150px, 1.2fr) minmax(140px, 1fr) minmax(220px, 1.65fr) minmax(190px, 1.4fr) minmax(110px, .85fr) 16px;
+    min-width: 1000px;
+    column-gap: 20px;
+    row-gap: 12px;
     align-items: center;
     padding: 13px 18px;
 }

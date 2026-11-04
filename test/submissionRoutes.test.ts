@@ -310,3 +310,26 @@ it('lets reviewers revise saved decisions directly while retaining denial and is
  const pending=(await put(event as never)).request;expect(pending.status).toBe('needs_info');expect(pending.moreInfoRequests?.at(-1)?.notes).toBe('Please supply the signature.');
  event.identity='agency';event.body={reviewDecision:{action:'approve'},revision:pending.revision};await expect(put(event as never)).rejects.toMatchObject({statusCode:403});
 });
+
+it('persists reviewer-only formula order types and preserves them when saving issuance',async()=>{
+ const event=await fixture();
+ const {updateSubmittedRequest}=await import('../server/utils/submittedRequests');
+ const {formulaOrders}=await import('../shared/formulaOrders');
+ let before=(await submittedRequest(event.db,1000998,getDemoUser('agency')))!;
+ before=await updateSubmittedRequest(event.db,before,{status:'in_progress',approved:true,requestedFormulas:[{productName:'First',productForm:'powder',ouncesPrescribed:10},{productName:'Second',productForm:'ready-to-feed',ouncesPrescribed:20}]});
+ const rows=formulaOrders(before);rows[1]!.specialOrder=true;
+ event.body={revision:before.revision??0,formulaOrders:rows};
+ await expect(put(event as never)).rejects.toMatchObject({statusCode:403});
+ event.identity='internal';
+ const mixed=(await put(event as never)).request;
+ expect(mixed.specialOrder).toBe(false);expect(mixed.status).toBe('in_progress');expect(mixed.formulaOrders).toEqual(rows);
+ event.body={revision:before.revision??0,formulaOrders:rows};await expect(put(event as never)).rejects.toMatchObject({statusCode:409});
+ event.body={revision:mixed.revision??0,formulaOrders:[rows[0],rows[0]]};await expect(put(event as never)).rejects.toMatchObject({statusCode:400});
+ event.body={revision:mixed.revision??0,formulaOrders:rows.map(row=>({...row,specialOrder:true}))};
+ const all=(await put(event as never)).request;expect(all.specialOrder).toBe(true);
+ event.body={revision:all.revision??0,formulaAuthorizations:rows.map(row=>({...row,approvedCases:2,benefitIssuances:[{month:'2026-11',quantity:10}]}))};
+ const issuance=(await put(event as never)).request;expect(issuance.specialOrder).toBe(true);expect(issuance.formulaOrders?.every(row=>row.specialOrder)).toBe(true);
+ const loaded=await submittedRequest(event.db,1000998,getDemoUser('agency'));expect(loaded?.formulaOrders).toEqual(all.formulaOrders);
+ event.body={revision:issuance.revision??0,specialOrder:false};
+ const standard=(await put(event as never)).request;expect(standard.formulaOrders?.some(row=>row.specialOrder)).toBe(false);
+});

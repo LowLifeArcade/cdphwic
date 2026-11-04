@@ -1,3 +1,4 @@
+import {formulaOrders,allFormulasSpecialOrder,validateFormulaOrders} from '../../../shared/formulaOrders';
 import {normalizeShipping,validateShipping} from '../../../shared/shipping';
 import {resolveShipping} from '../../utils/clinicStore';
 import {validateFormulaAuthorizations} from '../../../shared/formulaAuthorizations';
@@ -90,11 +91,26 @@ export default defineEventHandler(async (event) => {
         updateRequestRecord(id,request);
         return {request,demo:true};
     }
+    if(updates.formulaOrders!==undefined || updates.specialOrder!==undefined){
+        if(!isReviewer(user))throw createError({statusCode:403,statusMessage:'Only CDPH/WIC or Admin can change formula order types.'});
+        if(updates.revision!==(previous.revision??0))throw createError({statusCode:409,statusMessage:'Request details changed. Reload before changing formula order types.'});
+        const current={...previous,...updates};
+        if(updates.formulaOrders!==undefined){
+            const message=validateFormulaOrders(current,updates.formulaOrders);
+            if(message)throw createError({statusCode:400,statusMessage:message});
+        } else {
+            if(typeof updates.specialOrder!=='boolean')throw createError({statusCode:400,statusMessage:'Select a valid order type.'});
+            updates.formulaOrders=formulaOrders(current).map(row=>({...row,specialOrder:updates.specialOrder!}));
+        }
+        updates.specialOrder=allFormulasSpecialOrder({...current,formulaOrders:updates.formulaOrders});
+        if(updates.status===undefined && (previous.status==='opened'||previous.status==='approved'))updates.status='in_progress';
+    }
     if(updates.formulaAuthorizations!==undefined){
         if(!isReviewer(user))throw createError({statusCode:403,statusMessage:'Only CDPH/WIC or Admin can edit issuance.'});
         const errors=validateFormulaAuthorizations(updates.formulaAuthorizations);if(errors.length)throw createError({statusCode:400,statusMessage:errors[0]});
         updates.status='in_progress';
-        updates.specialOrder=false;
+        updates.specialOrder=previous.formulaOrders?.length || updates.formulaOrders?.length
+            ? allFormulasSpecialOrder({...previous,...updates}) : false;
     }
     if (!isReviewer(user) && (updates.shipmentDrafts!==undefined || updates.shipments!==undefined || updates.approvedCases!==undefined))
         throw createError({statusCode:403,statusMessage:'Only CDPH/WIC or Admin can edit shipment plans or Approved Cases.'});

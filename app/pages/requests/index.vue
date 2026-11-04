@@ -9,6 +9,7 @@ const repId = ref('');
 const { data: agencyData } = await useFetch('/api/agencies');
 const { data: productData } = await useFetch('/api/products');
 const { data, error, status, refresh } = await useFetch('/api/requests', {
+    deep: true,
     headers: computed(() => ({ 'x-demo-user': identity.value })),
     query: computed(() => ({
         scope: scope.value,
