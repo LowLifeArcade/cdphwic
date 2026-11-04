@@ -75,6 +75,16 @@ const agencySaveStatus = ref<'idle' | 'saving' | 'saved' | 'failed'>('idle');
 const reportingSurplus = ref(false);
 const showMoreInfoComposer=ref(false);
 const editingReviewDecision=ref(false);
+const approvingReviewDecision=ref(false);
+const selectedReviewDecision=computed(()=>{
+    if(pendingDecision.value==='denied')return 'deny';
+    if(approvingReviewDecision.value)return 'approve';
+    if(showMoreInfoComposer.value)return 'request-info';
+    if(!editingReviewDecision.value)return null;
+    if(props.request?.status==='denied')return 'deny';
+    if(props.request?.status==='needs_info')return 'request-info';
+    return hasSavedReviewDecision.value?'approve':null;
+});
 const hasSavedReviewDecision=computed(()=>props.request?.status==='denied'||props.request?.status==='approved'||props.request?.approved===true);
 const denialReason=ref('');
 const authorizationSection=ref<HTMLElement>();
@@ -477,7 +487,9 @@ function changeStatus(event: Event) {
 
 async function chooseReviewDecision(action:'approve'|'deny'|'reopen') {
     if(action==='deny'){denialReason.value=props.request?.denialReason??'';pendingDecision.value='denied';return;}
-    await save({reviewDecision:{action}} as Partial<RequestRecord>);
+    approvingReviewDecision.value=action==='approve';
+    try {await save({reviewDecision:{action}} as Partial<RequestRecord>);}
+    finally {approvingReviewDecision.value=false;}
     if(!error.value){cancelReviewDecisionEdit();await nextTick();(action==='approve'?authorizationSection.value:reviewDecisionSection.value)?.scrollIntoView({block:'start',behavior:'smooth'});}
 }
 async function confirmDenial() {
@@ -808,9 +820,9 @@ async function saveAgencyUpdate() {
                 <div class="detail-grid"><div class="detail-field-wide"><span>Reason for Denial</span><strong class="preserve-lines">{{request.denialReason || request.staffNotes || '—'}}</strong></div></div>
             </template>
             <div v-if="canStaffEdit && (!hasSavedReviewDecision || editingReviewDecision)" class="review-decision-buttons">
-                <button class="button button-secondary" type="button" :disabled="saving" @click="openMoreInfo">Request More Info</button>
-                <button class="button button-primary" type="button" :disabled="saving" @click="chooseReviewDecision('approve')">Approve</button>
-                <button class="button button-ghost" type="button" :disabled="saving" @click="chooseReviewDecision('deny')">Deny</button>
+                <button class="button button-secondary" :class="{'review-decision-selected':selectedReviewDecision==='request-info'}" :aria-pressed="selectedReviewDecision==='request-info'" type="button" :disabled="saving" @click="openMoreInfo">Request More Info</button>
+                <button class="button button-secondary" :class="{'review-decision-selected':selectedReviewDecision==='approve'}" :aria-pressed="selectedReviewDecision==='approve'" type="button" :disabled="saving" @click="chooseReviewDecision('approve')">Approve</button>
+                <button class="button button-secondary" :class="{'review-decision-selected':selectedReviewDecision==='deny'}" :aria-pressed="selectedReviewDecision==='deny'" type="button" :disabled="saving" @click="chooseReviewDecision('deny')">Deny</button>
             </div>
         </section>
         <section v-if="showMoreInfoComposer || request.moreInfoRequests?.some(note=>!note.deletedAt)" :id="`more-info-${request.id}`" class="detail-section more-info-section">
@@ -935,20 +947,12 @@ async function saveAgencyUpdate() {
                     {{ staffSaveStatus === 'saving' ? 'Saving…' : staffSaveStatus === 'saved' ? 'Saved' : 'Save failed' }}
                 </span>
             </div>
-            <a
-                v-if="canGenerateAuthorizationForm(request)"
-                class="button button-secondary"
-                :href="`/api/requests/${request.id}/authorization-form.pdf`"
-                target="_blank"
-                rel="noreferrer"
-            >
-                Download Authorization Form
-            </a>
             </fieldset>
         </section>
 
+        <RequestIssuanceSummary v-if="identity==='agency'" :request="request" :products="products" />
+
         <section ref="shippingSection" class="detail-section" tabindex="-1">
-            <div v-if="canGenerateAuthorizationForm(request)" class="authorization-downloads"><a class="button button-secondary" :href="`/api/requests/${request.id}/authorization-form.pdf`" target="_blank" rel="noopener">Print / Download Authorization</a><details v-if="(request.authorizationVersions?.length??0)>1"><summary>Earlier authorization versions</summary><p v-for="version in request.authorizationVersions" :key="version.id"><a :href="`/api/requests/${request.id}/authorization-form.pdf?version=${version.id}`" target="_blank" rel="noopener">{{formatDisplayDate(submissionDateOnly(version.sentAt))}} · Shipment {{version.shipmentIndex+1}}</a></p></details></div>
             <div class="section-heading"><h3>Shipping</h3><button v-if="canStaffEdit && request.status!=='denied' && editingSection!=='shipping'" class="text-button" type="button" @click="startEditing('shipping')">Edit</button></div>
             <form v-if="editingSection==='shipping' && draft.shipping" class="shipping-detail-editor" @submit.prevent="saveFormSection">
                 <div class="form-grid compact-form-grid">
@@ -1095,6 +1099,7 @@ async function saveAgencyUpdate() {
                 </span>
             </div>
         </section>
+            <div v-if="canGenerateAuthorizationForm(request)" class="authorization-downloads detail-section"><a class="button button-secondary" :href="`/api/requests/${request.id}/authorization-form.pdf`" target="_blank" rel="noopener">Print / Download Authorization</a><details v-if="(request.authorizationVersions?.length??0)>1"><summary>Earlier authorization versions</summary><p v-for="version in request.authorizationVersions" :key="version.id"><a :href="`/api/requests/${request.id}/authorization-form.pdf?version=${version.id}`" target="_blank" rel="noopener">{{formatDisplayDate(submissionDateOnly(version.sentAt))}} · Shipment {{version.shipmentIndex+1}}</a></p></details></div>
         </section>
         <hr v-if="canCollapseReviewDetails && request.status!=='denied'" class="cdph-section-divider" />
 
@@ -1145,6 +1150,8 @@ async function saveAgencyUpdate() {
 .review-decision-section .review-approved,.review-decision-section .review-denied {margin:0 0 12px;}
 .more-info-compose-actions {display:flex;flex-wrap:wrap;gap:8px;}
 .review-decision-buttons {display:flex;flex-wrap:wrap;gap:10px;}
+.review-decision-buttons .button.review-decision-selected,
+.review-decision-buttons .button.review-decision-selected:hover {background:#002595;border-color:#002595;color:#fff;}
 .review-approved {color:#007888;font-weight:600;}
 .review-denied {color:#AE5018;}
 .review-decision-section > .button {margin-top:12px;}
