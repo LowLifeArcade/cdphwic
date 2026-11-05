@@ -13,7 +13,7 @@ export function surplusShipmentDraft(request:Partial<RequestRecord>,lot:SurplusL
  if(request.status==='incomplete'||request.status==='denied'||!matchingTransferLot(request,lot)||lot.expirationDate<localDate()||lot.expiredUnits>0||lot.onHand<=lot.reserved)return;
  const formula=shipmentFormulaOptions(request).find(f=>normalizeVariantText(f.productName)===normalizeVariantText(lot.formulaName)&&formKey(f.productForm??'')===formKey(lot.form)&&normalizeVariantText(f.flavor??'')===normalizeVariantText(lot.flavor));
  if(!formula)return;
- return {shipmentSource:'agency',sourceAgencyId:lot.agencyId,sourceLotId:lot.id,shipmentFormula:{...formula},unitsPerCase:transferCatalogUnitsPerCase(lot,products),casesShipped:0,looseUnitsShipped:0,eta:'',carrier:'gso',trackingNumbers:[]};
+ return {shipmentSource:'agency',sourceAgencyId:lot.agencyId,sourceClinicId:lot.clinicId,sourceClinicName:lot.clinicName,sourceClinicAddress:lot.clinicAddress,sourceLotId:lot.id,shipmentFormula:{...formula},unitsPerCase:transferCatalogUnitsPerCase(lot,products),casesShipped:0,looseUnitsShipped:0,eta:'',carrier:'gso',trackingNumbers:[]};
 }
 export function matchingTransferLot(request:Partial<RequestRecord>,lot:SurplusLot):boolean{
  return lot.agencyId!==request.agencyId && requestFormulas(request).some(formula=>normalizeVariantText(formula.otherFormulaName||formula.productName)===normalizeVariantText(lot.formulaName)&&formKey(formula.productForm??'')===formKey(lot.form)&&normalizeVariantText(formula.flavor??'')===normalizeVariantText(lot.flavor));

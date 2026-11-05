@@ -2,7 +2,7 @@
 import {unreadOutgoingMessage,sameRequestOutsideMessages,type MoreInfoConversation} from '~/../shared/moreInfoMessages';
 import {shipmentFormulaOptions,shipmentFormulaKey,resolveShipmentFormula,shipmentFormulaLabel,requireShipmentFormula} from '~/../shared/shipmentFormulas';
 import type {Directive} from 'vue';
-import {blankClinicAddress,validateShipping} from '~/../shared/shipping';
+import {formatClinic,type ClinicRecord,blankClinicAddress,validateShipping} from '~/../shared/shipping';
 const vTrackingSize:Directive<HTMLTextAreaElement>={mounted:fitTrackingNumbers,updated:fitTrackingNumbers};
 function fitTrackingNumbers(input:HTMLTextAreaElement){input.style.height='auto';input.style.height=`${input.scrollHeight+input.offsetHeight-input.clientHeight}px`;}
 import {formulaOrders,allFormulasSpecialOrder} from '~/../shared/formulaOrders';
@@ -158,15 +158,20 @@ const canEditOriginal= computed(()=>!!props.request&&canEditSubmission(props.req
 const {data:distributorData}=await useFetch<{distributors:import('~/../shared/distributors').DistributorProfile[]}>('/api/distributors',{headers:computed(()=>({'x-demo-user':identity.value})),watch:[identity]});
 function selectDistributor(shipment:import('~/../shared/requestShipments').RequestShipment,id:string){shipment.distributorId=id||undefined;const found=distributorData.value?.distributors.find(d=>d.id===id);shipment.supplier=found?.name??'';}
 const {data:transferAgencies}=await useFetch('/api/agencies');
-const {data:transferStock,refresh:refreshTransferStock}=await useFetch<{lots:SurplusLot[]}>('/api/surplus',{headers:computed(()=>({'x-demo-user':identity.value})),server:false,watch:[identity]});
+const {data:transferStock,refresh:refreshTransferStock,error:transferStockError}=await useFetch<{lots:SurplusLot[]}>('/api/surplus',{headers:computed(()=>({'x-demo-user':identity.value})),server:false,watch:[identity]});
+const shipmentClinicFilters=reactive<Record<string,string>>({});
+function clinicFilter(row:RequestShipment){return shipmentClinicFilters[String(draft.shipments?.indexOf(row))]??'';}
+function setClinicFilter(row:RequestShipment,value:string){shipmentClinicFilters[String(draft.shipments?.indexOf(row))]=value;row.sourceLotId=undefined;}
+function transferClinicChoices(row:RequestShipment){return Array.from(new Map((transferStock.value?.lots??[]).filter(l=>l.agencyId===row.sourceAgencyId&&l.clinicId).map(l=>[l.clinicId!,l.clinicName||'Clinic'])).entries());}
+const {data:surplusClinics,error:surplusClinicError}=await useFetch<{clinics:ClinicRecord[]}>(()=>`/api/agencies/${props.request?.agencyId??0}/clinics`,{headers:computed(()=>({'x-demo-user':identity.value})),server:false});
 const shipmentFormulaChoices=computed(()=>props.request?shipmentFormulaOptions(props.request):[]);
 function shipmentFormula(row:RequestShipment){return row.shipmentFormula??(props.request?resolveShipmentFormula(props.request,row):undefined);}
 function shipmentRequest(row:RequestShipment):Partial<RequestRecord>{const formula=props.request?resolveShipmentFormula(props.request,row):undefined;return formula?{...props.request,requestedFormulas:[{...formula,productForm:formula.productForm!,ouncesPrescribed:0}]}:props.request??{};}
 function shipmentCatalogSize(row:RequestShipment){const formula=shipmentFormula(row);return formula?transferCatalogUnitsPerCase({formulaName:formula.productName,form:formula.productForm??'',flavor:formula.flavor},props.products??[])??((props.request?.requestedFormulas?.length??1)<=1?selectedProduct.value?.unitsPerCase:undefined):undefined;}
 function selectShipmentFormula(row:RequestShipment,key:string){const formula=shipmentFormulaChoices.value.find(f=>shipmentFormulaKey(f)===key);row.shipmentFormula=formula?{...formula}:undefined;row.sourceLotId=undefined;row.unitsPerCase=shipmentCatalogSize(row);syncTransferQuantity(row);}
-function transferLots(row:RequestShipment){return (transferStock.value?.lots??[]).filter(lot=>props.request&&lot.agencyId===row.sourceAgencyId&&matchingTransferLot(shipmentRequest(row),lot)&&lot.expirationDate>=localDate()&&!lot.expiredUnits&&lot.onHand>lot.reserved);}
-function changeShipmentSource(row:RequestShipment,value:string){row.shipmentSource=value==='agency'?'agency':'distributor';row.sourceAgencyId=undefined;row.sourceLotId=undefined;row.distributorId=undefined;row.supplier=undefined;row.unitsToTransfer=undefined;row.casesShipped=0;row.looseUnitsShipped=0;if(value==='agency')row.carrier='gso';}
-function selectTransferLot(row:RequestShipment){const lot=transferLots(row).find(l=>l.id===row.sourceLotId);if(lot&&props.request)row.shipmentFormula=requireShipmentFormula(props.request,{transferFormulaName:lot.formulaName,transferForm:lot.form,transferFlavor:lot.flavor});row.unitsPerCase=lot?transferCatalogUnitsPerCase(lot,props.products??[]):undefined;syncTransferQuantity(row);}
+function transferLots(row:RequestShipment){return (transferStock.value?.lots??[]).filter(lot=>props.request&&lot.agencyId===row.sourceAgencyId&&(!clinicFilter(row)||(clinicFilter(row)==='unspecified'?!lot.clinicId:lot.clinicId===clinicFilter(row)))&&matchingTransferLot(shipmentRequest(row),lot)&&lot.expirationDate>=localDate()&&!lot.expiredUnits&&lot.onHand>lot.reserved);}
+function changeShipmentSource(row:RequestShipment,value:string){row.shipmentSource=value==='agency'?'agency':'distributor';row.sourceAgencyId=undefined;setClinicFilter(row,'');row.sourceClinicId=undefined;row.sourceClinicName=undefined;row.sourceClinicAddress=undefined;row.sourceLotId=undefined;row.distributorId=undefined;row.supplier=undefined;row.unitsToTransfer=undefined;row.casesShipped=0;row.looseUnitsShipped=0;if(value==='agency')row.carrier='gso';}
+function selectTransferLot(row:RequestShipment){const lot=transferLots(row).find(l=>l.id===row.sourceLotId);if(lot){row.sourceClinicId=lot.clinicId;row.sourceClinicName=lot.clinicName;row.sourceClinicAddress=lot.clinicAddress;}if(lot&&props.request)row.shipmentFormula=requireShipmentFormula(props.request,{transferFormulaName:lot.formulaName,transferForm:lot.form,transferFlavor:lot.flavor});row.unitsPerCase=lot?transferCatalogUnitsPerCase(lot,props.products??[]):undefined;syncTransferQuantity(row);}
 function syncTransferQuantity(row:RequestShipment){if(row.shipmentSource==='agency')row.unitsToTransfer=transferEntryQuantity(row);}
 function transferDraftFields(row:RequestShipment,size?:number){
  if(row.shipmentSource!=='agency'||row.transferId||!Number.isSafeInteger(size)||!size)return {};
@@ -254,6 +259,7 @@ watch(
         shipmentDeleteNotice.value='';
         shippingSaveStatus.value = 'idle';
         reportingSurplus.value = false;
+        Object.keys(shipmentClinicFilters).forEach(key=>delete shipmentClinicFilters[key]);
     },
     { immediate: true },
 );
@@ -266,6 +272,7 @@ watch([()=>props.request?.id,()=>transferRoute.query.surplusLot,()=>transferStoc
  const row=lot?surplusShipmentDraft(request,lot,props.products):undefined;
  shortcutApplied.value=key;
  if(!row){shortcutNotice.value='This stock is no longer available for this request. Select another available surplus lot.';return;}
+ Object.keys(shipmentClinicFilters).forEach(key=>delete shipmentClinicFilters[key]);
  const rows=draft.shipments??[];
  const existing=rows.findIndex(r=>r.sourceLotId===lotId&&!r.transferId&&!r.etaSentAt);
  if(existing<0){const blank=rows.findIndex((r,i)=>canDeleteShipment({...request,shipmentDrafts:rows},i)&&!r.shipmentSource&&!r.supplier&&!r.shipmentFormula&&!r.transferId&&!r.etaSentAt&&!r.sourceLotId&&!r.distributorId&&!r.casesShipped&&!r.trackingNumbers.length&&!r.eta&&!r.issue&&!r.receiptConfirmed&&r.receivedCases===undefined&&r.receivedUnits===undefined);if(blank>=0)rows[blank]=row;else rows.push(row);draft.shipments=rows;}
@@ -425,7 +432,7 @@ function saveFormSection() {
 }
 
 function addSurplusItem() {
-    draft.surplusItems = [...(draft.surplusItems ?? []), { productName: '', units: 0, expirationDate: '' }];
+    draft.surplusItems = [...(draft.surplusItems ?? []), { productName: '', units: 0, expirationDate: '', clinicId: props.request?.shipping?.clinicId }];
 }
 
 function startSurplusReport() {
@@ -1023,10 +1030,11 @@ async function saveAgencyUpdate() {
                         <div v-else class="detail-field-wide"><span>Formula</span><strong>{{shipmentFormulaLabel(shipmentFormula(shipment))}}</strong></div>
                         <label v-if="editingShipmentPlan(shipment,index)" class="field-label detail-field-wide">Shipment Source<select :value="shipment.shipmentSource??''" class="form-input" :aria-label="`Shipment ${index+1} Source`" :disabled="saving || !!requestShipments(request)[index]?.etaSentAt" @change="changeShipmentSource(shipment,($event.target as HTMLSelectElement).value)"><option disabled value="">Select source</option><option value="distributor">Distributor</option><option value="agency">Local Agency Transfer</option></select></label>
                         <template v-if="shipment.shipmentSource==='agency'">
-                            <label v-if="editingShipmentPlan(shipment,index)" class="field-label">Sending Local Agency<select :value="shipment.sourceAgencyId??''" class="form-input" :aria-label="`Shipment ${index+1} Sending Local Agency`" :disabled="saving" @change="shipment.sourceAgencyId=Number(($event.target as HTMLSelectElement).value);shipment.sourceLotId=undefined"><option value="">Select Local Agency</option><option v-for="item in transferAgencies?.agencies.filter(a=>a.id!==request.agencyId)" :key="item.id" :value="item.id">{{item.name}}</option></select></label>
-                            <div v-else><span>From</span><strong>{{shipment.sourceAgencyName}}</strong></div>
+                            <label v-if="editingShipmentPlan(shipment,index)" class="field-label">Sending Local Agency<select :value="shipment.sourceAgencyId??''" class="form-input" :aria-label="`Shipment ${index+1} Sending Local Agency`" :disabled="saving" @change="shipment.sourceAgencyId=Number(($event.target as HTMLSelectElement).value);setClinicFilter(shipment,'');shipment.sourceClinicId=undefined;shipment.sourceClinicName=undefined;shipment.sourceClinicAddress=undefined"><option value="">Select Local Agency</option><option v-for="item in transferAgencies?.agencies.filter(a=>a.id!==request.agencyId)" :key="item.id" :value="item.id">{{item.name}}</option></select></label>
+                            <div v-else><span>From</span><strong>{{shipment.sourceAgencyName}}<br />{{shipment.sourceClinicName || 'Clinic not specified'}}</strong><small v-if="shipment.sourceClinicAddress">Pickup: {{formatClinic(shipment.sourceClinicAddress)}}</small></div>
                             <div><span>To</span><strong>{{agency?.name}}</strong></div>
-                            <label v-if="editingShipmentPlan(shipment,index)" class="field-label detail-field-wide">Available Surplus<select v-model="shipment.sourceLotId" class="form-input" @change="selectTransferLot(shipment)" :aria-label="`Shipment ${index+1} Available Surplus`" :disabled="saving || !shipment.sourceAgencyId"><option :value="undefined">Select matching surplus</option><option v-for="lot in transferLots(shipment)" :key="lot.id" :value="lot.id">{{lot.formulaName}} · {{lot.form}}<template v-if="lot.flavor"> · {{lot.flavor}}</template> · {{lot.onHand-lot.reserved}} units · Expires {{formatDisplayDate(lot.expirationDate)}}</option></select><small v-if="shipment.sourceAgencyId && !transferLots(shipment).length">No matching, available surplus at this agency.</small></label>
+                            <p v-if="editingShipmentPlan(shipment,index) &amp;&amp; transferStockError" class="form-error" role="alert">Surplus clinics and inventory could not be loaded. Try again before choosing stock.</p><label v-if="editingShipmentPlan(shipment,index)" class="field-label">Source clinic<select :value="clinicFilter(shipment)" class="form-input" :disabled="saving || !shipment.sourceAgencyId" @change="setClinicFilter(shipment,($event.target as HTMLSelectElement).value)"><option value="">All clinics</option><option value="unspecified">Clinic not specified</option><option v-for="[id,name] in transferClinicChoices(shipment)" :key="id" :value="id">{{name}}</option></select></label>
+                            <label v-if="editingShipmentPlan(shipment,index)" class="field-label detail-field-wide">Available Surplus<select v-model="shipment.sourceLotId" class="form-input" @change="selectTransferLot(shipment)" :aria-label="`Shipment ${index+1} Available Surplus`" :disabled="saving || !shipment.sourceAgencyId"><option :value="undefined">Select matching surplus</option><option v-for="lot in transferLots(shipment)" :key="lot.id" :value="lot.id">{{lot.clinicName || 'Clinic not specified'}} · {{lot.formulaName}} · {{lot.form}}<template v-if="lot.flavor"> · {{lot.flavor}}</template> · {{lot.onHand-lot.reserved}} unit(s) · Expires {{formatDisplayDate(lot.expirationDate)}}</option></select><small v-if="shipment.sourceAgencyId && !transferLots(shipment).length">No matching, available surplus at this agency.</small></label>
                             <div v-else class="detail-field-wide"><span>Transferred Formula</span><strong>{{shipment.transferFormulaName}} · {{formulaFormLabel(shipment.transferForm)}}<template v-if="shipment.transferFlavor"> · {{shipment.transferFlavor}}</template> · Expires {{formatDisplayDate(shipment.transferExpiration)}}</strong></div>
                         </template>
                         <template v-else>
@@ -1104,9 +1112,11 @@ async function saveAgencyUpdate() {
                         <span>Use one row per formula and expiration date.</span>
                     </div>
                 </div>
+                <p v-if="surplusClinicError" role="alert">Storage clinics could not be loaded. Try again before selecting a clinic.</p>
                 <div v-for="(item, index) in draft.surplusItems" :key="index" class="surplus-entry-row">
                     <label class="field-label">Formula<input v-model="item.productName" class="form-input" /></label>
                     <label class="field-label">Unit(s)<input v-model.number="item.units" class="form-input" type="number" min="0" /></label>
+                    <label class="field-label">Storage clinic<select v-model="item.clinicId" class="form-input"><option :value="undefined">Clinic not specified</option><option v-for="c in surplusClinics?.clinics" :key="c.id" :value="c.id">{{c.clinicName}}</option></select></label>
                     <label class="field-label">Expiration<input v-model="item.expirationDate" class="form-input" type="date" /></label>
                     <button class="icon-button" type="button" aria-label="Remove surplus row" @click="requestRemoveSurplusItem(index)">×</button>
                 </div>
@@ -1218,4 +1228,6 @@ async function saveAgencyUpdate() {
 .more-info-compose .form-textarea {min-height:78px;margin:0;}
 .more-info-actions {display:flex;flex-wrap:wrap;gap:12px;margin:8px 0;}
 .more-info-delete-confirmation {padding:10px 12px;border:1px solid var(--line);border-radius:8px;margin-top:8px;}
+.surplus-entry-row {grid-template-columns:minmax(0,1fr) 80px minmax(120px,1fr) 140px 32px;}
+@media(max-width:700px){.surplus-entry-row{grid-template-columns:minmax(0,1fr) 80px;}.surplus-entry-row .icon-button{justify-self:end;}}
 </style>

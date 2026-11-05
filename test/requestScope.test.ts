@@ -51,9 +51,18 @@ const internalMember: SessionUser = {
 const admin: SessionUser = { id: 1, name: 'Admin', role: 'admin', memberType: 'internal' };
 
 describe('request scope rules', () => {
-    it('shows all agency requests and limits My Requests to the logged-in rep', () => {
+    it('shows all requests from the same agency in both request views for every agency user', () => {
         expect(filterRequestsByScope(requests, agencyMember, 'all').map((item) => item.id)).toEqual([1, 2]);
-        expect(filterRequestsByScope(requests, agencyMember, 'mine').map((item) => item.id)).toEqual([1]);
+        expect(filterRequestsByScope(requests, agencyMember, 'mine').map((item) => item.id)).toEqual([1, 2]);
+        const colleague={...agencyMember,id:101,agencyMemberId:101};
+        expect(filterRequestsByScope(requests, colleague, 'mine').map((item) => item.id)).toEqual([1, 2]);
+        expect(filterRequestsByScope(requests, {...agencyMember,agencyId:11,agencyMemberId:102}, 'mine').map((item) => item.id)).toEqual([3]);
+    });
+
+    it('does not expose another agency through filters or a missing agency membership', () => {
+        expect(filterRequestsByScope(requests,agencyMember,'mine',{agencyId:11})).toEqual([]);
+        expect(filterRequestsByScope(requests,{...agencyMember,agencyId:undefined},'all')).toEqual([]);
+        expect(filterRequestsByScope(requests,agencyMember,'mine',{repId:101}).map(item=>item.id)).toEqual([2]);
     });
 
     it('shows handled agencies and explicitly handled reps for internal staff', () => {

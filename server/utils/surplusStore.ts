@@ -1,4 +1,5 @@
 import type { SurplusReport, SurplusForecast, SurplusTransfer, SurplusMovement } from '../../shared/surplus';
+import {resolveSurplusClinic,decodeSurplusLot,surplusLotColumns} from './surplusClinicLocations';
 import { SEED_AGENCIES } from '../data/seed';
 import type { SessionUser } from '../../shared/domain';
 import {
@@ -6,13 +7,12 @@ import {
     isReviewer,
     localDate,
     validDate,
-    variantKey,
+    lotKey,
     type SurplusCommand,
     type SurplusLot,
     type SurplusVariant,
 } from '../../shared/surplus';
-const columns =
-    'id,agency_id AS agencyId,formula_name AS formulaName,form,flavor,expiration_date AS expirationDate,on_hand AS onHand,reserved,expired_units AS expiredUnits,version';
+const columns = surplusLotColumns;
 function fail(message: string) {
     throw Object.assign(new Error(message), { statusCode: 409 });
 }
@@ -26,24 +26,26 @@ export async function ensureSurplusLot(db: D1Database, agencyId: number, v: Surp
         !validDate(v.expirationDate)
     )
         fail('Agency, formula, form and valid expiration date are required.');
+    const clinic=await resolveSurplusClinic(db,agencyId,v.clinicId);
     await db
         .prepare(
-            'INSERT OR IGNORE INTO surplus_lots(id,agency_id,variant_key,formula_name,form,flavor,expiration_date) VALUES(?,?,?,?,?,?,?)',
+            'INSERT OR IGNORE INTO surplus_lots(id,agency_id,variant_key,formula_name,form,flavor,expiration_date,clinic_id,clinic_name,clinic_address) VALUES(?,?,?,?,?,?,?,?,?,?)',
         )
         .bind(
             crypto.randomUUID(),
             agencyId,
-            variantKey(v),
+            lotKey(v),
             v.formulaName.trim().replace(/\s+/g, ' '),
             v.form,
             v.flavor.trim().replace(/\s+/g, ' '),
             v.expirationDate,
+            clinic.clinicId??null,clinic.clinicName??null,clinic.clinicAddress?JSON.stringify(clinic.clinicAddress):null,
         )
         .run();
-    return (await db
+    return decodeSurplusLot((await db
         .prepare(`SELECT ${columns} FROM surplus_lots WHERE agency_id=? AND variant_key=?`)
-        .bind(agencyId, variantKey(v))
-        .first<SurplusLot>())!;
+        .bind(agencyId, lotKey(v))
+        .first<SurplusLot>())!);
 }
 export async function executeSurplusCommand(
     db: D1Database,
@@ -60,8 +62,9 @@ export async function executeSurplusCommand(
         return JSON.parse(prior.result);
     }
     if (c.kind !== 'expire') await expireSurplusLots(db, today);
-    const lot = await db.prepare(`SELECT ${columns} FROM surplus_lots WHERE id=?`).bind(c.lotId).first<SurplusLot>();
-    if (!lot) fail('Inventory lot not found.');
+    const stored = await db.prepare(`SELECT ${columns} FROM surplus_lots WHERE id=?`).bind(c.lotId).first<SurplusLot>();
+    if (!stored) fail('Inventory lot not found.');
+    const lot=decodeSurplusLot(stored!);
     const pending = "EXISTS(SELECT 1 FROM surplus_commands WHERE id=? AND status='pending')";
     const steps: D1PreparedStatement[] = [
         db
@@ -103,10 +106,13 @@ export async function executeSurplusCommand(
             [today, quantity, today, quantity],
         );
         if (c.reportId) {
+            const correctingClinic=c.clinicId!==undefined;
+            if(correctingClinic && c.clinicId!==(lot.clinicId??''))fail('Select the same storage clinic as the inventory lot.');
             guard(
-                "EXISTS(SELECT 1 FROM surplus_reports WHERE id=? AND status='pending' AND agency_id=? AND reported_units=? AND lower(formula_name)=lower(?) AND form=? AND lower(flavor)=lower(?) AND (expiration_date=? OR expiration_date=''))",
-                [c.reportId, lot!.agencyId, quantity, lot!.formulaName, lot!.form, lot!.flavor, lot!.expirationDate],
+                "EXISTS(SELECT 1 FROM surplus_reports WHERE id=? AND status='pending' AND agency_id=? AND reported_units=? AND lower(formula_name)=lower(?) AND form=? AND lower(flavor)=lower(?) AND (expiration_date=? OR expiration_date='') AND (COALESCE(clinic_id,'')=? OR ?=1))",
+                [c.reportId, lot!.agencyId, quantity, lot!.formulaName, lot!.form, lot!.flavor, lot!.expirationDate,lot.clinicId??'',correctingClinic?1:0],
             );
+            if(correctingClinic)steps.push(db.prepare(`UPDATE surplus_reports SET clinic_id=?,clinic_name=?,clinic_address=? WHERE id=? AND ${pending}`).bind(lot.clinicId??null,lot.clinicName??null,lot.clinicAddress?JSON.stringify(lot.clinicAddress):null,c.reportId,c.operationId));
             steps.push(
                 db
                     .prepare(
@@ -261,7 +267,7 @@ export async function executeSurplusCommand(
         ]);
         update('expiration_date=?,variant_key=?,on_hand=on_hand+expired_units,expired_units=0', [
             c.expirationDate,
-            variantKey({ ...lot!, expirationDate: c.expirationDate! }),
+            lotKey({ ...lot!, expirationDate: c.expirationDate! }),
         ]);
     } else fail('Unknown inventory action.');
     const result = { operationId: c.operationId, lotId: c.lotId, ...(transferId ? { transferId } : {}) };
@@ -303,7 +309,7 @@ export async function expireSurplusLots(db: D1Database, today = localDate()) {
         .prepare(`SELECT ${columns} FROM surplus_lots WHERE expiration_date<? AND on_hand>0`)
         .bind(today)
         .all<SurplusLot>();
-    for (const lot of rows.results) {
+    for (const lot of rows.results.map(decodeSurplusLot)) {
         await executeSurplusCommand(
             db,
             { id: 0, role: 'admin', memberType: 'internal' } as SessionUser,
@@ -334,7 +340,7 @@ export async function listSurplus(db: D1Database, user: SessionUser) {
                     ? db.prepare(`SELECT ${columns} FROM surplus_lots`)
                     : db.prepare(`SELECT ${columns} FROM surplus_lots WHERE agency_id=?`).bind(user.agencyId ?? -1)
             ).all<SurplusLot>()
-        ).results,
+        ).results.map(decodeSurplusLot),
         reports: (await query('surplus_reports').all<SurplusReport>()).results,
         forecasts: (await query('surplus_forecasts').all<SurplusForecast>()).results,
         transfers: (

@@ -29,6 +29,6 @@ describe('dashboard navigation visibility', () => {
         ]);
         expect(labels).not.toContain('Reports');
         expect(labels).not.toContain('McKesson Log');
-        expect(labels).toContain('My Requests');
+        expect(labels).toContain('My Agency Requests');
     });
 });

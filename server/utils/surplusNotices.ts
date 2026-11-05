@@ -26,7 +26,7 @@ export async function listSurplusNotices(db: D1Database, user: SessionUser) {
     const today = localDate();
     const rows = await db
         .prepare(
-            `SELECT n.*,l.formula_name,l.form,l.flavor,l.on_hand,l.reserved,l.expired_units,CASE WHEN r.notice_id IS NULL THEN 0 ELSE 1 END AS is_read FROM surplus_notices n JOIN surplus_lots l ON l.id=n.lot_id LEFT JOIN surplus_notice_reads r ON r.notice_id=n.id AND r.user_id=? WHERE (?=1 OR n.agency_id=?) AND n.expiration_date=l.expiration_date ORDER BY n.created_at DESC`,
+            `SELECT n.*,l.formula_name,l.form,l.flavor,l.on_hand,l.reserved,l.expired_units,l.clinic_id,l.clinic_name,CASE WHEN r.notice_id IS NULL THEN 0 ELSE 1 END AS is_read FROM surplus_notices n JOIN surplus_lots l ON l.id=n.lot_id LEFT JOIN surplus_notice_reads r ON r.notice_id=n.id AND r.user_id=? WHERE (?=1 OR n.agency_id=?) AND n.expiration_date=l.expiration_date ORDER BY n.created_at DESC`,
         )
         .bind(user.id, isReviewer(user) ? 1 : 0, user.agencyId ?? -1)
         .all<any>();

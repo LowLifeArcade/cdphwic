@@ -13,16 +13,13 @@ export function filterRequestsByScope(
     let scoped = requests;
 
     if (user.role !== 'admin') {
-        if (user.memberType === 'agency' && user.agencyId) {
+        if (user.memberType === 'agency') {
+            if (!user.agencyId) return [];
             scoped = scoped.filter((request) => request.agencyId === user.agencyId);
         }
 
         if (user.memberType === 'internal' && user.handledAgencyIds) {
             scoped = scoped.filter((request) => user.handledAgencyIds?.includes(request.agencyId));
-        }
-
-        if (scope === 'mine' && user.memberType === 'agency' && user.agencyMemberId) {
-            scoped = scoped.filter((request) => request.agencyMemberId === user.agencyMemberId);
         }
 
         if (scope === 'mine' && user.memberType === 'internal') {

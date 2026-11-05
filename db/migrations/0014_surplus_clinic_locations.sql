@@ -1,0 +1,13 @@
+ALTER TABLE surplus_lots ADD COLUMN clinic_id TEXT;
+ALTER TABLE surplus_lots ADD COLUMN clinic_name TEXT;
+ALTER TABLE surplus_lots ADD COLUMN clinic_address TEXT;
+ALTER TABLE surplus_reports ADD COLUMN clinic_id TEXT;
+ALTER TABLE surplus_reports ADD COLUMN clinic_name TEXT;
+ALTER TABLE surplus_reports ADD COLUMN clinic_address TEXT;
+ALTER TABLE surplus_forecasts ADD COLUMN clinic_id TEXT;
+ALTER TABLE surplus_forecasts ADD COLUMN clinic_name TEXT;
+ALTER TABLE surplus_forecasts ADD COLUMN clinic_address TEXT;
+ALTER TABLE surplus_transfers ADD COLUMN source_clinic_id TEXT;
+ALTER TABLE surplus_transfers ADD COLUMN source_clinic_name TEXT;
+ALTER TABLE surplus_transfers ADD COLUMN source_clinic_address TEXT;
+CREATE INDEX surplus_lots_clinic ON surplus_lots(agency_id,clinic_id);

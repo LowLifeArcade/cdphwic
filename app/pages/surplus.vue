@@ -2,8 +2,10 @@
 import {formatDisplayDate,formulaFormLabel} from '~/../shared/requestPresentation';
 import { isReviewer, availableUnits, localDate, daysRemaining, variantKey } from '~/../shared/surplus';
 import {surplusShipmentDraft} from '~/../shared/requestTransfers';
+import {formatClinic,type ClinicAddress,type ClinicRecord} from '~/../shared/shipping';
 import type {RequestRecord} from '~/../shared/domain';
 import type { SurplusLot } from '~/../shared/surplus';
+function pickupAddress(json?:string|null){try{const value=JSON.parse(json??'null') as ClinicAddress|null;return value?formatClinic(value):'';}catch{return '';}}
 const route = useRoute();
 const view=ref<'inventory'|'transfers'|'counts'>(route.query.transfer?'transfers':'inventory');
 watch(()=>route.query.transfer,id=>{if(id)view.value='transfers';});
@@ -40,12 +42,16 @@ watch([()=>route.query.transfer,()=>data.value?.transfers],async([selected])=>{
 const reviewer = computed(() => data.value?.user && isReviewer(data.value.user));
 const search = ref(String(route.query.formula ?? ''));
 const agency = ref(String(route.query.agency ?? ''));
+const clinic = ref('');
+const clinicChoices=computed(()=>Array.from(new Map(((data.value?.lots??[]) as SurplusLot[]).filter(l=>!agency.value||String(l.agencyId)===agency.value).filter(l=>l.clinicId).map(l=>[l.clinicId!,l.clinicName||'Clinic'])).entries()));
+watch(agency,()=>{clinic.value='';});
 const message = ref('');
 const busy = ref(false);
 const lots = computed(() =>
     ((data.value?.lots ?? []) as SurplusLot[]).filter(
         (l) =>
             (!agency.value || String(l.agencyId) === agency.value) &&
+            (!clinic.value || (clinic.value==='unspecified'?!l.clinicId:l.clinicId===clinic.value)) &&
             (!search.value ||
                 `${l.formulaName} ${l.flavor} ${l.form}`.toLowerCase().includes(search.value.toLowerCase())),
     ),
@@ -59,6 +65,7 @@ const forecast = ref<any>();
 const transfer = ref<any>();
 const history = ref<any[]>([]);
 const input = reactive({
+    clinicId: '',
     quantity: 0,
     reason: '',
     requestRef: String(route.query.request ?? ''),
@@ -73,6 +80,9 @@ const input = reactive({
     dueDate: localDate(),
     trackingReference: '',
 });
+const clinicAgency=computed(()=>modal.value==='review'?report.value?.agency_id:modal.value==='confirm'?forecast.value?.agency_id:selected.value?.agencyId??input.agencyId);
+const {data:formClinics,error:clinicError,status:clinicStatus}=await useFetch<{clinics:ClinicRecord[]}>(()=>`/api/agencies/${clinicAgency.value}/clinics`,{headers,server:false});
+watch(()=>input.agencyId,()=>{if(['new','forecast'].includes(modal.value))input.clinicId='';});
 function start(kind: string, lot?: SurplusLot, item?: any) {
     operationId.value = crypto.randomUUID();
     modal.value = kind;
@@ -82,6 +92,7 @@ function start(kind: string, lot?: SurplusLot, item?: any) {
     transfer.value = undefined;
     message.value = '';
     Object.assign(input, {
+        clinicId: lot?.clinicId ?? item?.clinic_id ?? '',
         quantity: 0,
         reason: '',
         requestRef: String(route.query.request ?? ''),
@@ -95,7 +106,7 @@ function start(kind: string, lot?: SurplusLot, item?: any) {
         report.value = item;
         selected.value = ((data.value?.lots as SurplusLot[]) ?? []).find(
             (l) =>
-                l.agencyId === item.agency_id &&
+                l.agencyId === item.agency_id && (l.clinicId??'')===(item.clinic_id??'') &&
                 variantKey(l) ===
                     variantKey({
                         formulaName: item.formula_name,
@@ -126,7 +137,7 @@ const resolvingCount = ref(false);
 const countReady = ref(false);
 let countLookup = 0;
 watch(
-    () => [modal.value, report.value?.id, input.expirationDate] as const,
+    () => [modal.value, report.value?.id, input.expirationDate, input.clinicId] as const,
     async ([kind, reportId, date]) => {
         const lookup = ++countLookup;
         countReady.value = false;
@@ -142,7 +153,7 @@ watch(
             if (lookup !== countLookup) return;
             selected.value = snapshot.lots.find(
                 (l) =>
-                    l.agencyId === currentReport.agency_id &&
+                    l.agencyId === currentReport.agency_id && (l.clinicId??'')===input.clinicId &&
                     variantKey(l) ===
                         variantKey({
                             formulaName: currentReport.formula_name,
@@ -176,17 +187,18 @@ async function run(work: () => Promise<unknown>) {
 }
 async function submit() {
     await run(async () => {
+        if(modal.value==='assign-clinic'){if(!selected.value||!input.clinicId)throw new Error('Select a clinic.');return $fetch(`/api/surplus/lots/${selected.value.id}/clinic`,{method:'POST',headers:headers.value,body:{clinicId:input.clinicId,expectedVersion:selected.value.version}});}
         if (modal.value === 'forecast')
             return $fetch('/api/surplus/forecasts', {
                 method: 'POST',
                 headers: headers.value,
-                body: { ...input, expectedUnits: Number(input.quantity), agencyId: Number(input.agencyId) },
+                body: { ...input, clinicId: input.clinicId || undefined, expectedUnits: Number(input.quantity), agencyId: Number(input.agencyId) },
             });
         if (modal.value === 'confirm')
             return $fetch('/api/surplus/forecasts', {
                 method: 'POST',
                 headers: headers.value,
-                body: { ...input, quantity: Number(input.quantity), forecastId: forecast.value.id },
+                body: { ...input, clinicId: input.clinicId, quantity: Number(input.quantity), forecastId: forecast.value.id },
             });
         let lot = selected.value;
         if (modal.value === 'new' || modal.value === 'review')
@@ -196,12 +208,13 @@ async function submit() {
                 body: report.value
                     ? {
                           agencyId: report.value.agency_id,
+                          clinicId: input.clinicId || undefined,
                           formulaName: report.value.formula_name,
                           form: report.value.form,
                           flavor: report.value.flavor,
                           expirationDate: input.expirationDate,
                       }
-                    : { ...input, agencyId: Number(input.agencyId) },
+                    : { ...input, clinicId: input.clinicId || undefined, agencyId: Number(input.agencyId) },
             });
         if (!lot) throw new Error('Inventory lot not found.');
         return $fetch('/api/surplus/commands', {
@@ -224,6 +237,7 @@ async function submit() {
                 destinationAgencyId: Number(input.destinationAgencyId),
                 expectedVersion: selected.value?.version ?? 0,
                 reportId: report.value?.id,
+                ...(modal.value === 'review' ? {clinicId: input.clinicId} : {}),
                 transferId: transfer.value?.id,
                 trackingReference: input.trackingReference,
             },
@@ -311,7 +325,7 @@ async function upload(kind: string, event: Event) {
                 <header class="legacy-transfer-heading"><div><strong>{{t.formula_name}} {{t.form==='concentrate'?'Concentrate':formulaFormLabel(t.form)}}</strong>
                 <span class="legacy-transfer-route"><b>{{agencyName(t.source_agency_id)}}</b> → <b>{{agencyName(t.destination_agency_id)}}</b></span></div><span class="legacy-transfer-status">{{t.status==='received'?'Confirmed Receipt':t.status==='reserved'?'Transfer Requested':t.status==='shipped'?'In Transit':t.status==='cancelled'?'Cancelled':'Blocked — expired'}}</span></header>
                 <div class="legacy-transfer-summary"><span><strong>{{t.quantity}}</strong> unit(s)</span><span>Expires {{formatDisplayDate(t.expiration_date)}}</span><span>ETA {{t.eta?formatDisplayDate(t.eta):'Pending'}}</span><span v-if="t.request_ref">Ref {{t.request_ref}}</span></div>
-                <details><summary>Transfer details</summary>
+                <p>{{t.source_clinic_name || 'Clinic not specified'}}</p><details><summary>Transfer details</summary><p v-if="pickupAddress(t.source_clinic_address)">Pickup: {{pickupAddress(t.source_clinic_address)}}</p>
                     <p v-if="t.tracking_reference">Tracking: {{t.tracking_reference}}</p>
                     <p>This transfer was recorded without a linked request. {{reviewer?'Cancel an unshipped reservation and reserve it again in the request’s Shipment section to use agency confirmation and shipping labels.':'Contact CDPH/WIC about this transfer.'}}</p>
                     <button v-if="reviewer && t.status==='reserved'" class="button" @click="start('cancel', data?.lots.find((l: any) => l.id === t.source_lot_id) as SurplusLot, t)">Cancel reservation</button>
@@ -336,7 +350,7 @@ async function upload(kind: string, event: Event) {
                         {{ a.name }}
                     </option>
                 </select></label
-            ><button
+            ><label>Clinic<select v-model="clinic"><option value="">All clinics</option><option value="unspecified">Clinic not specified</option><option v-for="[id,name] in clinicChoices" :key="id" :value="id">{{name}}</option></select></label><button
                 class="button"
                 @click="refresh()"
             >
@@ -368,7 +382,7 @@ async function upload(kind: string, event: Event) {
                     >
                         <td class="inventory-product">
                             <strong>{{ lot.formulaName }} {{ lot.form === 'concentrate' ? 'Concentrate' : formulaFormLabel(lot.form) }}</strong>
-                            <span><template v-if="lot.flavor">{{ lot.flavor }} · </template>{{ agencyName(lot.agencyId) }}</span>
+                            <span><template v-if="lot.flavor">{{ lot.flavor }} · </template>{{ agencyName(lot.agencyId) }}</span><span>{{lot.clinicName || 'Clinic not specified'}}</span>
                         </td>
                         <td>{{ formatDisplayDate(lot.expirationDate) }}</td>
                         <td>{{ lot.onHand }}</td>
@@ -379,7 +393,7 @@ async function upload(kind: string, event: Event) {
                         <td class="row-actions">
                             <button v-if="reviewer && availableUnits(lot)>0 && !lot.expiredUnits && lot.expirationDate>=localDate()" class="button button-secondary" @click="useInRequest(lot)">Use in Request</button>
                             <details class="inventory-actions"><summary>More</summary><div>
-                                <button class="text-button" @click="showHistory(lot)">History</button>
+                                <button class="text-button" @click="showHistory(lot)">History</button><button v-if="!lot.clinicId &amp;&amp; !lot.reserved &amp;&amp; reviewer" class="text-button" @click="start('assign-clinic',lot)">Assign Clinic</button>
                                 <template v-if="reviewer">
                                 <button class="text-button" @click="start('reconcile',lot)">Reconcile count</button>
                                 <button v-if="availableUnits(lot)>0" class="text-button" @click="start('deduct',lot)">Deduct stock</button>
@@ -405,7 +419,7 @@ async function upload(kind: string, event: Event) {
             >
                 <strong>{{ agencyName(r.agency_id) }} · {{ r.formula_name }}</strong> · {{ formulaFormLabel(r.form) }} {{ r.flavor }} ·
                 {{ r.reported_units }} unit(s) · expires {{ formatDisplayDate(r.expiration_date) }}
-                <p>Counted {{ r.counted_at }} by {{ r.confirmer_name }}. {{ r.reason }}</p>
+                <p>{{r.clinic_name || 'Clinic not specified'}}</p><p>Counted {{ r.counted_at }} by {{ r.confirmer_name }}. {{ r.reason }}</p>
                 <button
                     v-if="reviewer"
                     class="button"
@@ -423,7 +437,7 @@ async function upload(kind: string, event: Event) {
             >
                 <strong>{{ agencyName(f.agency_id) }} · {{ f.formula_name }}</strong> · {{ formulaFormLabel(f.form) }} {{ f.flavor }}
                 <p>
-                    {{ f.expected_units }} anticipated unit(s) · confirmation due {{ formatDisplayDate(f.due_date) }} · {{ f.status }}
+                    {{f.clinic_name || 'Clinic not specified'}} · {{ f.expected_units }} anticipated unit(s) · confirmation due {{ formatDisplayDate(f.due_date) }} · {{ f.status }}
                     <span v-if="f.actual_units !== null"> · actual {{ f.actual_units }}</span>
                 </p>
                 <button
@@ -465,6 +479,7 @@ async function upload(kind: string, event: Event) {
                     {{
                         (
                             {
+                                'assign-clinic': 'Assign Clinic',
                                 new: 'Record physical count',
                                 review: 'Reconcile reported count',
                                 forecast: 'Anticipated surplus',
@@ -482,7 +497,7 @@ async function upload(kind: string, event: Event) {
                 </h2>
                 <p v-if="selected">
                     {{ selected.formulaName }} · {{ selected.form }} {{ selected.flavor }} ·
-                    {{ agencyName(selected.agencyId) }}
+                    {{ agencyName(selected.agencyId) }} · {{selected.clinicName || 'Clinic not specified'}}
                 </p>
                 <p
                     v-if="message"
@@ -550,6 +565,8 @@ async function upload(kind: string, event: Event) {
                             </select></label
                         ><label>Flavor (if applicable)<input v-model="input.flavor" /></label
                     ></template>
+                    <label v-if="['new','forecast','review','confirm','assign-clinic'].includes(modal)">{{modal==='confirm'?'Actual storage clinic':'Storage clinic'}}<select v-model="input.clinicId" :required="modal==='assign-clinic'" :disabled="clinicStatus==='pending'"><option value="">Clinic not specified</option><option v-for="c in formClinics?.clinics" :key="c.id" :value="c.id">{{c.clinicName}}</option></select></label>
+                    <p v-if="clinicError &amp;&amp; ['new','forecast','review','confirm','assign-clinic'].includes(modal)" role="alert">Clinics could not be loaded. Close and try again.</p>
                     <label
                         v-if="
                             ['new', 'reconcile', 'deduct', 'destroy', 'confirm', 'forecast'].includes(modal)

@@ -1,11 +1,15 @@
 import type { SessionUser } from './domain';
+import type {ClinicAddress} from './shipping';
 export interface SurplusVariant {
+    clinicId?:string;
     formulaName: string;
     form: string;
     flavor: string;
     expirationDate: string;
 }
 export interface SurplusLot extends SurplusVariant {
+    clinicName?:string;
+    clinicAddress?:ClinicAddress;
     id: string;
     agencyId: number;
     onHand: number;
@@ -14,6 +18,7 @@ export interface SurplusLot extends SurplusVariant {
     version: number;
 }
 export interface SurplusCommand {
+    clinicId?:string;
     operationId: string;
     kind: 'reconcile' | 'deduct' | 'reserve' | 'ship' | 'receive' | 'cancel' | 'expire' | 'correct-expiry';
     lotId: string;
@@ -34,6 +39,8 @@ export const canSeeAgency = (user: SessionUser, agencyId: number) => isReviewer(
 export const normalizeVariantText = (s: string) => s.trim().replace(/\s+/g, ' ').toLowerCase();
 export const variantKey = (v: SurplusVariant) =>
     JSON.stringify([normalizeVariantText(v.formulaName), v.form, normalizeVariantText(v.flavor), v.expirationDate]);
+export const lotKey = (v: SurplusVariant) => v.clinicId
+    ? JSON.stringify([...JSON.parse(variantKey(v)),v.clinicId]) : variantKey(v);
 export const availableUnits = (lot: Pick<SurplusLot, 'onHand' | 'reserved' | 'expiredUnits'>) =>
     Math.max(0, lot.onHand - lot.reserved);
 export const validateUnits = (n: number) =>
@@ -66,6 +73,9 @@ export function canAllocate(
     return !validateUnits(quantity) && daysRemaining(lot.expirationDate, today) >= 0 && availableUnits(lot) >= quantity;
 }
 export interface SurplusReport {
+    clinic_id?:string;
+    clinic_name?:string;
+    clinic_address?:string;
     id: string;
     agency_id: number;
     formula_name: string;
@@ -80,6 +90,9 @@ export interface SurplusReport {
     reason: string;
 }
 export interface SurplusForecast {
+    clinic_id?:string;
+    clinic_name?:string;
+    clinic_address?:string;
     id: string;
     agency_id: number;
     request_ref: string;
@@ -93,6 +106,9 @@ export interface SurplusForecast {
     report_id: string | null;
 }
 export interface SurplusTransfer {
+    source_clinic_id?:string;
+    source_clinic_name?:string;
+    source_clinic_address?:string;
     stock_confirmed_at?:string;
     stock_confirmed_by?:number;
     shipped_date?:string;

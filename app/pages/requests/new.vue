@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import {breastfeedingOptions,type BreastfeedingStatus,validateBreastfeeding} from '~/../shared/breastfeeding';
 import { hasMedicalDocumentation, medicalDocumentationRequiredMessage } from '~/../shared/medicalDocumentation';
-import {shippingContact,blankClinicAddress,validateShipping,type RequestShipping} from '~/../shared/shipping';
+import {shippingContact,blankClinicAddress,validateShipping,type RequestShipping,type ClinicRecord} from '~/../shared/shipping';
 import {canEditSubmission,hasPendingMoreInfo,restoreSubmittedForm} from '~/../shared/requestEditing';
 import { benefitMonthLabels, toggleRequestedMonth, serializeRequestedMonths, validateRequestedMonths } from '~/../shared/requestMonthSelection';
 import { formulaCatalog, findFormula, availableFormulaForms, defaultFormulaForm, requiresReadyToFeedReason } from '~/../shared/formulaCatalog';
@@ -40,7 +40,7 @@ async function deleteUnsubmittedRequest(){
 }
 const formulaAlert = ref('');
 const additionalFormulas = ref<FormulaEntry[]>([]);
-const surplusEntries = ref<Array<{ productName: string; productForm: ProductForm | ''; flavor: string; units: string | number; expirationDate: string }>>([]);
+const surplusEntries = ref<Array<{ productName: string; productForm: ProductForm | ''; flavor: string; units: string | number; expirationDate: string; clinicId?: string }>>([]);
 const requestedMonths = ref<string[]>([]);
 const requestForm = ref<HTMLFormElement | null>(null);
 const diagnosisDetailInput = ref<HTMLInputElement | null>(null);
@@ -130,6 +130,7 @@ const products = computed(() => productData.value?.products ?? []);
 const {data:agencyOptions}=await useFetch('/api/agencies');
 const {data:shippingProfile}=await useFetch('/api/profile',{headers:computed(()=>({'x-demo-user':identity.value}))});
 const requestAgencyId=ref(shippingProfile.value?.user?.agencyId??10);
+const {data:storageClinics,error:storageClinicError,status:storageClinicStatus}=await useFetch<{clinics:ClinicRecord[]}>(()=>`/api/agencies/${requestAgencyId.value}/clinics`,{headers:computed(()=>({'x-demo-user':identity.value})),server:false});
 const enteredShipping=ref<RequestShipping>({...blankClinicAddress()});
 const selectedAgencyMemberId=ref<number|''>(shippingProfile.value?.user?.agencyMemberId??agencyOptions.value?.members.find(m=>m.agencyId===requestAgencyId.value)?.id??'');
 const agencyMembers=computed(()=>agencyOptions.value?.members.filter(m=>m.agencyId===requestAgencyId.value)??[]);
@@ -202,7 +203,7 @@ function initializeSurplus(entry: typeof surplusEntries.value[number]) {
     entry.flavor = findFormula(entry.productName)?.hasFlavor ? match?.formulaFlavor ?? '' : '';
 }
 function addSurplus() {
-    const entry: typeof surplusEntries.value[number] = { productName: requestedFormulaNames.value[0] ?? '', productForm: '', flavor: '', units: '', expirationDate: '' };
+    const entry: typeof surplusEntries.value[number] = { productName: requestedFormulaNames.value[0] ?? '', productForm: '', flavor: '', units: '', expirationDate: '', clinicId: shipping.value.clinicId };
     initializeSurplus(entry);
     surplusEntries.value.push(entry);
 }
@@ -292,7 +293,7 @@ if(editingId.value){
  if(request.prescriptionAttachment)selectedPrescription.value=new File([],request.prescriptionAttachment.fileName);
 }
 
-watch(requestAgencyId,()=>{shipping.value={...blankClinicAddress(),attention:shipping.value.attention,email:shipping.value.email,phone:shipping.value.phone};selectedAgencyMemberId.value=agencyMembers.value[0]?.id??'';},{flush:'sync'});
+watch(requestAgencyId,()=>{for(const entry of surplusEntries.value)entry.clinicId=undefined;shipping.value={...blankClinicAddress(),attention:shipping.value.attention,email:shipping.value.email,phone:shipping.value.phone};selectedAgencyMemberId.value=agencyMembers.value[0]?.id??'';},{flush:'sync'});
 watch(()=>shippingProfile.value?.user?.agencyId,agencyId=>{if(identity.value==='agency'&&agencyId)requestAgencyId.value=agencyId;});
 
 async function saveRequest() {
@@ -1165,6 +1166,7 @@ async function submitRequest() {
         <section class="form-section">
             <div class="panel-heading"><h2>Surplus Formula</h2></div>
             <p>Enter any surplus the local agency has of the formula(s) requested.</p>
+            <p v-if="storageClinicError" role="alert">Storage clinics could not be loaded. Try again before choosing a clinic.</p>
             <div v-for="(entry, index) in surplusEntries" :key="index" class="form-grid surplus-form-row">
                 <div class="form-field">
                     <label :for="`surplus-formula-${index}`">Formula Name</label>
@@ -1192,6 +1194,7 @@ async function submitRequest() {
                     <label :for="`surplus-expiration-${index}`">Expiration Date</label>
                     <input :id="`surplus-expiration-${index}`" v-model="entry.expirationDate" class="form-input" type="date" />
                 </div>
+                <div class="form-field"><label :for="`surplus-clinic-${index}`">Storage clinic</label><select :id="`surplus-clinic-${index}`" v-model="entry.clinicId" class="form-input" :disabled="storageClinicStatus==='pending'"><option :value="undefined">Clinic not specified</option><option v-if="entry.clinicId &amp;&amp; !storageClinics?.clinics.some(c=>c.id===entry.clinicId)" :value="entry.clinicId" disabled>Previously selected clinic unavailable — choose a clinic</option><option v-for="clinic in storageClinics?.clinics" :key="clinic.id" :value="clinic.id">{{clinic.clinicName}}</option></select><small>Select the clinic where this stock is stored.</small></div>
                 <button type="button" class="text-button" @click="surplusEntries.splice(index, 1)">Remove surplus entry</button>
             </div>
             <button class="button button-ghost add-surplus-button" type="button" @click="addSurplus">Add surplus</button>

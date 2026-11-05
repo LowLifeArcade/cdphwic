@@ -111,6 +111,7 @@ export function restoreSubmittedForm(request: RequestRecord) {
         additionalFormulas: formulas.slice(1),
         surplusEntries: (request.surplusItems ?? []).map((e) => ({
             ...e,
+            clinicId: e.clinicId,
             productForm: e.productForm ?? '',
             flavor: e.flavor ?? '',
             expirationDate: e.expirationDate ?? '',

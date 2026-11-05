@@ -44,11 +44,11 @@ watch([agencyId, repId, identity], () => refresh());
     <div class="page-heading">
         <div>
             <p class="eyebrow">Operations</p>
-            <h1>{{ scope === 'mine' ? 'My Requests' : 'Requests' }}</h1>
+            <h1>{{ scope === 'mine' ? (currentUser?.memberType==='agency' && currentUser.role!=='admin' ? 'My Agency Requests' : 'My Requests') : 'Requests' }}</h1>
             <p>
                 {{
                     scope === 'mine'
-                        ? 'Requests connected to your agencies and reps.'
+                        ? (currentUser?.memberType==='agency' && currentUser.role!=='admin' ? 'All requests submitted by your Local Agency.' : 'Requests connected to your agencies and reps.')
                         : 'Review requests, status, dates, and delivery timing.'
                 }}
             </p>

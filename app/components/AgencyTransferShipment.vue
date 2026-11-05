@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import {formatClinic,type ClinicAddress} from '~/../shared/shipping';
 import type {SurplusTransfer} from '~/../shared/surplus';
 import {formatEtaDate as formatDisplayDate} from '~/../shared/requestPresentation';
 const props=defineProps<{transfer:SurplusTransfer;canShip:boolean;sourceName:string;destinationName:string}>();
@@ -10,12 +11,13 @@ const route=useRoute();
 async function confirmStock(){busy.value=true;error.value='';try{await $fetch(`/api/request-transfers/${props.transfer.id}/confirm-stock`,{method:'POST',headers:{'x-demo-user':identity.value}});emit('updated');window.dispatchEvent(new Event('request-messages-changed'));}catch(e){error.value=(e as any).data?.statusMessage??'Product availability could not be confirmed.';}finally{busy.value=false;}}
 const formulaLabel=computed(()=>`${props.transfer.formula_name} ${{powder:'Powder',concentrate:'Concentrate','ready-to-feed':'RTF'}[props.transfer.form]??props.transfer.form}`);
 const destination=computed(()=>{try{return JSON.parse(props.transfer.destination_shipping??'null') as import('~/../shared/shipping').RequestShipping|null;}catch{return null;}});
+const pickup=computed(()=>{try{return JSON.parse(props.transfer.source_clinic_address??'null') as ClinicAddress|null;}catch{return null;}});
 async function ship(){busy.value=true;error.value='';try{await $fetch(`/api/request-transfers/${props.transfer.id}/ship`,{method:'POST',headers:{'x-demo-user':identity.value}});emit('updated');}catch(e){error.value=(e as any).data?.statusMessage??'Pickup could not be confirmed.';}finally{busy.value=false;}}
 </script>
 <template>
  <article :id="`transfer-${transfer.id}`" class="transfer-shipment" tabindex="-1">
   <header class="transfer-heading">
-   <div class="transfer-title"><strong>{{formulaLabel}}<template v-if="transfer.flavor"> · {{transfer.flavor}}</template></strong><span><b>{{sourceName}}</b> → <b>{{destinationName}}</b></span></div>
+   <div class="transfer-title"><strong>{{formulaLabel}}<template v-if="transfer.flavor"> · {{transfer.flavor}}</template></strong><span><b>{{sourceName}}</b> → <b>{{destinationName}}</b></span><span>{{transfer.source_clinic_name || 'Clinic not specified'}}</span></div>
    <span class="transfer-status" :class="{'shipment-transit-status':transfer.status==='shipped'}">{{transfer.status==='reserved'?'Transfer Requested':transfer.status==='shipped'?'In Transit':transfer.status==='received'?'Confirmed Receipt':transfer.status==='cancelled'?'Cancelled':'Blocked — expired'}}</span>
   </header>
   <div class="transfer-summary"><span><strong>{{transfer.quantity}}</strong> unit(s)</span><span>Expires {{formatDisplayDate(transfer.expiration_date)}}</span><span>ETA {{transfer.eta ? formatDisplayDate(transfer.eta) : 'Pending'}}</span><span v-if="transfer.request_id">Request #{{transfer.request_id}}</span></div>
@@ -28,6 +30,7 @@ async function ship(){busy.value=true;error.value='';try{await $fetch(`/api/requ
    <div><span class="transfer-label">Carrier</span><span>GSO</span></div>
    <div class="transfer-tracking"><span class="transfer-label">Tracking Numbers</span><span>{{transfer.tracking_reference || '—'}}</span></div>
   </div>
+  <div class="transfer-address"><span class="transfer-label">Pickup clinic</span><address>{{transfer.source_clinic_name || 'Clinic not specified'}}<template v-if="pickup"><br />{{formatClinic(pickup)}}</template></address></div>
   <div class="transfer-address">
    <span class="transfer-label">Shipping Address</span>
    <address v-if="destination">{{destinationName}}<template v-if="destination.attention"><br />Attn: {{destination.attention}}</template><br />{{destination.addressLine1}}<template v-if="destination.addressLine2"><br />{{destination.addressLine2}}</template><br />{{destination.city}}, {{destination.state}} {{destination.postalCode}}</address>

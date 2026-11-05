@@ -9,6 +9,7 @@ export function surplusDb() {
     sqlite.exec(readFileSync(new URL('../../db/migrations/0011_request_agency_transfers.sql', import.meta.url), 'utf8'));
     sqlite.exec(readFileSync(new URL('../../db/migrations/0012_transfer_shipping_labels.sql', import.meta.url), 'utf8'));
     sqlite.exec(readFileSync(new URL('../../db/migrations/0013_transfer_stock_confirmation.sql', import.meta.url), 'utf8'));
+    sqlite.exec(readFileSync(new URL('../../db/migrations/0014_surplus_clinic_locations.sql', import.meta.url), 'utf8'));
     const statement = (sql: string, values: unknown[] = []) => ({
         bind: (...params: unknown[]) => statement(sql, params),
         first: async (column?: string) => {

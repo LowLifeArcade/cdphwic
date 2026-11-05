@@ -12,7 +12,7 @@ describe('development API contracts', () => {
     it('filters request lists and accepts optional generic fields', () => {
         const agencyUser = getDemoUser('agency');
         expect(getRequestsForUser(agencyUser, 'all')).toHaveLength(2);
-        expect(getRequestsForUser(agencyUser, 'mine')).toHaveLength(1);
+        expect(getRequestsForUser(agencyUser, 'mine')).toHaveLength(2);
 
         const created = createRequestRecord({
             agencyId: 10,

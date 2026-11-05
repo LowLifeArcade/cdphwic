@@ -1,3 +1,4 @@
+import { resolveSurplusClinic } from './surplusClinicLocations';
 import { SEED_AGENCIES } from '../data/seed';
 import type { RequestRecord, SessionUser } from '../../shared/domain';
 import { canSeeAgency, isReviewer, validDate, localDate } from '../../shared/surplus';
@@ -38,10 +39,11 @@ export async function persistSurplusSubmission(
             row.units! <= 0
         )
             reject('Surplus requires a valid form, expiration date when provided, and positive whole units.');
+        const clinic = await resolveSurplusClinic(db, request.agencyId, row.clinicId);
         steps.push(
             db
                 .prepare(
-                    `INSERT OR IGNORE INTO surplus_reports(id,submission_id,row_id,agency_id,formula_name,form,flavor,expiration_date,reported_units,request_ref,reporter_id,counted_at,confirmer_name) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+                    `INSERT OR IGNORE INTO surplus_reports(id,submission_id,row_id,agency_id,formula_name,form,flavor,expiration_date,reported_units,request_ref,reporter_id,counted_at,confirmer_name,clinic_id,clinic_name,clinic_address) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
                 )
                 .bind(
                     `${id}:${index}`,
@@ -57,6 +59,9 @@ export async function persistSurplusSubmission(
                     user.id,
                     localDate(),
                     user.name,
+                    clinic.clinicId ?? null,
+                    clinic.clinicName ?? null,
+                    clinic.clinicAddress ? JSON.stringify(clinic.clinicAddress) : null,
                 ),
         );
     }
@@ -83,10 +88,11 @@ export async function createForecast(db: D1Database, user: SessionUser, b: any) 
         b.expectedUnits < 0
     )
         reject('Complete the agency, formula, form, request, expected whole units and confirmation date.');
+    const clinic = await resolveSurplusClinic(db, b.agencyId, b.clinicId);
     const id = crypto.randomUUID();
     await db
         .prepare(
-            'INSERT INTO surplus_forecasts(id,agency_id,request_ref,formula_name,form,flavor,expected_units,due_date,actor_id) VALUES(?,?,?,?,?,?,?,?,?)',
+            'INSERT INTO surplus_forecasts(id,agency_id,request_ref,formula_name,form,flavor,expected_units,due_date,actor_id,clinic_id,clinic_name,clinic_address) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)',
         )
         .bind(
             id,
@@ -98,6 +104,9 @@ export async function createForecast(db: D1Database, user: SessionUser, b: any) 
             b.expectedUnits,
             b.dueDate,
             user.id,
+            clinic.clinicId ?? null,
+            clinic.clinicName ?? null,
+            clinic.clinicAddress ? JSON.stringify(clinic.clinicAddress) : null,
         )
         .run();
     return { id };
@@ -117,6 +126,7 @@ export async function confirmForecast(db: D1Database, user: SessionUser, b: any)
         (b.quantity !== f.expected_units && !b.reason?.trim())
     )
         reject('Provide actual whole units, count date, expiration, staff name and an explanation for any difference.');
+    const clinic = await resolveSurplusClinic(db, f.agency_id, b.clinicId === undefined ? f.clinic_id : b.clinicId);
     const id = crypto.randomUUID();
     await db.batch([
         db
@@ -126,7 +136,7 @@ export async function confirmForecast(db: D1Database, user: SessionUser, b: any)
             .bind(f.id),
         db
             .prepare(
-                'INSERT INTO surplus_reports(id,row_id,agency_id,formula_name,form,flavor,expiration_date,reported_units,request_ref,reporter_id,counted_at,confirmer_name,reason,forecast_id) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
+                'INSERT INTO surplus_reports(id,row_id,agency_id,formula_name,form,flavor,expiration_date,reported_units,request_ref,reporter_id,counted_at,confirmer_name,reason,forecast_id,clinic_id,clinic_name,clinic_address) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
             )
             .bind(
                 id,
@@ -143,6 +153,9 @@ export async function confirmForecast(db: D1Database, user: SessionUser, b: any)
                 b.confirmerName,
                 b.reason ?? '',
                 f.id,
+                clinic.clinicId ?? null,
+                clinic.clinicName ?? null,
+                clinic.clinicAddress ? JSON.stringify(clinic.clinicAddress) : null,
             ),
         db
             .prepare("UPDATE surplus_forecasts SET status='pending-review',actual_units=?,report_id=? WHERE id=?")

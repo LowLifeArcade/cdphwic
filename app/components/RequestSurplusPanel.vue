@@ -33,7 +33,7 @@ const transfers = computed(() => data.value?.transfers.filter((t: any) => t.requ
         >
             <strong>{{ lot.formulaName }}</strong> · {{ formulaFormLabel(lot.form) }} {{ lot.flavor }}
             <p>
-                Agency {{ lot.agencyId }} · Expires {{ formatDisplayDate(lot.expirationDate) }}<br />Usable {{ lot.onHand }} · Reserved
+                Agency {{ lot.agencyId }}<br />{{lot.clinicName || 'Clinic not specified'}} · Expires {{ formatDisplayDate(lot.expirationDate) }}<br />Usable {{ lot.onHand }} · Reserved
                 {{ lot.reserved }} · Available {{ availableUnits(lot as any) }} · Expired {{ lot.expiredUnits }}
             </p>
             <NuxtLink
@@ -58,7 +58,7 @@ const transfers = computed(() => data.value?.transfers.filter((t: any) => t.requ
             :key="t.id"
         >
             Transfer {{ t.quantity }} unit(s) · {{ t.formula_name }} · Agency {{ t.source_agency_id }} →
-            {{ t.destination_agency_id }} · {{ t.status }}
+            {{ t.destination_agency_id }} · {{t.source_clinic_name || 'Clinic not specified'}} · {{ t.status }}
         </p>
         <NuxtLink
             class="button"

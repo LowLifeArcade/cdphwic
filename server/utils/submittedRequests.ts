@@ -1,3 +1,4 @@
+import { resolveSurplusClinic } from './surplusClinicLocations';
 import {shippingContact} from '../../shared/shipping';
 import {requestContact} from './requestAgency';
 import {unreadOutgoingMessage} from '../../shared/moreInfoMessages';
@@ -114,6 +115,9 @@ export async function updateSubmittedRequest(
     pendingDrafts?: RequestRecord['shipments'],
     quantityTracking=true,
 ) {
+    if(updates.surplusItems!==undefined)for(const [index,item] of updates.surplusItems.entries()){
+        if(item.clinicId!==previous.surplusItems?.[index]?.clinicId)await resolveSurplusClinic(db,previous.agencyId,item.clinicId);
+    }
     const incomingPlans=updates.shipmentDrafts??updates.shipments;
     for(const [index,row] of (Array.isArray(incomingPlans)?incomingPlans:[]).entries()){
         if(!row)continue;
@@ -286,6 +290,7 @@ export async function editSubmittedRequest(
                 e.flavor ?? '',
                 e.units,
                 e.expirationDate ?? '',
+                e.clinicId ?? '',
             ]),
         );
     const steps: D1PreparedStatement[] = [...(options.statements ?? [])];
@@ -306,11 +311,12 @@ export async function editSubmittedRequest(
         for (const [index, row] of (request.surplusItems ?? []).entries()) {
             if (row.expirationDate && !validDate(row.expirationDate))
                 throw conflict('Enter a valid surplus expiration date.');
+            const clinic = await resolveSurplusClinic(db, previous.agencyId, row.clinicId);
             const id = `${previous.submissionId}:edit:${request.revision}:${index}`;
             steps.push(
                 db
                     .prepare(
-                        'INSERT INTO surplus_reports(id,submission_id,row_id,agency_id,formula_name,form,flavor,expiration_date,reported_units,request_ref,reporter_id,counted_at,confirmer_name) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)',
+                        'INSERT INTO surplus_reports(id,submission_id,row_id,agency_id,formula_name,form,flavor,expiration_date,reported_units,request_ref,reporter_id,counted_at,confirmer_name,clinic_id,clinic_name,clinic_address) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
                     )
                     .bind(
                         id,
@@ -326,6 +332,9 @@ export async function editSubmittedRequest(
                         user.id,
                         localDate(),
                         user.name,
+                        clinic.clinicId ?? null,
+                        clinic.clinicName ?? null,
+                        clinic.clinicAddress ? JSON.stringify(clinic.clinicAddress) : null,
                     ),
             );
         }

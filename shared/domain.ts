@@ -108,6 +108,9 @@ export interface RequestRecord {
         shipmentSource?:'distributor'|'agency';
         sourceAgencyId?:number;
         sourceAgencyName?:string;
+        sourceClinicId?:string;
+        sourceClinicName?:string;
+        sourceClinicAddress?:import('./shipping').ClinicAddress;
         sourceLotId?:string;
         transferId?:string;
         transferStatus?:'reserved'|'shipped'|'received';
@@ -168,7 +171,7 @@ export interface RequestRecord {
     expectedSurplusUnit?: 'units' | 'cases';
     agencyUnitsOnHand?: number;
     agencyUnitsOnHandUnit?: 'units' | 'cases';
-    surplusItems?: Array<{ productName: string; productForm?: ProductForm; flavor?: string; units: number; expirationDate: string }>;
+    surplusItems?: Array<{ productName: string; productForm?: ProductForm; flavor?: string; units: number; expirationDate: string; clinicId?:string }>;
     staffNotes?: string;
     denialReason?: string;
     moreInfoRequests?: Array<{id:string;notes:string;requestedAt:string;requestedBy:number;statusBeforeRequest?:RequestStatus;deletionLocked?:boolean;readAt?:string;readBy?:number;responses?:Array<{id:string;notes:string;respondedAt:string;respondedBy:number;respondedAs?:'agency'|'reviewer';editedAt?:string;editedBy?:number;noteHistory?:Array<{notes:string;changedAt:string;changedBy:number}>;readAt?:string;readBy?:number}>;editedAt?:string;editedBy?:number;deletedAt?:string;deletedBy?:number;noteHistory?:Array<{notes:string;changedAt:string;changedBy:number}>;originalSurplusItems?:RequestRecord['surplusItems'];resubmissionOpen?:boolean;resubmissionOpenedAt?:string;resubmissionOpenedBy?:number;resubmissionReadAt?:string;resubmissionReadBy?:number;resolvedAt?:string;resolvedBy?:number;resubmittedAt?:string;resubmittedBy?:number}>;
