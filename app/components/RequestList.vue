@@ -106,7 +106,7 @@ watch([()=>route.query.request,()=>props.requests],async([id],[previousId])=>{co
                         class="status-badge status-special-order"
                     >Special Order</span>
                     <span
-                        v-if="request.approved"
+                        v-if="request.approved && request.status!=='complete'"
                         class="request-tag"
                     >Approved</span>
                 </span><small v-if="shippingSummary(request).total">{{shippingSummary(request).received}} of {{shippingSummary(request).total}} fully received<template v-if="shippingSummary(request).replaced"> · {{shippingSummary(request).replaced}} replaced</template></small><small>Submitted {{ formatDisplayDate(request.submissionDate) }}</small></span

@@ -25,8 +25,8 @@ import {blankShipment,requestShipments,validateShipments,type RequestShipment} f
 import {formatDisplayDate,requestFormulas,participantNames,insuranceDetails,requestedMonthLabels,foodRestrictionLabel,formulaFormLabel,providerAddressLines,submissionDateOnly,participantAgeAtBenefitsStart} from '~/../shared/requestPresentation';
 import { validateDiagnoses } from '~/../shared/diagnosisCatalog';
 import {canEditSubmission,hasPendingMoreInfo,canResolveMoreInfo,canReplyToMoreInfo,canReopenMoreInfo,latestMoreInfoRequest} from '~/../shared/requestEditing';
-import type { ProductRecord, RequestRecord, RequestStatus } from '~/../shared/domain';
-import { subsequentIssuanceMonths, getNextBenefitMonth, canGenerateAuthorizationForm, canSelectShippedStatus } from '~/../shared/requestOperations';
+import type { ProductRecord, RequestRecord } from '~/../shared/domain';
+import { subsequentIssuanceMonths, getNextBenefitMonth, canGenerateAuthorizationForm } from '~/../shared/requestOperations';
 import { normalizeRequestedMonths, validateRequestDetailNumbers, validateSurplusItems } from '~/../shared/requestDetailFields';
 import { formatPhoneNumber, normalizePhoneNumber } from '~/../shared/phone';
 
@@ -485,22 +485,6 @@ async function saveStaffFields() {
 
 
 
-function changeStatus(event: Event) {
-    const select = event.target as HTMLSelectElement;
-    if(select.value==='special_order'){
-        save({specialOrder:true});
-        return;
-    }
-    const status = select.value as RequestStatus;
-    if (status === 'denied') {
-        select.value = draft.status ?? '';
-        chooseReviewDecision('deny');
-        return;
-    }
-
-    save({status,...(allFormulasSpecialOrder(props.request??{})?{specialOrder:false}:{})});
-}
-
 async function changeFormulaOrder(index:number,value:string){
     if(!props.request)return;
     const rows=formulaOrders(props.request);
@@ -515,7 +499,7 @@ async function changeFormulaOrder(index:number,value:string){
     }
 }
 
-async function chooseReviewDecision(action:'approve'|'deny'|'reopen') {
+async function chooseReviewDecision(action:'approve'|'deny'|'reopen'|'clear') {
     if(action==='deny'){denialReason.value=props.request?.denialReason??'';pendingDecision.value='denied';return;}
     approvingReviewDecision.value=action==='approve';
     try {await save({reviewDecision:{action}} as Partial<RequestRecord>);}
@@ -673,7 +657,7 @@ async function saveAgencyUpdate() {
                     class="status-badge status-special-order"
                 >Special Order</span>
                 <span
-                    v-if="request.approved"
+                    v-if="request.approved && request.status!=='complete'"
                     class="request-tag"
                 >Approved</span>
             </div>
@@ -853,6 +837,7 @@ async function saveAgencyUpdate() {
                 <button class="button button-secondary" :class="{'review-decision-selected':selectedReviewDecision==='request-info'}" :aria-pressed="selectedReviewDecision==='request-info'" type="button" :disabled="saving" @click="openMoreInfo">Request More Info</button>
                 <button class="button button-secondary" :class="{'review-decision-selected':selectedReviewDecision==='approve'}" :aria-pressed="selectedReviewDecision==='approve'" type="button" :disabled="saving" @click="chooseReviewDecision('approve')">Approve</button>
                 <button class="button button-secondary" :class="{'review-decision-selected':selectedReviewDecision==='deny'}" :aria-pressed="selectedReviewDecision==='deny'" type="button" :disabled="saving" @click="chooseReviewDecision('deny')">Deny</button>
+                <button v-if="hasSavedReviewDecision" class="button button-ghost" type="button" :disabled="saving" @click="chooseReviewDecision('clear')">Clear decision</button>
             </div>
         </section>
         <section v-if="showMoreInfoComposer || request.moreInfoRequests?.some(note=>!note.deletedAt)" :id="`more-info-${request.id}`" class="detail-section more-info-section">
@@ -878,36 +863,15 @@ async function saveAgencyUpdate() {
             v-if="canStaffEdit"
             class="detail-section cdph-review-section"
         >
-            <label class="field-label">
-                Status
-                <select
-                    :value="allFormulasSpecialOrder(request) ? 'special_order' : draft.status"
-                    class="form-input"
-                    :disabled="saving"
-                    @change="changeStatus"
-                >
-                    <option value="opened">Opened</option>
-                    <option value="in_progress">In Progress</option>
-                    <option value="special_order">Special Order</option>
-                    <option v-if="request.status==='needs_info'" value="needs_info" disabled>Pending LA</option>
-                    <option
-                        v-if="canSelectShippedStatus(request ?? {})"
-                        value="shipped"
-                    >Shipped</option>
-                </select>
-            </label>
-            <div class="formula-order-controls">
-                <label v-for="(formula,index) in formulaOrders(request)" :key="index" class="field-label">
-                    {{formula.productName}} · {{formulaFormLabel(formula.productForm)}}<template v-if="formula.flavor"> · {{formula.flavor}}</template>
-                    <select class="form-input" :value="formula.specialOrder?'special':'standard'" :aria-label="`Formula ${index+1} Order Type`" :disabled="saving" @change="changeFormulaOrder(index,($event.target as HTMLSelectElement).value)">
-                        <option value="standard">Standard</option><option value="special">Special Order</option>
-                    </select>
-                </label>
-            </div>
             <fieldset class="cdph-fields" :disabled="draft.status === 'denied'">
             <div class="issuance-heading"><h3>Issuance</h3></div>
             <fieldset v-for="(authorization,formulaIndex) in draft.formulaAuthorizations" :key="`${authorization.productName}-${authorization.productForm}-${authorization.flavor}`" class="authorization-formula">
                 <legend v-if="(draft.formulaAuthorizations?.length??0)>1">Formula {{formulaIndex+1}}</legend>
+            <label v-if="canStaffEdit && formulaOrders(request)[formulaIndex]" class="field-label formula-order-type">Order Type
+                <select class="form-input" :value="formulaOrders(request)[formulaIndex]!.specialOrder?'special':'standard'" :aria-label="`Formula ${formulaIndex+1} Order Type`" :disabled="saving" @change="changeFormulaOrder(formulaIndex,($event.target as HTMLSelectElement).value)">
+                    <option value="standard">Standard</option><option value="special">Special Order</option>
+                </select>
+            </label>
             <div class="detail-grid cdph-product-details">
                 <div><span>Formula Name</span><strong>{{authorization.productName}}<template v-if="authorization.flavor"> · {{authorization.flavor}}</template><br />{{formulaFormLabel(authorization.productForm)}}</strong></div>
                 <div><span>Product Number</span><strong>{{authorizationProduct(authorization)?.productCode ?? '—'}}</strong></div>
@@ -1186,13 +1150,13 @@ async function saveAgencyUpdate() {
 </template>
 
 <style scoped>
-.review-decision-section {border:1px solid color-mix(in srgb,#002595 35%,var(--line));border-radius:10px;padding:16px;background:color-mix(in srgb,#002595 4%,var(--surface));}
-.review-decision-section > .section-heading {background:#141F68;margin:-16px -16px 14px;padding:12px 16px;border-radius:9px 9px 0 0;}
-.review-decision-section > .section-heading h3 {color:#fff;margin:0;}
+.review-decision-section {border:1px solid color-mix(in srgb,#002595 35%,var(--line));border-radius:10px;padding:10px 12px;background:color-mix(in srgb,#002595 4%,var(--surface));}
+.review-decision-section > .section-heading {background:#141F68;margin:-10px -12px 8px;padding:8px 12px;border-radius:9px 9px 0 0;}
+.review-decision-section > .section-heading h3 {color:#fff;margin:0;font-size:1rem;font-weight:600;line-height:1.4;}
 .review-decision-section .review-decision-edit {color:#fff;text-decoration:underline;text-underline-offset:3px;}
-.review-decision-section .review-approved,.review-decision-section .review-denied {margin:0 0 12px;}
+.review-decision-section .review-approved,.review-decision-section .review-denied {margin:0;}
 .more-info-compose-actions {display:flex;flex-wrap:wrap;gap:8px;}
-.formula-order-controls {display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin:12px 0 20px;}
+.formula-order-type {max-width:260px;margin:0 0 12px;}
 .review-decision-buttons {display:flex;flex-wrap:wrap;gap:10px;}
 .review-decision-buttons .button.review-decision-selected,
 .review-decision-buttons .button.review-decision-selected:hover {background:#002595;border-color:#002595;color:#fff;}
@@ -1207,7 +1171,7 @@ async function saveAgencyUpdate() {
 .more-info-open-status {font-size:13px;color:#fff;}
 .more-info-correction {padding:12px;margin-bottom:14px;background:var(--surface-raised);border:1px solid var(--line);border-radius:8px;}
 .more-info-correction p {margin:0 0 8px;}
-.more-info-section .section-heading h3 {color:#fff;margin:0;}
+.more-info-section .section-heading h3 {color:#fff;margin:0;font-size:1rem;font-weight:600;line-height:1.4;}
 .more-info-history {padding:12px 14px;margin-bottom:12px;background:var(--surface);border:1px solid var(--line);border-radius:8px;}
 .more-info-history > summary {cursor:pointer;font-weight:600;font-size:14px;color:var(--text);}
 .more-info-history[open] > summary {margin-bottom:12px;}
