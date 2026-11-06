@@ -68,6 +68,7 @@ export interface RequestRecord {
     status: RequestStatus;
     submissionDate?: string;
     approvalDate?: string;
+    approvedByName?: string;
     denialDate?: string;
     eta?: string;
     shippedAt?: string;

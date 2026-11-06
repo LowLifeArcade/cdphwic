@@ -1,8 +1,16 @@
 import {expect,it} from 'vitest';
 import type {RequestRecord} from '../shared/domain';
 import {confirmShipmentReceipts,shipmentReceiptKey} from '../shared/shipmentReceipts';
+import {allShipmentsConfirmed} from '../shared/shipmentReceipts';
 import {receiptQuantityKey} from '../shared/shipmentQuantities';
 const fixture=():RequestRecord=>({id:9990,agencyId:10,agencyMemberId:100,participantName:'Example',productName:'Example',status:'shipped',shipments:[{eta:'2026-11-01',etaSentAt:'2026-10-30',casesShipped:3,unitsPerCase:6,carrier:'ups',trackingNumbers:['A']}]});
+
+it('offers shipment confirmation only after every non-replaced shipment is confirmed',()=>{
+ const request=fixture();request.shipments!.push({eta:'2026-11-03',etaSentAt:'2026-10-31',casesShipped:1,carrier:'fedex',trackingNumbers:['B']});
+ expect(allShipmentsConfirmed(request)).toBe(false);
+ request.shipments!.forEach(row=>{row.receiptConfirmed=true;row.receivedAt='2026-11-12';});expect(allShipmentsConfirmed(request)).toBe(true);
+ request.shipments![1]!.replacedAt='2026-11-13';expect(allShipmentsConfirmed(request)).toBe(false);
+});
 const selection=(r:RequestRecord,receivedCases=2,damagedLooseUnits=1)=>({index:0,key:shipmentReceiptKey(r.shipments![0]!),expectedReceipt:receiptQuantityKey(r.shipments![0]!),expectedIssue:JSON.stringify(r.shipments![0]!.issue??null),receivedCases,damagedLooseUnits,issueNotes:'One dented can and one missing case.'});
 it('confirms quantities and saves issue notes in one operation',()=>{
  const r=fixture();const next={...r,...confirmShipmentReceipts(r,[selection(r)],100)};

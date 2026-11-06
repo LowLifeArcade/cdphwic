@@ -1,12 +1,14 @@
 import {PDFDocument,StandardFonts,rgb} from 'pdf-lib';
 import {formatIssuanceMonth,formulaAuthorizations} from '../../shared/formulaAuthorizations';
-import {formatDisplayDate as date,requestFormulas,formulaFormLabel,foodRestrictionLabel,insuranceDetails,requestedMonthLabels} from '../../shared/requestPresentation';
+import {formatDisplayDate as date,formulaFormLabel} from '../../shared/requestPresentation';
 import type {AgencyMemberRecord,AgencyRecord,RequestRecord} from '../../shared/domain';
-export async function createAuthorizationFormPdf(request:RequestRecord,agency?:AgencyRecord,rep?:AgencyMemberRecord):Promise<Uint8Array>{
+import {shipmentQuantities} from '../../shared/shipmentQuantities';
+export async function createAuthorizationFormPdf(request:RequestRecord,agency?:AgencyRecord,rep?:AgencyMemberRecord,kind:'authorization'|'shipment-confirmation'='authorization'):Promise<Uint8Array>{
  const doc=await PDFDocument.create();const regular=await doc.embedFont(StandardFonts.Helvetica);const bold=await doc.embedFont(StandardFonts.HelveticaBold);
  const blue=rgb(0,37/255,149/255),ink=rgb(.08,.12,.16),muted=rgb(.42,.44,.45);
  let page=doc.addPage([612,792]);let y=728;
- const pageHeader=()=>{page.drawText('State-Issued Formula Authorization',{x:42,y:754,size:17,font:bold,color:blue});y=720;};pageHeader();
+ const title=kind==='shipment-confirmation'?'State-Issued Formula Shipment Confirmation':'State-Issued Formula Authorization';
+ const pageHeader=()=>{page.drawText(title,{x:42,y:754,size:17,font:bold,color:blue});y=720;};pageHeader();
  const ensure=(height:number)=>{if(y-height<46){page=doc.addPage([612,792]);pageHeader();}};
  const wrap=(text:string,width:number,size=9)=>{
   const lines:string[]=[];
@@ -18,11 +20,6 @@ export async function createAuthorizationFormPdf(request:RequestRecord,agency?:A
   }return lines;
  };
  const section=(title:string)=>{ensure(48);y-=12;page.drawText(title,{x:42,y,size:11,font:bold,color:blue});y-=8;page.drawLine({start:{x:42,y},end:{x:570,y},thickness:.5,color:rgb(.78,.81,.85)});y-=16;};
- const row=(label:string,input?:string|number)=>{
-  const lines=wrap(input===undefined||input===''?'—':String(input),376);
-  ensure(15);page.drawText(`${label}:`,{x:46,y,size:9,font:bold,color:ink});
-  for(const line of lines){ensure(13);page.drawText(line,{x:190,y,size:9,font:regular,color:ink});y-=13;}y-=3;
- };
  const columns=(leftTitle:string,leftRows:Array<[string,string|number|undefined]>,rightTitle:string,rightRows:Array<[string,string|number|undefined]>)=>{
   let leftIndex=0,rightIndex=0;
   while(leftIndex<leftRows.length||rightIndex<rightRows.length){
@@ -72,11 +69,19 @@ export async function createAuthorizationFormPdf(request:RequestRecord,agency?:A
   return digits.length===10?`(${digits.slice(0,3)}) ${digits.slice(3,6)}-${digits.slice(6)}`:value;
  };
  const quantityLabel=(quantity:number|undefined,unit?:'units'|'cases')=>quantity===undefined?'—':`${quantity} ${unit==='cases'?'case(s)':'unit(s)'}`;
- ensure(42);
- const participantLines=wrap(request.participantName||'—',528,15);
- for(const line of participantLines){ensure(18);page.drawText(line,{x:42,y,size:15,font:bold,color:ink});y-=16;}
- const familyId=`WIC Family ID: ${request.participantFamilyId||'—'}`;page.drawText(familyId,{x:42,y,size:9,font:regular,color:muted});y-=12;
- for(const authorization of authorizations){for(const line of wrap(fullFormulaName(authorization),528,11)){ensure(14);page.drawText(line,{x:42,y,size:11,font:bold,color:blue});y-=13;}}
+ const headerLeftX=42,headerLeftWidth=318,headerRightX=378,headerRightWidth=192;
+ const participantLines=wrap(request.participantName||'—',headerLeftWidth,15);
+ const formulaLines=authorizations.flatMap(authorization=>wrap(fullFormulaName(authorization),headerLeftWidth,11));
+ const leftHeight=participantLines.length*17+3+formulaLines.length*13;
+ const headerHeight=Math.max(leftHeight,42);
+ ensure(headerHeight+8);
+ const headerTop=y;
+ participantLines.forEach((line,index)=>page.drawText(line,{x:headerLeftX,y:headerTop-index*17,size:15,font:bold,color:ink}));
+ formulaLines.forEach((line,index)=>page.drawText(line,{x:headerLeftX,y:headerTop-participantLines.length*17-2-index*13,size:11,font:bold,color:blue}));
+ const insurance=request.medicalStatus==='yes'?`Medi-Cal: ${request.mediCalStatus??'Yes'}`:request.medicalStatus==='no'?'Insurance: Private Insurance':request.medicalStatus==='pending'?'Insurance: Pending':'Insurance: —';
+ const rightRows=[`WIC Family ID: ${request.participantFamilyId||'—'}`,insurance,`Reviewed by: ${request.approvedByName||'—'}`];
+ rightRows.forEach((line,index)=>page.drawText(line,{x:headerRightX,y:headerTop-index*14,size:8.5,font:regular,color:muted,maxWidth:headerRightWidth}));
+ y=headerTop-headerHeight-5;
  section('MONTHLY FORMULA ISSUANCE');
  for(const authorization of authorizations){
   const titleLines=wrap(fullFormulaName(authorization),500,10);
@@ -111,7 +116,7 @@ export async function createAuthorizationFormPdf(request:RequestRecord,agency?:A
   [`Shipment ${index+1}`,shipment.shipmentFormula?fullFormulaName(shipment.shipmentFormula):request.productName],
   ['Source',shipment.shipmentSource==='agency'?shipment.sourceAgencyName:shipment.supplier],
   ['Cases Shipped',`${shipment.casesShipped} case(s)`],
-  ['Units per Case',shipment.unitsPerCase===undefined?undefined:`${shipment.unitsPerCase} unit(s)`],
+  ...(kind==='shipment-confirmation'?[['Units Received',`${shipmentQuantities(request,shipment).receivedUnits} unit(s)`] as [string,string],['Damaged Units',`${shipmentQuantities(request,shipment).damagedUnits} unit(s)`] as [string,string],['Receipt Confirmed',date(shipment.receivedAt)] as [string,string|undefined]]:[]),
   ['Loose Units',shipment.looseUnitsShipped?`${shipment.looseUnitsShipped} unit(s)`:undefined],
   ['ETA',date(shipment.eta)],['Carrier',shipment.carrier?.toUpperCase()],['Tracking',shipment.trackingNumbers.join(', ')],
   ['',undefined],
@@ -119,25 +124,45 @@ export async function createAuthorizationFormPdf(request:RequestRecord,agency?:A
  const address=shipping?[agency?.name,shipping.attention?`Attn: ${shipping.attention}`:'',shipping.addressLine1,shipping.addressLine2,`${shipping.city}, ${shipping.state} ${shipping.postalCode}`].filter(Boolean).join('\n'):agency?`${agency.shippingAddress}\n${agency.city}, ${agency.state} ${agency.postalCode}`:undefined;
  const agencyDetails:Array<[string,string|number|undefined]>=[['Agency',agency?.name],['Representative',request.shipping?.attention||rep?.name],['Email',request.shipping?.email||rep?.email],['Phone',phone(request.shipping?.phone||rep?.phone)],['Shipping Address',address]];
  columns('Shipment Details',shipmentDetails,'Local Agency',agencyDetails);
+ section('Next Steps');
+ const nextSteps=request.nextSteps||'Follow the approved monthly issuance schedule above.';
+ const nextStepLines=wrap(nextSteps,510,10);ensure(nextStepLines.length*14+10);
+ for(const line of nextStepLines){page.drawText(line,{x:46,y,size:10,font:regular,color:ink});y-=14;}
+ y-=3;
+ section('Monthly Receipt Confirmation');
+ const signatureIssuances=authorizations.flatMap(authorization=>authorization.benefitIssuances.filter(issuance=>issuance.month).map(issuance=>({month:issuance.month,formula:fullFormulaName(authorization),quantity:issuance.quantity}))).sort((a,b)=>a.month.localeCompare(b.month));
+ const signatureRows=signatureIssuances.length?signatureIssuances:[{month:'',formula:'',quantity:undefined as number|undefined}];
+ const gridX=42,gridWidth=528,monthWidth=218,signatureWidth=220;
+ const gridRows=signatureRows.map(issuance=>{const label=issuance.month?`${formatIssuanceMonth(issuance.month)}\n${issuance.formula}\n${issuance.quantity} unit(s)`: 'Issuance month and quantity not specified';const lines=wrap(label,monthWidth-16,8.5);return {labelLines:lines,height:Math.max(44,lines.length*10+14)};});
+ const columnsX=[gridX,gridX+monthWidth,gridX+monthWidth+signatureWidth,gridX+gridWidth];
+ if(y-24-gridRows[0]!.height<52){page=doc.addPage([612,792]);pageHeader();}
+ const drawGridHeader=()=>{
+  const top=y;
+  page.drawRectangle({x:gridX,y:top-24,width:gridWidth,height:24,color:rgb(.91,.94,1),borderColor:rgb(.78,.81,.85),borderWidth:.6});
+  page.drawText('Month / Formula / Units',{x:gridX+8,y:top-16,size:8,font:bold,color:blue});
+  page.drawText('Parent/Guardian Signature',{x:columnsX[1]+8,y:top-16,size:8,font:bold,color:blue});
+  page.drawText('Date',{x:columnsX[2]+8,y:top-16,size:8,font:bold,color:blue});
+  y=top-24;
+ };
+ drawGridHeader();
+ for(const [index,issuance] of signatureRows.entries()){
+  const {labelLines,height}=gridRows[index]!;
+  if(y-height<52){page=doc.addPage([612,792]);pageHeader();drawGridHeader();}
+  const top=y;
+  page.drawRectangle({x:gridX,y:top-height,width:gridWidth,height,borderColor:rgb(.78,.81,.85),borderWidth:.6});
+  for(const x of columnsX.slice(1,-1))page.drawLine({start:{x,y:top},end:{x,y:top-height},thickness:.6,color:rgb(.78,.81,.85)});
+  labelLines.forEach((line,lineIndex)=>page.drawText(line,{x:gridX+8,y:top-13-lineIndex*10,size:8.5,font:lineIndex===0?bold:regular,color:ink}));
+  const signatureLineY=top-height+12;
+  page.drawLine({start:{x:columnsX[1]+9,y:signatureLineY},end:{x:columnsX[2]-9,y:signatureLineY},thickness:.6,color:ink});
+  page.drawLine({start:{x:columnsX[2]+8,y:signatureLineY},end:{x:columnsX[3]-8,y:signatureLineY},thickness:.6,color:ink});
+  y=top-height;
+  if(index<signatureRows.length-1)y-=4;
+ }
+ y-=12;
  section('Inventory Handling');
  const inventoryNote='Use the oldest formula first (first in, first out). Store formula as directed on its package label. Keep inventory counts and expiration dates up to date, and record every receipt, issue, and adjustment.';
  const inventoryLines=wrap(inventoryNote,500,10);ensure(inventoryLines.length*14+10);page.drawRectangle({x:42,y:y-inventoryLines.length*14-7,width:528,height:inventoryLines.length*14+12,color:rgb(.94,.96,1)});y-=14;
  for(const line of inventoryLines){page.drawText(line,{x:52,y,size:10,font:regular,color:ink});y-=14;}y-=5;
- section('Participant and Request');row('Participant Name',request.participantName);row('Date of Birth',date(request.participantDob));row('WIC Family ID',request.participantFamilyId);row('WIC Individual ID',request.wicIndividualId);row('Request Type',request.requestKind==='extension'?'Extension':'New');row('Submitted',date(request.submissionDate));row('Approved',date(request.approvalDate));row('Product Ordered',date(request.dateOrdered));row('Benefits Start Date',date(request.benefitsStartDate));row('Benefit Month(s)',requestedMonthLabels(request.benefitMonthsRequested));row('Health Insurance',insuranceDetails(request));row('Breastfeeding',request.breastfeedingStatus);if(request.breastfeedingDiscontinuedDate)row('Date BF Discontinued',date(request.breastfeedingDiscontinuedDate));
- section('Medical Formula/Nutritionals');for(const [index,formula] of requestFormulas(request).entries()){row(`Formula ${index+1}`,formula.otherFormulaName||formula.productName);row('Form',formulaFormLabel(formula.productForm));if(formula.flavor)row('Flavor',formula.flavor);row('Amount (ounces/day)',formula.ouncesPrescribed);if(formula.readyToFeedJustification)row('Justification',formula.readyToFeedJustification);}row('Duration (months)',request.durationMonths);row('Qualifying Diagnosis(es)',request.diagnosis);
- section('WIC Food Restrictions');row('Restrictions',foodRestrictionLabel(request.wicFoodRestrictions));if(request.wicStaffFoodRestrictions)row('WIC Staff Decision',foodRestrictionLabel(request.wicStaffFoodRestrictions));if(request.wicNutritionStaffNotes)row('WIC Nutrition Staff Notes',request.wicNutritionStaffNotes);if(request.wicNutritionStaffName)row('WIC Nutrition Staff Name',request.wicNutritionStaffName);
- section('Issuance Details');for(const authorization of authorizations){row('Formula',fullFormulaName(authorization));row('Approved Cases',authorization.approvedCases);row('Approved Months',authorization.approvedMonths);}
- section('Next Steps');if(request.nextSteps&&wrap(request.nextSteps,376).length>8&&y-wrap(request.nextSteps,376).length*13<46){page=doc.addPage([612,792]);pageHeader();}row('Instructions',request.nextSteps);
- section('Monthly Receipt Confirmation');
- const signatureIssuances=authorizations.flatMap(authorization=>authorization.benefitIssuances.filter(issuance=>issuance.month).map(issuance=>({month:issuance.month,formula:fullFormulaName(authorization),quantity:issuance.quantity}))).sort((a,b)=>a.month.localeCompare(b.month));
- for(const issuance of signatureIssuances.length?signatureIssuances:[{month:'',formula:'',quantity:undefined as number|undefined}]){
-  const label=issuance.month?`${formatIssuanceMonth(issuance.month)} ${issuance.formula} ${issuance.quantity} unit(s)`: 'Issuance month and quantity not specified';
-  const labelLines=wrap(label,520,9);ensure(labelLines.length*11+42);
-  for(const line of labelLines){page.drawText(line,{x:46,y,size:9,font:bold,color:ink});y-=11;}
-  page.drawLine({start:{x:46,y:y-2},end:{x:300,y:y-2},thickness:.6,color:ink});page.drawLine({start:{x:330,y:y-2},end:{x:410,y:y-2},thickness:.6,color:ink});y-=13;
-  page.drawText('Parent/Guardian Signature',{x:46,y,size:8,font:regular,color:muted});page.drawText('Date',{x:462,y,size:8,font:regular,color:muted});y-=22;
- }
- if(request.genericFields?.additionalNotes){section('Additional Information');row('Notes',request.genericFields.additionalNotes);}
  const pages=doc.getPages();for(const [index,p] of pages.entries())p.drawText(`Page ${index+1} of ${pages.length}`,{x:42,y:26,size:8,font:regular,color:muted});
  return doc.save();
 }

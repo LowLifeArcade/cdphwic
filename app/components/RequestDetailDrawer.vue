@@ -19,7 +19,7 @@ import {localDate} from '~/../shared/surplus';
 import {validateRequestedMonths} from '~/../shared/requestMonthSelection';
 import {editableRequestFormulas,requestFormulaUpdates} from '~/../shared/requestFormulaEditing';
 import {blankFormula,formulaEntryName,validateFormulaEntry,validateFormulaSelection,type FormulaEntry} from '~/../shared/formulaEntries';
-import {shipmentReceived,canConfirmShipment,shipmentReceiptKey,type ShipmentReceiptSelection} from '~/../shared/shipmentReceipts';
+import {shipmentReceived,canConfirmShipment,allShipmentsConfirmed,shipmentReceiptKey,type ShipmentReceiptSelection} from '~/../shared/shipmentReceipts';
 import {staffShipmentRows,shipmentHasUnsentChanges} from '~/../shared/shipmentPublishing';
 import {blankShipment,requestShipments,validateShipments,type RequestShipment} from '~/../shared/requestShipments';
 import {formatDisplayDate,requestFormulas,participantNames,insuranceDetails,requestedMonthLabels,foodRestrictionLabel,formulaFormLabel,providerAddressLines,submissionDateOnly,participantAgeAtBenefitsStart} from '~/../shared/requestPresentation';
@@ -1108,6 +1108,7 @@ async function saveAgencyUpdate() {
         </section>
             <div v-if="canGenerateAuthorizationForm(request)" class="authorization-downloads detail-section"><a class="button button-secondary" :href="`/api/requests/${request.id}/authorization-form.pdf`" target="_blank" rel="noopener">Print / Download Authorization</a><details v-if="(request.authorizationVersions?.length??0)>1"><summary>Earlier authorization versions</summary><p v-for="version in request.authorizationVersions" :key="version.id"><a :href="`/api/requests/${request.id}/authorization-form.pdf?version=${version.id}`" target="_blank" rel="noopener">{{formatDisplayDate(submissionDateOnly(version.sentAt))}} · Shipment {{version.shipmentIndex+1}}</a></p></details></div>
         </section>
+        <div v-if="allShipmentsConfirmed(request)" class="authorization-downloads detail-section"><a class="button button-secondary" :href="`/api/requests/${request.id}/shipment-confirmation.pdf`" target="_blank" rel="noopener">Download Shipment Confirmation</a></div>
         <hr v-if="canCollapseReviewDetails && request.status!=='denied'" class="cdph-section-divider" />
 
 

@@ -21,6 +21,8 @@ describe('request operations UI', () => {
         expect(drawer).toContain('Add issuance month');
         expect(drawer).toContain('v-if="request.status===\'denied\'"');
         expect(drawer).toContain('authorization-form.pdf');
+        expect(drawer).toContain('shipment-confirmation.pdf');
+        expect(drawer).toContain('allShipmentsConfirmed(request)');
         expect(drawer).toContain('request.shipping.addressLine1');
         expect(drawer).toContain('rep?.email');
     });

@@ -11,6 +11,9 @@ export function shipmentReceived(request:Partial<RequestRecord>,row:RequestShipm
     return confirmed && (row.receiptMode==='simple' || shipmentQuantities(request,row).missingUnits===0);
 }
 export function shipmentFinished(request:Partial<RequestRecord>,row:RequestShipment):boolean {return shipmentReceived(request,row) || !!row.replacedAt;}
+export function allShipmentsConfirmed(request:Pick<RequestRecord,'shipments'>):boolean {
+    return !!request.shipments?.length && request.shipments.every(row=>!row.replacedAt && (!!row.receivedAt || !!row.receiptConfirmed));
+}
 export function shipmentDispatched(request:Partial<RequestRecord>,row:RequestShipment):boolean {
     if (row.etaSentAt || row.dispatched || shipmentReceived(request,row)) return true;
     if (row.dispatched===false) return false;

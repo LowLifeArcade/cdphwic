@@ -385,17 +385,17 @@ export async function reviewSubmittedRequest(db:D1Database,previous:RequestRecor
  if(revision!==(previous.revision??0))throw conflict();
  if(command.action==='reopen'){
   if(previous.status!=='denied')throw conflict('Only a denied request can be reopened.');
-  return writeRecord(db,previous,nextRecord(previous,{status:'in_progress',approved:false}),false);
+  return writeRecord(db,previous,nextRecord(previous,{status:'in_progress',approved:false,approvedByName:undefined}),false);
  }
  if(command.action==='clear'){
   if(previous.status!=='denied'&&previous.status!=='approved'&&previous.approved!==true)throw conflict('There is no saved review decision to clear.');
-  return writeRecord(db,previous,nextRecord(previous,{status:previous.status==='denied'||previous.status==='approved'?'in_progress':previous.status,approved:false,denialReason:undefined}),false);
+  return writeRecord(db,previous,nextRecord(previous,{status:previous.status==='denied'||previous.status==='approved'?'in_progress':previous.status,approved:false,approvedByName:undefined,denialReason:undefined}),false);
  }
  if(command.action==='request-info')return requestMoreInfo(db,previous,user,command.notes!,revision);
  if(command.action==='deny'&&(typeof command.reason!=='string'||!command.reason.trim()||command.reason.length>4000))throw Object.assign(new Error('Enter a reason for denial.'),{statusCode:400,statusMessage:'Enter a reason for denial.'});
  const now=new Date().toISOString();
  const moreInfoRequests=previous.moreInfoRequests?.map(note=>note.deletedAt||note.resolvedAt?note:{...note,resubmissionOpen:false,resolvedAt:now,resolvedBy:user.id});
- return writeRecord(db,previous,nextRecord(previous,{approved:command.action==='approve',status:command.action==='deny'?'denied':getApprovalStatus(previous.status),...(command.action==='deny'?{denialReason:command.reason!.trim()}:{}),moreInfoRequests}),false);
+ return writeRecord(db,previous,nextRecord(previous,{approved:command.action==='approve',approvedByName:command.action==='approve'?user.name:undefined,status:command.action==='deny'?'denied':getApprovalStatus(previous.status),...(command.action==='deny'?{denialReason:command.reason!.trim()}:{}),moreInfoRequests}),false);
 }
 
 export async function requestMoreInfo(db:D1Database,previous:RequestRecord,user:SessionUser,notes:string,revision:number){

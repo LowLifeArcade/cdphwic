@@ -11,8 +11,10 @@ vi.stubGlobal('getRouterParam',()=> '1000998');
 vi.stubGlobal('getHeader',(event:any)=>event.identity);
 vi.stubGlobal('readBody',(event:any)=>event.body);
 vi.stubGlobal('createError',(details:any)=>Object.assign(new Error(details.statusMessage),details));
+vi.stubGlobal('setResponseHeader',vi.fn());
 const {default:put}=await import('../server/api/requests/[id].put');
 const {default:get}=await import('../server/api/requests/[id].get');
+const {default:shipmentConfirmationPdf}=await import('../server/api/requests/[id]/shipment-confirmation.pdf.get');
 async function fixture(){
  const {db}=surplusDb();
  const record={id:1000998,submissionId:'route-edit-test',agencyId:10,agencyMemberId:100,status:'unopened',participantName:'Synthetic Route'} as RequestRecord;
@@ -58,6 +60,16 @@ it('authenticates receipt selections and persists partial confirmation through t
  expect(result.request.status).toBe('shipped');
  expect(result.request.shipments![0]!.receivedBy).toBe(getDemoUser('agency').id);
  expect(result.request.shipments![1]!.receivedAt).toBeUndefined();
+});
+it('makes the shipment confirmation PDF available to the Local Agency after all receipts are confirmed',async()=>{
+ const event=await fixture();event.context.params={id:'1000998'};
+ const {updateSubmittedRequest,updateSubmittedShipmentReceipt}=await import('../server/utils/submittedRequests');
+ const {shipmentReceiptKey}=await import('../shared/shipmentReceipts');
+ const user=getDemoUser('agency');const previous=(await submittedRequest(event.db,1000998,user))!;
+ const sent=await updateSubmittedRequest(event.db,previous,{status:'shipped',shipments:[{eta:'2026-11-01',casesShipped:2,unitsPerCase:6,carrier:'ups',trackingNumbers:['A'],etaSentAt:'2026-10-30'}]});
+ await expect(shipmentConfirmationPdf(event as never)).rejects.toMatchObject({statusCode:409});
+ await updateSubmittedShipmentReceipt(event.db,sent,[{index:0,key:shipmentReceiptKey(sent.shipments![0]!),receivedCases:2,receivedLooseUnits:0,damagedCases:0,damagedLooseUnits:0}],user.id);
+ const result=await shipmentConfirmationPdf(event as never);expect(result.slice(0,5)).toEqual(new TextEncoder().encode('%PDF-'));
 });
 it('allows only Local Agency or Admin to report a shipment issue and preserves the other shipment',async()=>{
  const event=await fixture();
@@ -286,7 +298,7 @@ it('requires reviewer decisions with reasons and closes denied requests until ex
  event.body={reviewDecision:{action:'reopen'},revision:0};await expect(put(event as never)).rejects.toMatchObject({statusCode:409});
  event.identity='agency';event.body={reviewDecision:{action:'reopen'},revision:denied.revision};await expect(put(event as never)).rejects.toMatchObject({statusCode:403});
  event.identity='admin';const reopened=(await put(event as never)).request;expect(reopened.status).toBe('in_progress');expect(reopened.approved).toBe(false);expect(reopened.denialReason).toBe('Missing documentation');
- event.body={reviewDecision:{action:'approve'},revision:reopened.revision};const approved=(await put(event as never)).request;expect(approved.approved).toBe(true);expect(approved.status).toBe('in_progress');
+ event.body={reviewDecision:{action:'approve'},revision:reopened.revision};const approved=(await put(event as never)).request;expect(approved.approved).toBe(true);expect(approved.status).toBe('in_progress');expect(approved.approvedByName).toBe(getDemoUser('admin').name);
 });
 it('approval ends pending information exchange without deleting its messages',async()=>{
  const event=await fixture();event.identity='internal';event.body={requestMoreInfo:{notes:'Please clarify'},revision:0};
