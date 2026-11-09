@@ -73,6 +73,7 @@ it('includes issuance for both formulas and paginates instead of clipping',async
   expect(draw.mock.calls.every(call=>(call[1]?.y??0)>=26)).toBe(true);expect((await PDFDocument.load(pdf)).getPageCount()).toBeGreaterThan(1);
  }finally{draw.mockRestore();}
 });
+
 it('includes Next Steps, published ETA details and three receipt signature rows with safe wrapped pagination',async()=>{
  const {PDFPage}=await import('pdf-lib');const {vi}=await import('vitest');const draw=vi.spyOn(PDFPage.prototype,'drawText');
  try{

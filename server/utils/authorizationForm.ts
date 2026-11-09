@@ -126,8 +126,8 @@ export async function createAuthorizationFormPdf(request:RequestRecord,agency?:A
  columns('Shipment Details',shipmentDetails,'Local Agency',agencyDetails);
  section('Next Steps');
  const nextSteps=request.nextSteps||'Follow the approved monthly issuance schedule above.';
- const nextStepLines=wrap(nextSteps,510,10);ensure(nextStepLines.length*14+10);
- for(const line of nextStepLines){page.drawText(line,{x:46,y,size:10,font:regular,color:ink});y-=14;}
+ const nextStepLines=wrap(nextSteps,510,11);ensure(nextStepLines.length*15+10);
+ for(const line of nextStepLines){page.drawText(line,{x:46,y,size:11,font:regular,color:ink});y-=15;}
  y-=3;
  section('Monthly Receipt Confirmation');
  const signatureIssuances=authorizations.flatMap(authorization=>authorization.benefitIssuances.filter(issuance=>issuance.month).map(issuance=>({month:issuance.month,formula:fullFormulaName(authorization),quantity:issuance.quantity}))).sort((a,b)=>a.month.localeCompare(b.month));
