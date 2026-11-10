@@ -89,7 +89,7 @@ export async function createAuthorizationFormPdf(request:RequestRecord,agency?:A
   for(const line of titleLines){page.drawText(line,{x:46,y,size:10,font:bold,color:blue});y-=13;}
   const shipmentRows=shipmentsFor(authorization);const caseCount=shipmentRows.reduce((total,shipment)=>total+shipment.casesShipped,0);const caseSizes=[...new Set(shipmentRows.map(shipment=>shipment.unitsPerCase).filter((value):value is number=>typeof value==='number'&&value>0))];
   const unitsPerCase=shipmentRows.length?(caseSizes.length===1&&shipmentRows.every(shipment=>typeof shipment.unitsPerCase==='number')?quantityLabel(caseSizes[0]):caseSizes.length>1?'Varies':'—'):'—';
-  const metrics:[string,string][]=[['Cases Shipped',quantityLabel(caseCount,'cases')],['Units per Case',unitsPerCase],['Units Shipped',quantityLabel(shippedUnits(authorization))],['On Hand',quantityLabel(authorization.agencyUnitsOnHand,authorization.agencyUnitsOnHandUnit)],['Surplus',quantityLabel(authorization.expectedSurplus,authorization.expectedSurplusUnit)]];
+  const metrics:[string,string][]=[['Cases Shipped',String(caseCount)],['Units Per Case',unitsPerCase==='—'?unitsPerCase:unitsPerCase.replace(/ unit\(s\)$/,'')],['Units Shipped',shippedUnits(authorization)===undefined?'—':String(shippedUnits(authorization))],['On Hand',quantityLabel(authorization.agencyUnitsOnHand,authorization.agencyUnitsOnHandUnit)],['Surplus',quantityLabel(authorization.expectedSurplus,authorization.expectedSurplusUnit)]];
   const metricWidth=528/5;
   for(const [metricIndex,[label,value]] of metrics.entries()){
    const x=42+metricIndex*metricWidth;
@@ -115,7 +115,7 @@ export async function createAuthorizationFormPdf(request:RequestRecord,agency?:A
  const shipmentDetails:Array<[string,string|number|undefined]>=shipmentRows.length?shipmentRows.flatMap((shipment,index)=>[
   [`Shipment ${index+1}`,shipment.shipmentFormula?fullFormulaName(shipment.shipmentFormula):request.productName],
   ['Source',shipment.shipmentSource==='agency'?shipment.sourceAgencyName:shipment.supplier],
-  ['Cases Shipped',`${shipment.casesShipped} case(s)`],
+  ['Cases Shipped',String(shipment.casesShipped)],
   ...(kind==='shipment-confirmation'?[['Units Received',`${shipmentQuantities(request,shipment).receivedUnits} unit(s)`] as [string,string],['Damaged Units',`${shipmentQuantities(request,shipment).damagedUnits} unit(s)`] as [string,string],['Receipt Confirmed',date(shipment.receivedAt)] as [string,string|undefined]]:[]),
   ['Loose Units',shipment.looseUnitsShipped?`${shipment.looseUnitsShipped} unit(s)`:undefined],
   ['ETA',date(shipment.eta)],['Carrier',shipment.carrier?.toUpperCase()],['Tracking',shipment.trackingNumbers.join(', ')],

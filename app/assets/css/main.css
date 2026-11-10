@@ -911,6 +911,9 @@ select.form-input {
     padding: 18px 0;
     border-top: 1px solid var(--border, #26354c);
 }
+.detail-section:has(+ .authorization-downloads) { padding-bottom: 6px; }
+.authorization-downloads { padding: 0 0 10px; }
+.authorization-downloads details { margin-top: 8px; }
 .detail-section h3 {
     margin: 0 0 14px;
     color: var(--green);
