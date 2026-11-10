@@ -27,6 +27,12 @@ describe('request operations UI', () => {
         expect(drawer).toContain('rep?.email');
     });
 
+    it('lets CDPH/WIC update both participant name parts from the Participant editor', () => {
+        expect(drawer).toContain('Participant First Name<input v-model="draft.participantFirstName"');
+        expect(drawer).toContain('Participant Last Name<input v-model="draft.participantLastName"');
+        expect(drawer).toContain('participantName: `${firstName} ${lastName}`');
+    });
+
     it('keeps request-form fields read-only until section editing and isolates issuance months to staff processing', () => {
         expect(drawer).toContain('>Edit</button>');
         expect(drawer).not.toContain('>Edit fields</button>');

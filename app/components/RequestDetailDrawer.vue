@@ -364,6 +364,9 @@ function saveFormSection() {
     const savedRequestId = props.request?.id;
     const updates: Partial<RequestRecord> = {};
     if (editingSection.value === 'participant') {
+        const firstName = (draft.participantFirstName ?? '').trim();
+        const lastName = (draft.participantLastName ?? '').trim();
+        if (!firstName || !lastName) { error.value = 'Enter the participant first and last name.'; return; }
         const breastfeedingError = validateBreastfeeding(draft);
         if (breastfeedingError) {error.value = breastfeedingError; return;}
 
@@ -371,6 +374,9 @@ function saveFormSection() {
         if (monthError) {error.value = monthError; return;}
 
         Object.assign(updates, {
+            participantName: `${firstName} ${lastName}`,
+            participantFirstName: firstName,
+            participantLastName: lastName,
             participantFamilyId: draft.participantFamilyId,
             benefitMonthsRequested: normalizeRequestedMonths(draft.benefitMonthsRequested),
             mediCalStatus: draft.medicalStatus==='yes'?draft.mediCalStatus:undefined,
@@ -675,6 +681,8 @@ async function saveAgencyUpdate() {
                 <p v-for="alert in ageMilestoneAlerts" :key="alert.milestone">Participant turns {{alert.milestone}} {{alert.daysUntil === 0 ? 'today' : `in ${alert.daysUntil} ${alert.daysUntil === 1 ? 'day' : 'days'}`}} ({{formatDisplayDate(alert.date)}}).</p>
             </div>
             <div v-if="editingSection === 'participant'" class="form-grid compact-form-grid">
+                <label class="field-label">Participant First Name<input v-model="draft.participantFirstName" class="form-input" autocomplete="given-name" required /></label>
+                <label class="field-label">Participant Last Name<input v-model="draft.participantLastName" class="form-input" autocomplete="family-name" required /></label>
                 <label class="field-label">WIC Family ID<input v-model.number="draft.participantFamilyId" class="form-input" /></label>
                 <label class="field-label">WIC Individual ID<input v-model="draft.wicIndividualId" class="form-input" /></label>
                 <label class="field-label">Date of Birth<input v-model="draft.participantDob" class="form-input" type="date" /></label>
