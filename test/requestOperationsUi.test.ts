@@ -14,6 +14,10 @@ describe('request operations UI', () => {
         expect(drawer).toContain('request.requestKind');
     });
 
+    it('visually separates request rows with outlined cards and spacing', () => {
+        expect(list).toContain('.request-row-shell {position:relative;margin:6px 8px;border:1px solid var(--border);border-radius:8px;overflow:hidden;background:var(--surface-raised);}');
+    });
+
     it('supports staff editing, monthly allocations, and denial-only reasons', () => {
         expect(drawer).toContain('v-model="editableFormulas[index]"');
         expect(drawer).toContain('AdditionalFormulaFields');
@@ -31,6 +35,13 @@ describe('request operations UI', () => {
         expect(drawer).toContain('Participant First Name<input v-model="draft.participantFirstName"');
         expect(drawer).toContain('Participant Last Name<input v-model="draft.participantLastName"');
         expect(drawer).toContain('participantName: `${firstName} ${lastName}`');
+    });
+
+    it('keeps participant name editing visible when approved-request details are collapsed', () => {
+        expect(drawer).toContain('aria-label="Edit participant name"');
+        expect(drawer).toContain('@click="editParticipantName"');
+        expect(drawer).toContain('reviewDetailsExpanded.value = true;');
+        expect(drawer).toContain("startEditing('participant');");
     });
 
     it('keeps request-form fields read-only until section editing and isolates issuance months to staff processing', () => {

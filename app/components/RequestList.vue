@@ -159,7 +159,8 @@ watch([()=>route.query.request,()=>props.requests],async([id],[previousId])=>{co
 .shipment-eta-cell small {white-space:normal;overflow:visible;text-overflow:clip;}
 .eta-overdue {color:var(--danger-text);}
 .shipping-issue-tag {color:#FFFFFF;background:#AE5018;border-color:#AE5018;}
-.request-row-shell {position:relative;}
+.request-row-shell {position:relative;margin:6px 8px;border:1px solid var(--border);border-radius:8px;overflow:hidden;background:var(--surface-raised);}
+.request-row {border-bottom:0;}
 .request-edit-link {position:absolute;right:12px;bottom:5px;padding:3px 6px;color:var(--purple-light);font-size:0.72rem;border-radius:4px;background:var(--surface);}
 .request-edit-link:hover {text-decoration:underline;}
 </style>

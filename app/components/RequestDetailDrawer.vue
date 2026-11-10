@@ -353,6 +353,11 @@ function startEditing(section: 'participant' | 'overview' | 'prescription' | 'fo
     error.value = '';
 }
 
+function editParticipantName() {
+    reviewDetailsExpanded.value = true;
+    startEditing('participant');
+}
+
 function cancelEditing() {
     if (props.request) Object.assign(draft, copyRequest(props.request));
     editingSection.value = null;
@@ -618,6 +623,7 @@ async function saveAgencyUpdate() {
             <div>
                 <span class="eyebrow">Request #{{ request.id }}</span>
                 <h2>{{ request.participantName }}</h2>
+                <button v-if="canStaffEdit && request.status!=='denied' && editingSection !== 'participant'" class="text-button participant-name-edit" type="button" aria-label="Edit participant name" @click="editParticipantName">Edit name</button>
                 <div class="request-kind-attachment">
                 <span class="request-tag request-kind-tag">{{ request.requestKind === 'extension' ? 'Extension' : 'New' }}</span>
                 <button v-if="request.prescriptionAttachment" type="button" class="attachment-toggle" title="View medical documentation" :aria-expanded="documentOpen" aria-controls="request-document-panel" @click="documentOpen=!documentOpen"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l10-10a4 4 0 0 1 5.66 5.66L9.41 17.41a2 2 0 0 1-2.83-2.83l9.19-9.19" /></svg><span>Rx</span></button>
