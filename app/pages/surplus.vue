@@ -3,6 +3,8 @@ import {formatDisplayDate,formulaFormLabel} from '~/../shared/requestPresentatio
 import { isReviewer, availableUnits, localDate, daysRemaining, variantKey } from '~/../shared/surplus';
 import {surplusShipmentDraft} from '~/../shared/requestTransfers';
 import {formatClinic,type ClinicAddress,type ClinicRecord} from '~/../shared/shipping';
+import {groupSurplusLots} from '~/../shared/surplusInventoryGroups';
+import {surplusMovementReason} from '~/../shared/surplusMovement';
 import type {RequestRecord} from '~/../shared/domain';
 import type { SurplusLot } from '~/../shared/surplus';
 function pickupAddress(json?:string|null){try{const value=JSON.parse(json??'null') as ClinicAddress|null;return value?formatClinic(value):'';}catch{return '';}}
@@ -56,9 +58,16 @@ const lots = computed(() =>
                 `${l.formulaName} ${l.flavor} ${l.form}`.toLowerCase().includes(search.value.toLowerCase())),
     ),
 );
+const expandedInventoryGroups=ref<Record<string,boolean>>({});
+const inventoryRows=computed(()=>groupSurplusLots(lots.value).flatMap(group=>group.lots.length===1
+ ? [{kind:'lot' as const,key:`lot:${group.lots[0]!.id}`,group,lot:group.lots[0]!}]
+ : [{kind:'group' as const,key:`group:${group.key}`,group},...(expandedInventoryGroups.value[group.key]?group.lots.map(lot=>({kind:'lot' as const,key:`lot:${lot.id}`,group,lot})):[])]));
+function toggleInventoryGroup(key:string){expandedInventoryGroups.value[key]=!expandedInventoryGroups.value[key];}
 const agencyName = (id: number) => agencyData.value?.agencies.find((a) => a.id === id)?.name ?? `Agency ${id}`;
 const operationId = ref('');
 const modal = ref('');
+const modalTitles:Record<string,string>={'assign-clinic':'Assign Clinic',new:'Record physical count',review:'Reconcile reported count',forecast:'Anticipated surplus',confirm:'Confirm actual usable, uncommitted surplus',destroy:'Record verified destruction','correct-expiry':'Correct verified expiration date',reconcile:'Reconcile physical count',deduct:'Deduct surplus','use-request':'Use surplus in a Request',cancel:'Cancel reservation',history:'Inventory history'};
+const modalTitle=computed(()=>modal.value==='new'&&!reviewer.value?'Record surplus count':modalTitles[modal.value]??'');
 const selected = ref<SurplusLot>();
 const report = ref<any>();
 const forecast = ref<any>();
@@ -102,6 +111,7 @@ function start(kind: string, lot?: SurplusLot, item?: any) {
         expirationDate: lot?.expirationDate ?? '',
         trackingReference: '',
     });
+    if(kind==='new'&&!reviewer.value)input.agencyId=data.value?.user.agencyId??0;
     if (kind === 'review') {
         report.value = item;
         selected.value = ((data.value?.lots as SurplusLot[]) ?? []).find(
@@ -188,6 +198,8 @@ async function run(work: () => Promise<unknown>) {
 async function submit() {
     await run(async () => {
         if(modal.value==='assign-clinic'){if(!selected.value||!input.clinicId)throw new Error('Select a clinic.');return $fetch(`/api/surplus/lots/${selected.value.id}/clinic`,{method:'POST',headers:headers.value,body:{clinicId:input.clinicId,expectedVersion:selected.value.version}});}
+        if(modal.value==='new'&&!reviewer.value)
+            return $fetch('/api/surplus/counts',{method:'POST',headers:headers.value,body:{operationId:operationId.value,formulaName:input.formulaName,form:input.form,flavor:input.flavor,clinicId:input.clinicId||undefined,quantity:Number(input.quantity),expirationDate:input.expirationDate,date:input.date,confirmerName:input.confirmerName,reason:input.reason}});
         if (modal.value === 'forecast')
             return $fetch('/api/surplus/forecasts', {
                 method: 'POST',
@@ -280,19 +292,9 @@ async function upload(kind: string, event: Event) {
                 <h1>Formula Surplus</h1>
                 <p>View agency inventory and manage surplus counts. Reserve stock and send shipping details from a request’s Shipment section.</p>
             </div>
-            <div v-if="reviewer && view==='counts'">
-                <button
-                    class="button"
-                    @click="start('new')"
-                >
-                    Record physical count
-                </button>
-                <button
-                    class="button button-main"
-                    @click="start('forecast')"
-                >
-                    Anticipated surplus
-                </button>
+            <div v-if="view==='counts'&&data">
+                <button class="button" @click="start('new')">{{reviewer?'Record physical count':'Record surplus count'}}</button>
+                <button v-if="reviewer" class="button button-main" @click="start('forecast')">Anticipated surplus</button>
             </div>
         </div>
         <p
@@ -358,8 +360,8 @@ async function upload(kind: string, event: Event) {
             </button>
         </div>
         <p>
-            Available unit(s) exclude reservations and expired stock. Reported counts require reconciliation; anticipated
-            quantities become available only after agency confirmation and review.
+            Available unit(s) exclude reservations and expired stock. Agency-attested counts become available immediately;
+            pending reports require reconciliation, and anticipated quantities become available after agency confirmation and review.
         </p>
         <div class="table-scroll inventory-table-wrap">
             <table class="inventory-table">
@@ -376,34 +378,31 @@ async function upload(kind: string, event: Event) {
                     </tr>
                 </thead>
                 <tbody>
-                    <tr
-                        v-for="lot in lots"
-                        :key="lot.id"
-                    >
-                        <td class="inventory-product">
-                            <strong>{{ lot.formulaName }} {{ lot.form === 'concentrate' ? 'Concentrate' : formulaFormLabel(lot.form) }}</strong>
-                            <span><template v-if="lot.flavor">{{ lot.flavor }} · </template>{{ agencyName(lot.agencyId) }}</span><span>{{lot.clinicName || 'Clinic not specified'}}</span>
-                        </td>
-                        <td>{{ formatDisplayDate(lot.expirationDate) }}</td>
-                        <td>{{ lot.onHand }}</td>
-                        <td>{{ lot.reserved }}</td>
-                        <td class="inventory-available">{{ availableUnits(lot) }}</td>
-                        <td>{{ lot.expiredUnits }}</td>
-                        <td>{{ lot.onHand + lot.expiredUnits }}</td>
-                        <td class="row-actions">
-                            <button v-if="reviewer && availableUnits(lot)>0 && !lot.expiredUnits && lot.expirationDate>=localDate()" class="button button-secondary" @click="useInRequest(lot)">Use in Request</button>
-                            <details class="inventory-actions"><summary>More</summary><div>
-                                <button class="text-button" @click="showHistory(lot)">History</button><button v-if="!lot.clinicId &amp;&amp; !lot.reserved &amp;&amp; reviewer" class="text-button" @click="start('assign-clinic',lot)">Assign Clinic</button>
-                                <template v-if="reviewer">
-                                <button class="text-button" @click="start('reconcile',lot)">Reconcile count</button>
-                                <button v-if="availableUnits(lot)>0" class="text-button" @click="start('deduct',lot)">Deduct stock</button>
-                                <button v-if="lot.expiredUnits>0" class="text-button" @click="start('destroy',lot)">Record destruction</button>
-                                <button class="text-button" @click="start('correct-expiry',lot)">Correct expiration</button>
-                                </template>
-                            </div></details>
-                        </td>
+                    <tr v-for="row in inventoryRows" :key="row.key" :class="row.kind==='group'?'inventory-group-row':row.group.lots.length>1?'inventory-lot-detail':''">
+                        <template v-if="row.kind==='group'">
+                            <td class="inventory-product"><strong>{{row.group.formulaName}} {{row.group.form==='concentrate'?'Concentrate':formulaFormLabel(row.group.form)}}</strong><span><template v-if="row.group.flavor">{{row.group.flavor}} · </template>{{agencyName(row.group.agencyId)}}</span><span>{{row.group.clinicName||'Clinic not specified'}}</span></td>
+                            <td>{{row.group.lots.length}} lots · earliest {{formatDisplayDate(row.group.earliestExpiration)}}</td>
+                            <td>{{row.group.onHand}}</td><td>{{row.group.reserved}}</td><td class="inventory-available">{{row.group.available}}</td><td>{{row.group.expiredUnits}}</td><td>{{row.group.total}}</td>
+                            <td class="row-actions"><button class="button" type="button" :aria-expanded="!!expandedInventoryGroups[row.group.key]" @click="toggleInventoryGroup(row.group.key)">{{expandedInventoryGroups[row.group.key]?'Hide':'View'}} {{row.group.lots.length}} expiration lots</button></td>
+                        </template>
+                        <template v-else>
+                            <td class="inventory-product"><template v-if="row.group.lots.length===1"><strong>{{row.group.formulaName}} {{row.group.form==='concentrate'?'Concentrate':formulaFormLabel(row.group.form)}}</strong><span><template v-if="row.group.flavor">{{row.group.flavor}} · </template>{{agencyName(row.group.agencyId)}}</span><span>{{row.group.clinicName||'Clinic not specified'}}</span></template><span v-else class="inventory-lot-label">Expiration lot</span></td>
+                            <td>{{formatDisplayDate(row.lot.expirationDate)}}</td><td>{{row.lot.onHand}}</td><td>{{row.lot.reserved}}</td><td class="inventory-available">{{availableUnits(row.lot)}}</td><td>{{row.lot.expiredUnits}}</td><td>{{row.lot.onHand+row.lot.expiredUnits}}</td>
+                            <td class="row-actions">
+                                <button v-if="reviewer && availableUnits(row.lot)>0 && !row.lot.expiredUnits && row.lot.expirationDate>=localDate()" class="button button-secondary" @click="useInRequest(row.lot)">Use in Request</button>
+                                <details class="inventory-actions"><summary>More</summary><div>
+                                    <button class="text-button" @click="showHistory(row.lot)">History</button><button v-if="!row.lot.clinicId &amp;&amp; !row.lot.reserved &amp;&amp; reviewer" class="text-button" @click="start('assign-clinic',row.lot)">Assign Clinic</button>
+                                    <template v-if="reviewer">
+                                        <button class="text-button" @click="start('reconcile',row.lot)">Reconcile count</button>
+                                        <button v-if="availableUnits(row.lot)>0" class="text-button" @click="start('deduct',row.lot)">Deduct stock</button>
+                                        <button v-if="row.lot.expiredUnits>0" class="text-button" @click="start('destroy',row.lot)">Record destruction</button>
+                                        <button class="text-button" @click="start('correct-expiry',row.lot)">Correct expiration</button>
+                                    </template>
+                                </div></details>
+                            </td>
+                        </template>
                     </tr>
-                    <tr v-if="!lots.length">
+                    <tr v-if="!inventoryRows.length">
                         <td colspan="8">No matching inventory.</td>
                     </tr>
                 </tbody>
@@ -475,26 +474,7 @@ async function upload(kind: string, event: Event) {
                 aria-modal="true"
                 aria-labelledby="surplus-dialog-title"
             >
-                <h2 id="surplus-dialog-title">
-                    {{
-                        (
-                            {
-                                'assign-clinic': 'Assign Clinic',
-                                new: 'Record physical count',
-                                review: 'Reconcile reported count',
-                                forecast: 'Anticipated surplus',
-                                confirm: 'Confirm actual usable, uncommitted surplus',
-                                destroy: 'Record verified destruction',
-                                'correct-expiry': 'Correct verified expiration date',
-                                reconcile: 'Reconcile physical count',
-                                deduct: 'Deduct surplus',
-                                'use-request': 'Use surplus in a Request',
-                                cancel: 'Cancel reservation',
-                                history: 'Inventory history',
-                            } as any
-                        )[modal]
-                    }}
-                </h2>
+                <h2 id="surplus-dialog-title">{{modalTitle}}</h2>
                 <p v-if="selected">
                     {{ selected.formulaName }} · {{ selected.form }} {{ selected.flavor }} ·
                     {{ agencyName(selected.agencyId) }} · {{selected.clinicName || 'Clinic not specified'}}
@@ -515,7 +495,7 @@ async function upload(kind: string, event: Event) {
                             Usable {{ h.on_hand }} / reserved {{ h.reserved }} / expired {{ h.expired_units }} ·
                             {{ h.request_ref }}
                         </p>
-                        <p>{{ h.reason }}</p>
+                        <p>{{ surplusMovementReason(h.reason) }}</p>
                     </article>
                     <button
                         class="button"
@@ -540,7 +520,7 @@ async function upload(kind: string, event: Event) {
                     @submit.prevent="submit"
                 >
                     <template v-if="['new', 'forecast'].includes(modal)"
-                        ><label
+                        ><label v-if="reviewer"
                             >Agency<select
                                 v-model="input.agencyId"
                                 required
@@ -575,7 +555,7 @@ async function upload(kind: string, event: Event) {
                         }}<input
                             v-model.number="input.quantity"
                             type="number"
-                            :min="['new', 'reconcile', 'confirm', 'forecast'].includes(modal) ? 0 : 1"
+                            :min="modal==='new'&&!reviewer ? 1 : ['new', 'reconcile', 'confirm', 'forecast'].includes(modal) ? 0 : 1"
                             step="1"
                             required
                     /></label>
@@ -604,7 +584,7 @@ async function upload(kind: string, event: Event) {
                         >{{ modal === 'confirm' ? 'Variance explanation (required if actual differs)' : 'Reason'
                         }}<textarea
                             v-model="input.reason"
-                            :required="modal !== 'confirm' || input.quantity !== forecast.expected_units"
+                            :required="modal==='new'&&!reviewer ? false : modal !== 'confirm' || input.quantity !== forecast.expected_units"
                             rows="2"
                         ></textarea>
                     </label>
@@ -629,7 +609,7 @@ async function upload(kind: string, event: Event) {
                             v-model="input.requestRef"
                             required /></label
                     >
-                    <template v-if="['confirm', 'destroy'].includes(modal)"
+                    <template v-if="['confirm', 'destroy'].includes(modal)||(modal==='new'&&!reviewer)"
                         ><label
                             >Staff name<input
                                 v-model="input.confirmerName"
@@ -738,6 +718,9 @@ async function upload(kind: string, event: Event) {
 .inventory-table :is(th,td) {padding:10px 12px;vertical-align:middle;line-height:1.4;}
 .inventory-table th {font-size:12px;white-space:nowrap;line-height:1.3;}
 .inventory-table th abbr {text-decoration:none;}
+.inventory-table .inventory-group-row td {background:var(--surface-raised);font-weight:600;}
+.inventory-table .inventory-lot-detail td:first-child {padding-left:28px;}
+.inventory-table .inventory-lot-label {font-size:12px;color:var(--muted);}
 .inventory-table :is(th,td):nth-child(n+3):nth-child(-n+7) {text-align:right;font-variant-numeric:tabular-nums;}
 .inventory-table .inventory-product {min-width:230px;max-width:310px;}
 .inventory-product strong {display:block;font-size:14px;line-height:1.4;}

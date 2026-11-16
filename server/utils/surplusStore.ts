@@ -53,13 +53,23 @@ export async function executeSurplusCommand(
     c: SurplusCommand,
     today = localDate(),
 ): Promise<{ operationId: string; lotId: string; transferId?: string }> {
-    if (!isReviewer(user)) throw Object.assign(new Error('Admin or FPU access required.'), { statusCode: 403 });
     if (!c.operationId || !c.lotId) fail('An operation ID and lot are required.');
     const payload = JSON.stringify(c);
     const prior = await db.prepare('SELECT * FROM surplus_commands WHERE id=?').bind(c.operationId).first<any>();
     if (prior) {
         if (prior.payload !== payload || prior.actor_id !== user.id) fail('Operation ID already used.');
         return JSON.parse(prior.result);
+    }
+    const initial=await db.prepare(`SELECT ${columns} FROM surplus_lots WHERE id=?`).bind(c.lotId).first<SurplusLot>();
+    if(!initial)fail('Inventory lot not found.');
+    const initialLot=decodeSurplusLot(initial);
+    if(!isReviewer(user)){
+        if(user.memberType!=='agency'||user.agencyId!==initialLot.agencyId||c.kind!=='reconcile'||c.reportId)
+            throw Object.assign(new Error('Local Agencies may only attest to counts for their own inventory.'),{statusCode:403});
+        if(!c.confirmerName?.trim()||!validDate(c.date??'')||c.date!>today)
+            throw Object.assign(new Error('Enter the count date and staff name attesting to the count.'),{statusCode:400});
+        if((c.clinicId??'')!==(initialLot.clinicId??''))
+            throw Object.assign(new Error('A Local Agency can only count inventory at the selected clinic.'),{statusCode:403});
     }
     if (c.kind !== 'expire') await expireSurplusLots(db, today);
     const stored = await db.prepare(`SELECT ${columns} FROM surplus_lots WHERE id=?`).bind(c.lotId).first<SurplusLot>();

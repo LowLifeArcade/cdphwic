@@ -1,9 +1,46 @@
 import { resolveSurplusClinic } from './surplusClinicLocations';
+import {ensureSurplusLot,executeSurplusCommand,expireSurplusLots} from './surplusStore';
 import { SEED_AGENCIES } from '../data/seed';
 import type { RequestRecord, SessionUser } from '../../shared/domain';
-import { canSeeAgency, isReviewer, validDate, localDate } from '../../shared/surplus';
+import { canSeeAgency, isReviewer, validDate, localDate, lotKey } from '../../shared/surplus';
 function reject(message: string) {
     throw Object.assign(new Error(message), { statusCode: 400 });
+}
+export interface AgencySurplusCountInput {
+    operationId:string;
+    formulaName:string;
+    form:string;
+    flavor?:string;
+    clinicId?:string;
+    quantity:number;
+    expirationDate:string;
+    date:string;
+    confirmerName:string;
+    reason?:string;
+}
+export async function submitAgencySurplusCount(db:D1Database,user:SessionUser,input:AgencySurplusCountInput,today=localDate()) {
+    if(user.memberType!=='agency'||!Number.isSafeInteger(user.agencyId)||!SEED_AGENCIES.some(a=>a.id===user.agencyId))
+        throw Object.assign(new Error('Only a Local Agency can attest to its own surplus count.'),{statusCode:403});
+    if(!input||typeof input!=='object')reject('Enter the physical count details.');
+    if(!/^[\w-]{8,100}$/.test(input.operationId)||!input.formulaName?.trim()||!['powder','concentrate','ready-to-feed'].includes(input.form))
+        reject('Enter a formula, form, and valid count reference.');
+    if(!Number.isSafeInteger(input.quantity)||input.quantity<=0||!validDate(input.expirationDate)||!validDate(input.date)||input.date>today||!input.confirmerName?.trim())
+        reject('Enter a positive whole-unit count, valid expiration and count dates, and the staff name attesting to the count.');
+    if(input.reason!==undefined&&(typeof input.reason!=='string'||input.reason.length>2000))reject('Count reason must be 2,000 characters or fewer.');
+    const clinic=await resolveSurplusClinic(db,user.agencyId!,input.clinicId);
+    await expireSurplusLots(db,today);
+    const variant={formulaName:input.formulaName.trim().replace(/\s+/g,' '),form:input.form,flavor:(input.flavor??'').trim().replace(/\s+/g,' '),expirationDate:input.expirationDate,clinicId:clinic.clinicId};
+    const existing=await db.prepare('SELECT id FROM surplus_lots WHERE agency_id=? AND variant_key=?').bind(user.agencyId,lotKey(variant)).first<{id:string}>();
+    const reason=input.reason?.trim()||'Agency-attested physical surplus count';
+    const prior=await db.prepare('SELECT actor_id,payload,result FROM surplus_commands WHERE id=?').bind(input.operationId).first<{actor_id:number;payload:string;result:string}>();
+    if(prior){
+        const command=JSON.parse(prior.payload) as {kind:string;lotId:string;quantity:number;reason?:string;date?:string;confirmerName?:string;clinicId?:string;reportId?:string};
+        if(prior.actor_id!==user.id||!existing||command.kind!=='reconcile'||command.reportId||command.lotId!==existing.id||command.quantity!==input.quantity||command.reason!==reason||command.date!==input.date||command.confirmerName!==input.confirmerName.trim()||(command.clinicId??'')!==(clinic.clinicId??''))
+            throw Object.assign(new Error('Operation ID already used.'),{statusCode:409});
+        return JSON.parse(prior.result);
+    }
+    const lot=await ensureSurplusLot(db,user.agencyId!,variant);
+    return executeSurplusCommand(db,user,{kind:'reconcile',operationId:input.operationId,lotId:lot.id,quantity:input.quantity,expectedVersion:lot.version,reason,date:input.date,confirmerName:input.confirmerName.trim(),clinicId:clinic.clinicId},today);
 }
 export async function persistSurplusSubmission(
     db: D1Database,

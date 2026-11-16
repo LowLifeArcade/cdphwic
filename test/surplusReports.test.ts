@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { surplusDb } from './helpers/surplusDb';
-import { persistSurplusSubmission, createForecast, confirmForecast } from '../server/utils/surplusReports';
+import { persistSurplusSubmission, createForecast, confirmForecast, submitAgencySurplusCount } from '../server/utils/surplusReports';
 import { ensureSurplusLot, executeSurplusCommand, listSurplus } from '../server/utils/surplusStore';
 import { listSurplusNotices, refreshSurplusNotices } from '../server/utils/surplusNotices';
 import { getDemoUser } from '../server/utils/session';
@@ -10,6 +10,30 @@ const admin = getDemoUser('admin');
 const agency = getDemoUser('agency');
 const variant = { formulaName: 'Fortini', form: 'ready-to-feed', flavor: '', expirationDate: '2027-12-01' };
 describe('surplus reporting and notices', () => {
+    it('lets an agency attest and immediately reconcile its physical surplus count', async () => {
+        const { db } = surplusDb();
+        const count = { operationId:'agency-count-one', formulaName:'Fortini', form:'ready-to-feed', flavor:'', quantity:8, expirationDate:variant.expirationDate, date:localDate(), confirmerName:'Agency Staff', reason:'Initial launch count' };
+        const saved = await submitAgencySurplusCount(db, agency, count);
+        const retried = await submitAgencySurplusCount(db, agency, count);
+        expect(retried).toEqual(saved);
+        expect((await listSurplus(db, agency)).lots).toMatchObject([{ id:saved.lotId, agencyId:agency.agencyId, onHand:8, reserved:0 }]);
+        const movement = await db.prepare('SELECT kind,actor_id,reason,on_hand FROM surplus_movements WHERE operation_id=?').bind(count.operationId).first<any>();
+        expect(movement).toMatchObject({kind:'reconcile',actor_id:agency.id,on_hand:8});
+        expect(JSON.parse(movement.reason)).toMatchObject({reason:'Initial launch count',staff:'Agency Staff',date:count.date});
+        await submitAgencySurplusCount(db, agency, {...count,operationId:'agency-count-two',quantity:11});
+        expect((await listSurplus(db, agency)).lots).toHaveLength(1);
+        expect((await listSurplus(db, agency)).lots[0]).toMatchObject({onHand:11,version:2});
+    });
+
+    it('rejects invalid agency count values and clinics outside the agency', async () => {
+        const { db } = surplusDb();
+        const count = { operationId:'agency-count-invalid', formulaName:'Fortini', form:'ready-to-feed', quantity:8, expirationDate:variant.expirationDate, date:localDate(), confirmerName:'Agency Staff' };
+        await expect(submitAgencySurplusCount(db, agency, {...count,date:'2999-01-01'})).rejects.toMatchObject({statusCode:400});
+        await expect(submitAgencySurplusCount(db, agency, {...count,quantity:0})).rejects.toMatchObject({statusCode:400});
+        await expect(submitAgencySurplusCount(db, agency, {...count,clinicId:'other-agency-clinic'})).rejects.toMatchObject({statusCode:400});
+        expect((await listSurplus(db, agency)).lots).toHaveLength(0);
+    });
+
     it('persists undated pending reports once and rejects changed retries', async () => {
         const { db } = surplusDb();
         const request = {
