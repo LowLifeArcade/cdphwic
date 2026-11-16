@@ -24,6 +24,14 @@ it('publishes immutable authorization versions and scopes notices to the request
  await db.prepare('INSERT INTO surplus_notice_reads(notice_id,user_id) VALUES(?,?)').bind(`followup:${pending.moreInfoRequests![0]!.id}`,getDemoUser('agency').id).run();
  expect((await requestNotices(db,getDemoUser('agency'))).find(n=>n.kind==='request-info')?.is_read).toBe(1);
 });
+it('identifies the formula portion in ETA notices and shows the special-order balance still pending',async()=>{
+ const {requestNotices}=await import('../server/utils/requestNotices');
+ const {db}=surplusDb();
+ const previous=await ensureSubmittedRequest(db,{id:9938,submissionId:'portion-notice',agencyId:10,agencyMemberId:100,participantName:'Synthetic',productName:'Nutramigen',productForm:'ready-to-feed',requestedFormulas:[{productName:'Nutramigen',productForm:'ready-to-feed'}],formulaAuthorizations:[{productName:'Nutramigen',productForm:'ready-to-feed',approvedCases:5,standardCases:2,specialOrderCases:3,benefitIssuances:[{month:'2026-11',quantity:30}]}],approved:true,status:'in_progress'});
+ const sent=await updateSubmittedRequest(db,previous,{shipmentDrafts:[{eta:'2026-11-10',carrier:'ups',casesShipped:2,unitsPerCase:6,fulfillmentType:'standard',trackingNumbers:['ONE']}]},false,0,3);
+ const notice=(await requestNotices(db,getDemoUser('agency'))).find(row=>row.kind==='request-eta');
+ expect(notice?.title).toContain('Standard');expect(notice?.notes).toContain('Nutramigen');expect(notice?.notes).toContain('3 Special Order cases still pending');
+});
 it('allows reviewers to edit or withdraw unread notes with revision checks',async()=>{
  const {editMoreInfoNote}=await import('../server/utils/submittedRequests');
  const {requestNotices}=await import('../server/utils/requestNotices');

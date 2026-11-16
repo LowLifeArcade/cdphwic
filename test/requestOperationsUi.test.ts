@@ -14,6 +14,21 @@ describe('request operations UI', () => {
         expect(drawer).toContain('request.requestKind');
     });
 
+    it('keeps the Special Order product tag but hides the status tag after completion', () => {
+        expect(list).toContain('v-if="formula.specialOrder" class="status-badge status-special-order formula-order-tag"');
+        expect(list).toContain('v-if="allFormulasSpecialOrder(request) && request.status!==\'complete\'"');
+    });
+
+    it('lets Local Agencies reply while keeping issue resolution with CDPH/WIC', () => {
+        const issuePanel=readFileSync(new URL('../app/components/ShipmentIssuePanel.vue', import.meta.url), 'utf8');
+        expect(issuePanel).toContain("identity.value==='admin' || identity.value==='internal'");
+        expect(issuePanel).toContain('Mark Issue Resolved');
+        expect(issuePanel).toContain("identity.value==='admin' || identity.value==='internal' || identity.value==='agency'");
+        expect(issuePanel).toContain('v-if="canRespond && activeShipmentIssue(shipment) && !editing"');
+        expect(issuePanel).toContain("response.senderType==='agency'?'Local Agency':'CDPH/WIC'");
+        expect(issuePanel).not.toContain('canReport || canResolve');
+    });
+
     it('visually separates request rows with outlined cards and spacing', () => {
         expect(list).toContain('.request-row-shell {position:relative;margin:6px 8px;border:1px solid var(--border);border-radius:8px;overflow:hidden;background:var(--surface-raised);}');
     });

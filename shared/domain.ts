@@ -106,6 +106,8 @@ export interface RequestRecord {
     deletedShipments?: Array<{shipment:NonNullable<RequestRecord['shipments']>[number];draft?:NonNullable<RequestRecord['shipments']>[number];deletedAt:string;deletedBy:number}>;
     shipments?: Array<{
         shipmentFormula?:import('./shipmentFormulas').ShipmentFormula;
+        fulfillmentType?:'standard'|'special';
+        fulfillmentType?:'standard'|'special';
         shipmentSource?:'distributor'|'agency';
         sourceAgencyId?:number;
         sourceAgencyName?:string;
@@ -149,7 +151,7 @@ export interface RequestRecord {
         dispositions?: Array<{kind:'returned'|'destroyed';cases:number;looseUnits?:number;units?:number;damagedUnits?:number;notes:string;recordedAt:string;recordedBy:number}>;
         receiptCountHistory?: Array<{cases:number;looseUnits?:number;units?:number;damagedUnits?:number;unitsPerCase?:number;notes:string;recordedAt:string;recordedBy:number}>;
         deletedIssues?: Array<{issue:NonNullable<NonNullable<RequestRecord['shipments']>[number]['issue']>;deletedAt:string;deletedBy:number}>;
-        issue?: {id?:string;labelsSent?:{date:string;reference:string;recordedAt:string;recordedBy:number};images?:DamageImage[];source?:'receipt-quantity'|'receipt-confirmation';type:'damaged'|'missing'|'incomplete';notes:string;reportedAt:string;reportedBy:number;resubmissionOpen?:boolean;resubmissionOpenedAt?:string;resubmissionOpenedBy?:number;resubmissionReadAt?:string;resubmissionReadBy?:number;resolvedAt?:string;resolvedBy?:number;updatedAt?:string;updatedBy?:number;reopenedAt?:string;reopenedBy?:number;responses?:Array<{notes:string;createdAt:string;createdBy:number}>};
+        issue?: {id?:string;labelsSent?:{date:string;reference:string;recordedAt:string;recordedBy:number};images?:DamageImage[];source?:'receipt-quantity'|'receipt-confirmation';type:'damaged'|'missing'|'incomplete';notes:string;reportedAt:string;reportedBy:number;resubmissionOpen?:boolean;resubmissionOpenedAt?:string;resubmissionOpenedBy?:number;resubmissionReadAt?:string;resubmissionReadBy?:number;resolvedAt?:string;resolvedBy?:number;updatedAt?:string;updatedBy?:number;reopenedAt?:string;reopenedBy?:number;responses?:Array<{notes:string;createdAt:string;createdBy:number;senderType?:'agency'|'reviewer'}>};
         carrier: 'fedex' | 'dhl' | 'ups' | 'agency' | 'gso';
         trackingNumbers: string[];
     }>;

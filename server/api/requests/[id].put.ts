@@ -70,11 +70,15 @@ export default defineEventHandler(async (event) => {
     if (updates.shipmentIssue !== undefined) {
         if(updates.shipmentIssue?.action==='resolve-received'&&!shipmentFeatureFlags(useRuntimeConfig(event).public).receiptQuantities)throw createError({statusCode:409,statusMessage:'Quantity tracking is currently disabled.'});
         if (updates.shipmentIssue?.action==='respond') {
-            if (!isReviewer(user)) throw createError({statusCode:403,statusMessage:'Only CDPH/WIC or Admin can respond to a shipment issue.'});
-        } else if (['update','reopen'].includes(updates.shipmentIssue?.action)) {
-            // All users with access to this agency may update or reopen an existing issue.
+            if (!isReviewer(user) && user.memberType!=='agency') throw createError({statusCode:403,statusMessage:'Only Local Agency, CDPH/WIC, or Admin can respond to a shipment issue.'});
+        } else if (updates.shipmentIssue?.action==='update') {
+            // Users with access to this agency may correct an existing issue report.
+        } else if (updates.shipmentIssue?.action==='reopen') {
+            if (!isReviewer(user)) throw createError({statusCode:403,statusMessage:'Only CDPH/WIC or Admin can reopen a shipment issue.'});
+        } else if (updates.shipmentIssue?.action==='resolve') {
+            if (!isReviewer(user)) throw createError({statusCode:403,statusMessage:'Only CDPH/WIC or Admin can resolve a shipment issue.'});
         } else if (user.memberType !== 'agency' && user.role !== 'admin') throw createError({statusCode:403,statusMessage:'Only Local Agency or Admin can report or resolve a shipment issue.'});
-        const request=await updateSubmittedShipmentIssue(env.CDPHWIC,previous,updates.shipmentIssue,user.id);
+        const request=await updateSubmittedShipmentIssue(env.CDPHWIC,previous,updates.shipmentIssue,user.id,user.memberType==='agency'?'agency':'reviewer');
         updateRequestRecord(id,request);
         return {request,demo:true};
     }

@@ -1,6 +1,25 @@
 import {it,expect} from 'vitest';
 import {surplusDb} from './helpers/surplusDb';
 import {ensureSubmittedRequest,updateSubmittedRequest} from '../server/utils/submittedRequests';
+import {shipmentPlan} from '../shared/shipmentPublishing';
+import {shipmentReceiptKey} from '../shared/shipmentReceipts';
+import {receiptQuantityKey} from '../shared/shipmentQuantities';
+it('includes the fulfillment portion in the persisted shipment plan',()=>{
+ expect(shipmentPlan({eta:'',casesShipped:2,carrier:'ups',trackingNumbers:[],fulfillmentType:'special'})).toMatchObject({fulfillmentType:'special'});
+});
+it('keeps a request open after receiving Standard cases while Special Order cases remain',async()=>{
+ const {updateSubmittedShipmentReceipt}=await import('../server/utils/submittedRequests');
+ const {db}=surplusDb();
+ let request=await ensureSubmittedRequest(db,{id:9975,submissionId:'split-order-completion',agencyId:10,agencyMemberId:100,participantName:'Example',productName:'Nutramigen',productForm:'ready-to-feed',requestedFormulas:[{productName:'Nutramigen',productForm:'ready-to-feed'}],formulaAuthorizations:[{productName:'Nutramigen',productForm:'ready-to-feed',approvedCases:5,standardCases:2,specialOrderCases:3,benefitIssuances:[{month:'2026-11',quantity:30}]}],approved:true,status:'in_progress'});
+ request=await updateSubmittedRequest(db,request,{shipmentDrafts:[{eta:'2026-11-10',carrier:'ups',casesShipped:2,unitsPerCase:6,fulfillmentType:'standard',trackingNumbers:['ONE']}]},false,0,3);
+ const standard=request.shipments![0]!;
+ request=await updateSubmittedShipmentReceipt(db,request,[{index:0,key:shipmentReceiptKey(standard),expectedReceipt:receiptQuantityKey(standard),receivedCases:2,receivedLooseUnits:0,damagedCases:0,damagedLooseUnits:0}],100);
+ expect(request.status).toBe('shipped');expect(request.receivedStatus).toBe('shipped');
+ request=await updateSubmittedRequest(db,request,{shipmentDrafts:[request.shipments![0]!,{eta:'2026-11-25',carrier:'ups',casesShipped:3,unitsPerCase:6,fulfillmentType:'special',trackingNumbers:['TWO']}]},false,1,3);
+ const special=request.shipments![1]!;
+ request=await updateSubmittedShipmentReceipt(db,request,[{index:1,key:shipmentReceiptKey(special),expectedReceipt:receiptQuantityKey(special),receivedCases:3,receivedLooseUnits:0,damagedCases:0,damagedLooseUnits:0}],100);
+ expect(request.status).toBe('complete');expect(request.receivedStatus).toBe('received');
+});
 it('keeps shipment drafts private and publishes only the selected update',async()=>{
  const {db}=surplusDb();
  const row={eta:'2026-11-01',casesShipped:1,unitsPerCase:6,carrier:'ups' as const,trackingNumbers:['A']};

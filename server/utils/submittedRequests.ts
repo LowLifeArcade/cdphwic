@@ -22,6 +22,8 @@ import {validateBreastfeeding} from '../../shared/breastfeeding';
 import {validateRequestedMonths} from '../../shared/requestMonthSelection';
 import {validateFormulaSelection} from '../../shared/formulaEntries';
 import {requestShipments,shipmentUpdates,validateShipments} from '../../shared/requestShipments';
+import {splitOrderFulfillmentComplete,validateShipmentAllocations} from '../../shared/fulfillmentAllocations';
+import {validateFormulaAuthorizations} from '../../shared/formulaAuthorizations';
 import {resolveShipping} from './clinicStore';
 import { canEditSubmission, canReplyToMoreInfo, canReopenMoreInfo, canResolveMoreInfo, hasPendingMoreInfo, latestMoreInfoRequest, submissionFields } from '../../shared/requestEditing';
 import { validateRequestSubmission } from '../../shared/requestSubmission';
@@ -115,6 +117,15 @@ export async function updateSubmittedRequest(
     pendingDrafts?: RequestRecord['shipments'],
     quantityTracking=true,
 ) {
+    if(updates.formulaAuthorizations!==undefined){
+        const authorizationError=validateFormulaAuthorizations(updates.formulaAuthorizations).at(0);
+        if(authorizationError)throw Object.assign(new Error(authorizationError),{statusCode:400,statusMessage:authorizationError});
+    }
+    const proposedShipmentPlans=updates.shipmentDrafts??updates.shipments??(updates.formulaAuthorizations!==undefined?previous.shipmentDrafts??previous.shipments:undefined);
+    if(proposedShipmentPlans){
+        const fulfillmentError=validateShipmentAllocations({...previous,...updates,shipments:previous.shipments},proposedShipmentPlans);
+        if(fulfillmentError)throw Object.assign(new Error(fulfillmentError),{statusCode:400,statusMessage:fulfillmentError});
+    }
     if(updates.surplusItems!==undefined)for(const [index,item] of updates.surplusItems.entries()){
         if(item.clinicId!==previous.surplusItems?.[index]?.clinicId)await resolveSurplusClinic(db,previous.agencyId,item.clinicId);
     }
@@ -227,6 +238,11 @@ export async function updateSubmittedRequest(
         }
     }
     if (rows.some(activeShipmentIssue)) Object.assign(updates,shipmentIssueSummary({...previous,...updates},rows));
+    const finalRequest={...previous,...updates};
+    if(updates.status==='complete'&&!splitOrderFulfillmentComplete(finalRequest)){
+        updates.status=rows.every(row=>shipmentDispatched(finalRequest,row))?'shipped':'in_progress';
+        updates.receivedStatus='shipped';
+    }
     const baseline=originalCaseApproval(previous) ?? originalCaseApproval({...previous,...updates});
     if (baseline!==undefined && (sendEtaShipmentIndex!==undefined || rows.some(row=>shipmentDispatched(previous,row)))) updates.originalApprovedCases=baseline;
     if (pendingDrafts) updates.shipmentDrafts=pendingDrafts.map((row,index)=>index===sendEtaShipmentIndex?updates.shipments![index]!:row);
@@ -241,19 +257,21 @@ export async function deleteSubmittedShipment(db:D1Database,previous:RequestReco
 }
 export async function updateSubmittedShipmentReceipt(db:D1Database,previous:RequestRecord,selections:ShipmentReceiptSelection[],actorId:number) {
     const prepared=prepareCatalogReceiptPackaging(previous,selections);
-    const updates={...confirmShipmentReceipts(prepared.request,prepared.selections,actorId),...(originalCaseApproval(previous)!==undefined?{originalApprovedCases:originalCaseApproval(previous)}:{})};
+    let updates={...confirmShipmentReceipts(prepared.request,prepared.selections,actorId),...(originalCaseApproval(previous)!==undefined?{originalApprovedCases:originalCaseApproval(previous)}:{})};
+    updates=keepSplitFulfillmentOpen(previous,updates);
     return writeRecord(db,previous,nextRecord(previous,updates),false,await transferReceiptSteps(db,previous,updates));
 }
-export async function updateSubmittedShipmentIssue(db:D1Database,previous:RequestRecord,command:ShipmentIssueCommand,actorId:number) {
+export async function updateSubmittedShipmentIssue(db:D1Database,previous:RequestRecord,command:ShipmentIssueCommand,actorId:number,senderType?:'agency'|'reviewer') {
     const original=previous;
     if(command.action==='resolve-received' && command.catalogUnitsPerCase!==undefined){
         const prepared=prepareCatalogReceiptPackaging(previous,[command]);previous=prepared.request;command={...command,key:prepared.selections[0]!.key};
     }
-    const updates={...applyShipmentIssue(previous,command,actorId),...(originalCaseApproval(previous)!==undefined?{originalApprovedCases:originalCaseApproval(previous)}:{})};
+    const updates={...applyShipmentIssue(previous,command,actorId,undefined,senderType),...(originalCaseApproval(previous)!==undefined?{originalApprovedCases:originalCaseApproval(previous)}:{})};
     return writeRecord(db,original,nextRecord(original,updates),false,await transferReceiptSteps(db,original,updates));
 }
 export async function updateSubmittedShipmentCases(db:D1Database,previous:RequestRecord,command:ShipmentCaseCommand,actorId:number) {
-    const updates=applyShipmentCaseCommand(previous,command,actorId);
+    let updates=applyShipmentCaseCommand(previous,command,actorId);
+    updates=keepSplitFulfillmentOpen(previous,updates);
     if(command.action==='replacement' && previous.shipmentDrafts && updates.shipments){
         const originalCount=requestShipments(previous).length;
         updates.shipmentDrafts=[...previous.shipmentDrafts.slice(0,originalCount),...updates.shipments.slice(originalCount),...previous.shipmentDrafts.slice(originalCount)];
@@ -374,8 +392,17 @@ function prepareCatalogReceiptPackaging(previous:RequestRecord,selections:Shipme
 export function commitRequestTransfer(db:D1Database,previous:RequestRecord,updates:Partial<RequestRecord>,steps:D1PreparedStatement[]){return writeRecord(db,previous,nextRecord(previous,updates),false,steps);}
 
 export async function updateSubmittedSimpleShipmentReceipt(db:D1Database,previous:RequestRecord,command:SimpleShipmentReceiptCommand,actorId:number){
- const updates=confirmSimpleShipmentReceipt(previous,command,actorId);
+ const updates=keepSplitFulfillmentOpen(previous,confirmSimpleShipmentReceipt(previous,command,actorId));
  return writeRecord(db,previous,nextRecord(previous,updates),false,await transferReceiptSteps(db,previous,updates));
+}
+
+function keepSplitFulfillmentOpen<T extends Partial<RequestRecord>>(previous:RequestRecord,updates:T):T|T&Partial<RequestRecord>{
+ const merged={...previous,...updates};
+ if(updates.status==='complete'&&!splitOrderFulfillmentComplete(merged)){
+  const rows=requestShipments(merged);
+  return {...updates,status:rows.every(row=>shipmentDispatched(merged,row))?'shipped':'in_progress',receivedStatus:'shipped'};
+ }
+ return updates;
 }
 
 export interface ReviewDecisionCommand {action:'approve'|'deny'|'reopen'|'clear'|'request-info';reason?:string;notes?:string}

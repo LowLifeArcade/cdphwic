@@ -20,29 +20,6 @@ export async function createAuthorizationFormPdf(request:RequestRecord,agency?:A
   }return lines;
  };
  const section=(title:string)=>{ensure(48);y-=12;page.drawText(title,{x:42,y,size:11,font:bold,color:blue});y-=8;page.drawLine({start:{x:42,y},end:{x:570,y},thickness:.5,color:rgb(.78,.81,.85)});y-=16;};
- const columns=(leftTitle:string,leftRows:Array<[string,string|number|undefined]>,rightTitle:string,rightRows:Array<[string,string|number|undefined]>)=>{
-  let leftIndex=0,rightIndex=0;
-  while(leftIndex<leftRows.length||rightIndex<rightRows.length){
-   if(y<190){page=doc.addPage([612,792]);pageHeader();}
-   const headerY=y-10;
-   page.drawText(leftTitle,{x:42,y:headerY,size:10,font:bold,color:blue});
-   page.drawText(rightTitle,{x:318,y:headerY,size:10,font:bold,color:blue});
-   page.drawLine({start:{x:42,y:headerY-7},end:{x:300,y:headerY-7},thickness:.5,color:rgb(.78,.81,.85)});
-   page.drawLine({start:{x:318,y:headerY-7},end:{x:570,y:headerY-7},thickness:.5,color:rgb(.78,.81,.85)});
-   let leftY=headerY-22,rightY=headerY-22;
-   const drawColumnRow=(items:Array<[string,string|number|undefined]>,index:number,x:number,currentY:number)=>{
-    const [label,input]=items[index]!;const value=input===undefined||input===''?'—':String(input);const lines=wrap(value,158,8.5);const height=Math.max(1,lines.length)*11+4;
-    if(!label&&!input)return currentY-8;
-    page.drawText(`${label}:`,{x:x+4,y:currentY,size:8,font:bold,color:ink});
-    lines.forEach((line,lineIndex)=>page.drawText(line,{x:x+91,y:currentY-lineIndex*11,size:8.5,font:regular,color:ink}));
-    return currentY-height;
-   };
-   while(leftIndex<leftRows.length&&leftY>56){const next=drawColumnRow(leftRows,leftIndex,42,leftY);if(next<46)break;leftY=next;leftIndex++;}
-   while(rightIndex<rightRows.length&&rightY>56){const next=drawColumnRow(rightRows,rightIndex,318,rightY);if(next<46)break;rightY=next;rightIndex++;}
-   y=Math.min(leftY,rightY)-8;
-   if(leftIndex<leftRows.length||rightIndex<rightRows.length){page=doc.addPage([612,792]);pageHeader();}
-  }
- };
  const authorizations=request.formulaAuthorizations?.length?request.formulaAuthorizations:formulaAuthorizations(request);
  const fullFormulaName=(formula:{productName?:string;productForm?:string;flavor?:string})=>[formula.productName,formulaFormLabel(formula.productForm),formula.flavor].filter(Boolean).join(' ');
  const formulaKey=(value:{productName?:string;productForm?:string;flavor?:string})=>JSON.stringify([(value.productName??'').trim().toLowerCase(),value.productForm??'',(value.flavor??'').trim().toLowerCase()]);
@@ -69,18 +46,23 @@ export async function createAuthorizationFormPdf(request:RequestRecord,agency?:A
   return digits.length===10?`(${digits.slice(0,3)}) ${digits.slice(3,6)}-${digits.slice(6)}`:value;
  };
  const quantityLabel=(quantity:number|undefined,unit?:'units'|'cases')=>quantity===undefined?'—':`${quantity} ${unit==='cases'?'case(s)':'unit(s)'}`;
- const headerLeftX=42,headerLeftWidth=318,headerRightX=378,headerRightWidth=192;
+ const headerLeftX=42,headerLeftWidth=174,headerMiddleX=234,headerMiddleWidth=144,headerRightX=396,headerRightWidth=174;
  const participantLines=wrap(request.participantName||'—',headerLeftWidth,15);
  const formulaLines=authorizations.flatMap(authorization=>wrap(fullFormulaName(authorization),headerLeftWidth,11));
+ const insurance=request.medicalStatus==='yes'?`Medi-Cal: ${request.mediCalStatus??'Yes'}`:request.medicalStatus==='no'?'Insurance: Private Insurance':request.medicalStatus==='pending'?'Insurance: Pending':'Insurance: —';
+ const middleLines=[`WIC Family ID: ${request.participantFamilyId||'—'}`,insurance,`Reviewed by: ${request.approvedByName||'—'}`].flatMap(line=>wrap(line,headerMiddleWidth,8.5));
+ const shipping=request.shipping;
+ const agencyContactLines=[shipping?.attention?`Attn: ${shipping.attention}`:rep?.name,shipping?.email||rep?.email,phone(shipping?.phone||rep?.phone),...(shipping?[shipping.addressLine1,shipping.addressLine2,`${shipping.city}, ${shipping.state} ${shipping.postalCode}`]:agency?[agency.shippingAddress,`${agency.city}, ${agency.state} ${agency.postalCode}`]:[])].filter((line):line is string=>Boolean(line)).flatMap(line=>wrap(line,headerRightWidth,8.5));
+ const agencyNameLines=wrap(agency?.name||'Local Agency',headerRightWidth,9);
  const leftHeight=participantLines.length*17+3+formulaLines.length*13;
- const headerHeight=Math.max(leftHeight,42);
+ const headerHeight=Math.max(leftHeight,middleLines.length*12,agencyNameLines.length*12+agencyContactLines.length*11);
  ensure(headerHeight+8);
  const headerTop=y;
  participantLines.forEach((line,index)=>page.drawText(line,{x:headerLeftX,y:headerTop-index*17,size:15,font:bold,color:ink}));
  formulaLines.forEach((line,index)=>page.drawText(line,{x:headerLeftX,y:headerTop-participantLines.length*17-2-index*13,size:11,font:bold,color:blue}));
- const insurance=request.medicalStatus==='yes'?`Medi-Cal: ${request.mediCalStatus??'Yes'}`:request.medicalStatus==='no'?'Insurance: Private Insurance':request.medicalStatus==='pending'?'Insurance: Pending':'Insurance: —';
- const rightRows=[`WIC Family ID: ${request.participantFamilyId||'—'}`,insurance,`Reviewed by: ${request.approvedByName||'—'}`];
- rightRows.forEach((line,index)=>page.drawText(line,{x:headerRightX,y:headerTop-index*14,size:8.5,font:regular,color:muted,maxWidth:headerRightWidth}));
+ middleLines.forEach((line,index)=>page.drawText(line,{x:headerMiddleX,y:headerTop-index*12,size:8.5,font:regular,color:muted}));
+ agencyNameLines.forEach((line,index)=>page.drawText(line,{x:headerRightX,y:headerTop-index*12,size:9,font:bold,color:blue}));
+ agencyContactLines.forEach((line,index)=>page.drawText(line,{x:headerRightX,y:headerTop-agencyNameLines.length*12-index*11,size:8.5,font:regular,color:muted}));
  y=headerTop-headerHeight-5;
  section('MONTHLY FORMULA ISSUANCE');
  for(const authorization of authorizations){
@@ -111,19 +93,21 @@ export async function createAuthorizationFormPdf(request:RequestRecord,agency?:A
   }
   y-=18;
  }
- const shipping=request.shipping;const shipmentRows=(request.shipments??[]).filter(s=>s.etaSentAt||s.transferEtaSentAt||s.dispatched);
- const shipmentDetails:Array<[string,string|number|undefined]>=shipmentRows.length?shipmentRows.flatMap((shipment,index)=>[
-  [`Shipment ${index+1}`,shipment.shipmentFormula?fullFormulaName(shipment.shipmentFormula):request.productName],
-  ['Source',shipment.shipmentSource==='agency'?shipment.sourceAgencyName:shipment.supplier],
-  ['Cases Shipped',String(shipment.casesShipped)],
-  ...(kind==='shipment-confirmation'?[['Units Received',`${shipmentQuantities(request,shipment).receivedUnits} unit(s)`] as [string,string],['Damaged Units',`${shipmentQuantities(request,shipment).damagedUnits} unit(s)`] as [string,string],['Receipt Confirmed',date(shipment.receivedAt)] as [string,string|undefined]]:[]),
-  ['Loose Units',shipment.looseUnitsShipped?`${shipment.looseUnitsShipped} unit(s)`:undefined],
-  ['ETA',date(shipment.eta)],['Carrier',shipment.carrier?.toUpperCase()],['Tracking',shipment.trackingNumbers.join(', ')],
-  ['',undefined],
- ]):[['Shipment','ETA has not been sent.']];
- const address=shipping?[agency?.name,shipping.attention?`Attn: ${shipping.attention}`:'',shipping.addressLine1,shipping.addressLine2,`${shipping.city}, ${shipping.state} ${shipping.postalCode}`].filter(Boolean).join('\n'):agency?`${agency.shippingAddress}\n${agency.city}, ${agency.state} ${agency.postalCode}`:undefined;
- const agencyDetails:Array<[string,string|number|undefined]>=[['Agency',agency?.name],['Representative',request.shipping?.attention||rep?.name],['Email',request.shipping?.email||rep?.email],['Phone',phone(request.shipping?.phone||rep?.phone)],['Shipping Address',address]];
- columns('Shipment Details',shipmentDetails,'Local Agency',agencyDetails);
+ const shipmentRows=(request.shipments??[]).filter(s=>s.etaSentAt||s.transferEtaSentAt||s.dispatched);
+ section('Shipment Details');
+ if(!shipmentRows.length){page.drawText('ETA has not been sent.',{x:46,y,size:9,font:regular,color:muted});y-=16;}
+ for(const [index,shipment] of shipmentRows.entries()){
+  const source=shipment.shipmentSource==='agency'?shipment.sourceAgencyName:shipment.supplier;
+  const heading=wrap(`Shipment ${index+1}: ${shipment.shipmentFormula?fullFormulaName(shipment.shipmentFormula):request.productName}`,520,10);
+  const summary=[`${shipment.casesShipped} case(s)`,shipment.looseUnitsShipped?`${shipment.looseUnitsShipped} loose unit(s)`:undefined,shipment.eta?`ETA: ${date(shipment.eta)}`:undefined,shipment.carrier?.toUpperCase(),source?`Source: ${source}`:undefined].filter(Boolean).join(' | ');
+  const details=wrap(summary,520,9);
+  const tracking=shipment.trackingNumbers.length?wrap(`Tracking: ${shipment.trackingNumbers.join(', ')}`,520,9):[];
+  const receipt=kind==='shipment-confirmation'?wrap(`Units Received: ${shipmentQuantities(request,shipment).receivedUnits} unit(s) | Damaged Units: ${shipmentQuantities(request,shipment).damagedUnits} unit(s)${shipment.receivedAt?` | Receipt Confirmed: ${date(shipment.receivedAt)}`:''}`,520,9):[];
+  ensure(heading.length*13+(details.length+tracking.length+receipt.length)*12+10);
+  for(const line of heading){page.drawText(line,{x:46,y,size:10,font:bold,color:blue});y-=13;}
+  for(const line of [...details,...tracking,...receipt]){page.drawText(line,{x:46,y,size:9,font:regular,color:ink});y-=12;}
+  y-=10;
+ }
  section('Next Steps');
  const nextSteps=request.nextSteps||'Follow the approved monthly issuance schedule above.';
  const nextStepLines=wrap(nextSteps,510,11);ensure(nextStepLines.length*15+10);
@@ -132,29 +116,22 @@ export async function createAuthorizationFormPdf(request:RequestRecord,agency?:A
  section('Monthly Receipt Confirmation');
  const signatureIssuances=authorizations.flatMap(authorization=>authorization.benefitIssuances.filter(issuance=>issuance.month).map(issuance=>({month:issuance.month,formula:fullFormulaName(authorization),quantity:issuance.quantity}))).sort((a,b)=>a.month.localeCompare(b.month));
  const signatureRows=signatureIssuances.length?signatureIssuances:[{month:'',formula:'',quantity:undefined as number|undefined}];
- const gridX=42,gridWidth=528,monthWidth=218,signatureWidth=220;
- const gridRows=signatureRows.map(issuance=>{const label=issuance.month?`${formatIssuanceMonth(issuance.month)}\n${issuance.formula}\n${issuance.quantity} unit(s)`: 'Issuance month and quantity not specified';const lines=wrap(label,monthWidth-16,8.5);return {labelLines:lines,height:Math.max(44,lines.length*10+14)};});
- const columnsX=[gridX,gridX+monthWidth,gridX+monthWidth+signatureWidth,gridX+gridWidth];
- if(y-24-gridRows[0]!.height<52){page=doc.addPage([612,792]);pageHeader();}
- const drawGridHeader=()=>{
-  const top=y;
-  page.drawRectangle({x:gridX,y:top-24,width:gridWidth,height:24,color:rgb(.91,.94,1),borderColor:rgb(.78,.81,.85),borderWidth:.6});
-  page.drawText('Month / Formula / Units',{x:gridX+8,y:top-16,size:8,font:bold,color:blue});
-  page.drawText('Parent/Guardian Signature',{x:columnsX[1]+8,y:top-16,size:8,font:bold,color:blue});
-  page.drawText('Date',{x:columnsX[2]+8,y:top-16,size:8,font:bold,color:blue});
-  y=top-24;
- };
- drawGridHeader();
+ const gridX=42,gridWidth=528,monthWidth=180,unitsWidth=60,signatureWidth=208;
+ const gridRows=signatureRows.map(issuance=>{const label=issuance.month?`${formatIssuanceMonth(issuance.month)}\n${issuance.formula}`:'Issuance month and quantity not specified';const lines=wrap(label,monthWidth-16,8.5);return {labelLines:lines,height:Math.max(38,lines.length*10+12)};});
+ const columnsX=[gridX,gridX+monthWidth,gridX+monthWidth+unitsWidth,gridX+monthWidth+unitsWidth+signatureWidth,gridX+gridWidth];
  for(const [index,issuance] of signatureRows.entries()){
   const {labelLines,height}=gridRows[index]!;
-  if(y-height<52){page=doc.addPage([612,792]);pageHeader();drawGridHeader();}
+  if(y-height<52){page=doc.addPage([612,792]);pageHeader();}
   const top=y;
   page.drawRectangle({x:gridX,y:top-height,width:gridWidth,height,borderColor:rgb(.78,.81,.85),borderWidth:.6});
   for(const x of columnsX.slice(1,-1))page.drawLine({start:{x,y:top},end:{x,y:top-height},thickness:.6,color:rgb(.78,.81,.85)});
   labelLines.forEach((line,lineIndex)=>page.drawText(line,{x:gridX+8,y:top-13-lineIndex*10,size:8.5,font:lineIndex===0?bold:regular,color:ink}));
-  const signatureLineY=top-height+12;
-  page.drawLine({start:{x:columnsX[1]+9,y:signatureLineY},end:{x:columnsX[2]-9,y:signatureLineY},thickness:.6,color:ink});
-  page.drawLine({start:{x:columnsX[2]+8,y:signatureLineY},end:{x:columnsX[3]-8,y:signatureLineY},thickness:.6,color:ink});
+  page.drawText(issuance.quantity===undefined?'—':`${issuance.quantity} unit(s)`,{x:columnsX[1]+7,y:top-height/2-4,size:11,font:regular,color:ink});
+  const signatureLineY=top-height+14;
+  page.drawLine({start:{x:columnsX[2]+9,y:signatureLineY},end:{x:columnsX[3]-9,y:signatureLineY},thickness:.6,color:ink});
+  page.drawLine({start:{x:columnsX[3]+8,y:signatureLineY},end:{x:columnsX[4]-8,y:signatureLineY},thickness:.6,color:ink});
+  page.drawText('Parent/Guardian Signature',{x:columnsX[2]+9,y:top-height+4,size:6.5,font:regular,color:muted});
+  page.drawText('Date',{x:columnsX[3]+8,y:top-height+4,size:6.5,font:regular,color:muted});
   y=top-height;
   if(index<signatureRows.length-1)y-=4;
  }

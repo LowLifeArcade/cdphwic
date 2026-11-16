@@ -11,6 +11,8 @@ import {transferAuthorizationError,transferEntryQuantity,transferCatalogUnitsPer
 import type {SurplusLot} from '~/../shared/surplus';
 import {canDeleteShipment,storedShipmentRows} from '~/../shared/shipmentDeletion';
 import {shipmentFeatureFlags} from '~/../shared/featureFlags';
+import {compactShipmentSummary} from '~/../shared/shipmentSummary';
+import {fulfillmentProgress,hasSplitOrderAllocation,shipmentFulfillmentType} from '~/../shared/fulfillmentAllocations';
 import {formatCaseEquivalent} from '~/../shared/shipmentQuantities';
 import {caseBalance} from '~/../shared/shipmentCaseTracking';
 import {breastfeedingOptions,validateBreastfeeding} from '~/../shared/breastfeeding';
@@ -96,6 +98,7 @@ const shipmentDeleteNotice=ref('');
 const shipmentPublishNotice=ref<{index:number;updated:boolean}|null>(null);
 const shippingSaveStatus = ref<'idle' | 'saving' | 'saved' | 'failed'>('idle');
 const shipmentFeatures=shipmentFeatureFlags(useRuntimeConfig().public);
+const splitOrderTypesEnabled=computed(()=>shipmentFeatures.splitOrderTypes||hasSplitOrderAllocation(props.request??{}));
 const shipmentCaseBalance=computed(()=>(shipmentFeatures.caseReconciliation||shipmentFeatures.potentialOverDelivery)?caseBalance(props.request ?? {}):null);
 const canStaffEdit = computed(() => identity.value === 'admin' || identity.value === 'internal');
 const reviewerOpenDate = ref(localDate());
@@ -494,21 +497,30 @@ async function saveStaffFields() {
     staffSaveStatus.value = error.value ? 'failed' : 'saved';
 }
 
-
-
 async function changeFormulaOrder(index:number,value:string){
     if(!props.request)return;
     const rows=formulaOrders(props.request);
     if(!rows[index])return;
     rows[index]!.specialOrder=value==='special';
-    const requestId=props.request.id;
-    const issuanceDraft=copyRequest(draft as RequestRecord);
-    await save({formulaOrders:rows});
-    if(!error.value && props.request?.id===requestId){
-        draft.formulaAuthorizations=issuanceDraft.formulaAuthorizations;
-        draft.nextSteps=issuanceDraft.nextSteps;
+    const authorization=draft.formulaAuthorizations?.[index];
+    if(authorization?.approvedCases!==undefined){
+        authorization.standardCases=rows[index]!.specialOrder?0:authorization.approvedCases;
+        authorization.specialOrderCases=rows[index]!.specialOrder?authorization.approvedCases:0;
     }
+    await save({formulaOrders:rows,formulaAuthorizations:draft.formulaAuthorizations});
 }
+function adjustFulfillmentAllocation(index:number){
+    const authorization=draft.formulaAuthorizations?.[index];
+    if(!authorization||!Number.isSafeInteger(authorization.approvedCases)||authorization.approvedCases!<0)return;
+    if(authorization.standardCases===undefined&&authorization.specialOrderCases===undefined){
+        const special=formulaOrders(props.request??{})[index]?.specialOrder===true;
+        authorization.standardCases=special?0:authorization.approvedCases;
+        authorization.specialOrderCases=special?authorization.approvedCases:0;
+    }else if(authorization.standardCases===0){authorization.specialOrderCases=authorization.approvedCases;}
+    else if(authorization.specialOrderCases===0){authorization.standardCases=authorization.approvedCases;}
+    else authorization.standardCases=Math.max(0,authorization.approvedCases-authorization.specialOrderCases);
+}
+
 
 async function chooseReviewDecision(action:'approve'|'deny'|'reopen'|'clear') {
     if(action==='deny'){denialReason.value=props.request?.denialReason??'';pendingDecision.value='denied';return;}
@@ -881,7 +893,7 @@ async function saveAgencyUpdate() {
             <div class="issuance-heading"><h3>Issuance</h3></div>
             <fieldset v-for="(authorization,formulaIndex) in draft.formulaAuthorizations" :key="`${authorization.productName}-${authorization.productForm}-${authorization.flavor}`" class="authorization-formula">
                 <legend v-if="(draft.formulaAuthorizations?.length??0)>1">Formula {{formulaIndex+1}}</legend>
-            <label v-if="canStaffEdit && formulaOrders(request)[formulaIndex]" class="field-label formula-order-type">Order Type
+            <label v-if="!splitOrderTypesEnabled && formulaOrders(request)[formulaIndex]" class="field-label formula-order-type">Order Type
                 <select class="form-input" :value="formulaOrders(request)[formulaIndex]!.specialOrder?'special':'standard'" :aria-label="`Formula ${formulaIndex+1} Order Type`" :disabled="saving" @change="changeFormulaOrder(formulaIndex,($event.target as HTMLSelectElement).value)">
                     <option value="standard">Standard</option><option value="special">Special Order</option>
                 </select>
@@ -896,7 +908,7 @@ async function saveAgencyUpdate() {
                 <label class="field-label approval-quantity-field">
                     Approved Cases for Approved Months
                     <div class="case-month-input">
-                        <input v-model.number="authorization.approvedCases" class="form-input authorization-number" type="number" inputmode="numeric" min="0" :aria-label="`Formula ${formulaIndex+1} Approved Cases`" />
+                    <input v-model.number="authorization.approvedCases" class="form-input authorization-number" type="number" inputmode="numeric" min="0" :aria-label="`Formula ${formulaIndex+1} Approved Cases`" @input="adjustFulfillmentAllocation(formulaIndex)" />
                         <span>cases for</span>
                         <input v-model.number="authorization.approvedMonths" class="form-input authorization-number" type="number" inputmode="numeric" min="0" :aria-label="`Formula ${formulaIndex+1} Approved Months`" />
                         <span>months</span>
@@ -922,6 +934,11 @@ async function saveAgencyUpdate() {
                         </select>
                     </div>
                 </label>
+            </div>
+            <div v-if="splitOrderTypesEnabled" class="form-grid fulfillment-allocation-fields">
+                <label class="field-label">Standard Order Cases<input v-model.number="authorization.standardCases" class="form-input authorization-number" type="number" inputmode="numeric" min="0" step="1" :aria-label="`Formula ${formulaIndex+1} Standard Order Cases`" :disabled="saving" /></label>
+                <label class="field-label">Special Order Cases<input v-model.number="authorization.specialOrderCases" class="form-input authorization-number" type="number" inputmode="numeric" min="0" step="1" :aria-label="`Formula ${formulaIndex+1} Special Order Cases`" :disabled="saving" /></label>
+                <p class="muted-copy fulfillment-allocation-help">Standard and Special Order cases must total {{authorization.approvedCases??0}} approved cases.</p>
             </div>
             <div class="benefit-allocation-editor">
                 <div class="issuance-row-heading">
@@ -1001,11 +1018,21 @@ async function saveAgencyUpdate() {
             <div class="shipping-address-field"><span class="detail-field-heading">Shipping Address</span><address v-if="request.shipping" class="shipping-preview shipping-destination"><strong>{{agency?.name || '—'}}</strong><template v-if="request.shipping.attention || rep?.name"><br />Attn: {{request.shipping.attention || rep?.name}}</template><br />{{request.shipping.addressLine1}}<template v-if="request.shipping.addressLine2"><br />{{request.shipping.addressLine2}}</template><br />{{request.shipping.city}}, {{request.shipping.state}} {{request.shipping.postalCode}}</address><p v-else class="shipping-destination muted-copy">No shipping address saved for this request.</p></div>
             </template>
             <div class="shipment-list">
-                <fieldset v-for="(shipment,index) in canStaffEdit ? draft.shipments : requestShipments(request)" :key="index" class="shipment-card">
-                    <legend>{{ (canStaffEdit ? draft.shipments?.length : requestShipments(request).length)! > 1 ? `Shipment ${index + 1}` : 'Shipment' }}</legend>
+                <p v-if="splitOrderTypesEnabled" v-for="progress in fulfillmentProgress(request).filter(row=>row.special.allocated>0)" :key="progress.formula" class="fulfillment-progress" role="status">
+                    <strong>{{progress.formula}}</strong> · Standard: {{progress.standard.shipped}}/{{progress.standard.allocated}} case(s) shipped<template v-if="progress.standard.pending"> · {{progress.standard.pending}} Standard case(s) pending</template> · Special Order: {{progress.special.shipped}}/{{progress.special.allocated}} case(s) shipped<template v-if="progress.special.pending"> · {{progress.special.pending}} pending</template>
+                </p>
+                <details v-for="(shipment,index) in canStaffEdit ? draft.shipments : requestShipments(request)" :key="index" :class="{'shipment-compact-row':shipmentFeatures.compactRows}" :open="!shipmentFeatures.compactRows">
+                    <summary v-if="shipmentFeatures.compactRows" class="shipment-compact-summary">
+                        <span class="shipment-compact-title"><template v-if="requestShipments(request).length>1">Shipment {{index+1}} · </template>{{compactShipmentSummary(request,shipment).formula}} · {{shipmentFulfillmentType(request,shipment)==='special'?'Special Order':'Standard'}} · {{compactShipmentSummary(request,shipment).quantity}}</span>
+                        <span class="shipment-compact-status">{{compactShipmentSummary(request,shipment).status}}</span>
+                    </summary>
+                    <fieldset class="shipment-card">
+                    <legend v-if="!shipmentFeatures.compactRows">{{ (canStaffEdit ? draft.shipments?.length : requestShipments(request).length)! > 1 ? `Shipment ${index + 1}` : 'Shipment' }}</legend>
                     <div class="detail-grid">
                         <label v-if="editingShipmentPlan(shipment,index) && !shipment.etaSentAt" class="field-label detail-field-wide">Formula<select :value="shipmentFormulaKey(shipmentFormula(shipment))" class="form-input" :aria-label="`Shipment ${index+1} Formula`" :disabled="saving || shipmentFormulaChoices.length===1" @change="selectShipmentFormula(shipment,($event.target as HTMLSelectElement).value)"><option value="">Select Formula</option><option v-for="formula in shipmentFormulaChoices" :key="shipmentFormulaKey(formula)" :value="shipmentFormulaKey(formula)">{{shipmentFormulaLabel(formula)}}</option></select></label>
                         <div v-else class="detail-field-wide"><span>Formula</span><strong>{{shipmentFormulaLabel(shipmentFormula(shipment))}}</strong></div>
+                        <label v-if="splitOrderTypesEnabled && editingShipmentPlan(shipment,index)" class="field-label">Fulfillment Type<select :value="shipment.fulfillmentType??(shipmentFulfillmentType(request,shipment)??'')" class="form-input" :aria-label="`Shipment ${index+1} Fulfillment Type`" :disabled="saving || !!requestShipments(request)[index]?.etaSentAt" @change="shipment.fulfillmentType=($event.target as HTMLSelectElement).value as 'standard'|'special'"><option value="">Select type</option><option value="standard">Standard</option><option value="special">Special Order</option></select></label>
+                        <div v-else-if="splitOrderTypesEnabled"><span>Fulfillment Type</span><strong>{{shipmentFulfillmentType(request,shipment)==='special'?'Special Order':'Standard'}}</strong></div>
                         <label v-if="editingShipmentPlan(shipment,index)" class="field-label detail-field-wide">Shipment Source<select :value="shipment.shipmentSource??''" class="form-input" :aria-label="`Shipment ${index+1} Source`" :disabled="saving || !!requestShipments(request)[index]?.etaSentAt" @change="changeShipmentSource(shipment,($event.target as HTMLSelectElement).value)"><option disabled value="">Select source</option><option value="distributor">Distributor</option><option value="agency">Local Agency Transfer</option></select></label>
                         <template v-if="shipment.shipmentSource==='agency'">
                             <label v-if="editingShipmentPlan(shipment,index)" class="field-label">Sending Local Agency<select :value="shipment.sourceAgencyId??''" class="form-input" :aria-label="`Shipment ${index+1} Sending Local Agency`" :disabled="saving" @change="shipment.sourceAgencyId=Number(($event.target as HTMLSelectElement).value);setClinicFilter(shipment,'');shipment.sourceClinicId=undefined;shipment.sourceClinicName=undefined;shipment.sourceClinicAddress=undefined"><option value="">Select Local Agency</option><option v-for="item in transferAgencies?.agencies.filter(a=>a.id!==request.agencyId)" :key="item.id" :value="item.id">{{item.name}}</option></select></label>
@@ -1067,7 +1094,8 @@ async function saveAgencyUpdate() {
                         <button v-if="canStaffEdit && canDeleteShipment({...request,shipmentDrafts:draft.shipments},index)" type="button" class="text-button" :disabled="saving" :aria-label="`Delete Shipment ${index+1}`" @click="deletingShipmentIndex=index">Delete Shipment</button>
                         <span v-if="!shipment.etaSentAt" class="save-feedback" role="status">Draft · Not sent</span><span v-else-if="!shipmentHasUnsentChanges(shipment,requestShipments(request)[index])" class="shipment-sent-status" role="status"><span aria-hidden="true">✓</span> {{shipmentPublishNotice?.index===index && shipmentPublishNotice.updated ? 'Update Sent' : 'ETA Sent'}}</span>
                     </div>
-                </fieldset>
+                    </fieldset>
+                </details>
             </div>
             <template v-if="canStaffEdit">
                 <p v-if="shipmentDeleteNotice" class="save-feedback save-feedback-saved" role="status">{{shipmentDeleteNotice}}</p>
@@ -1171,6 +1199,9 @@ async function saveAgencyUpdate() {
 .review-decision-section .review-decision-edit {color:#fff;text-decoration:underline;text-underline-offset:3px;}
 .review-decision-section .review-approved,.review-decision-section .review-denied {margin:0;}
 .more-info-compose-actions {display:flex;flex-wrap:wrap;gap:8px;}
+.fulfillment-allocation-fields {grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin:8px 0 12px;}
+.fulfillment-allocation-help {grid-column:1/-1;margin:0;font-size:.85rem;}
+.fulfillment-progress {padding:8px 10px;margin:0 0 8px;background:color-mix(in srgb,#002595 5%,var(--surface));border-radius:6px;font-size:.9rem;}
 .formula-order-type {max-width:260px;margin:0 0 12px;}
 .review-decision-buttons {display:flex;flex-wrap:wrap;gap:10px;}
 .review-decision-buttons .button.review-decision-selected,
@@ -1209,4 +1240,11 @@ async function saveAgencyUpdate() {
 .more-info-delete-confirmation {padding:10px 12px;border:1px solid var(--line);border-radius:8px;margin-top:8px;}
 .surplus-entry-row {grid-template-columns:minmax(0,1fr) 80px minmax(120px,1fr) 140px 32px;}
 @media(max-width:700px){.surplus-entry-row{grid-template-columns:minmax(0,1fr) 80px;}.surplus-entry-row .icon-button{justify-self:end;}}
+.shipment-compact-row {border:1px solid var(--border);border-radius:8px;background:var(--surface-raised);}
+.shipment-compact-row + .shipment-compact-row {margin-top:8px;}
+.shipment-compact-summary {display:flex;justify-content:space-between;align-items:center;gap:12px;padding:12px 14px;cursor:pointer;list-style-position:inside;}
+.shipment-compact-title {font-weight:650;}
+.shipment-compact-status {text-align:right;color:var(--muted);font-size:.9em;}
+.shipment-compact-row[open] > .shipment-compact-summary {border-bottom:1px solid var(--border);}
+.shipment-compact-row .shipment-card {margin:0;border:0;}
 </style>

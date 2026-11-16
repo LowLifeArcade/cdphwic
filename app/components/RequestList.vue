@@ -4,6 +4,7 @@ import {caseBalance,shipmentListSummary} from '~/../shared/shipmentCaseTracking'
 import {localDate} from '~/../shared/surplus';
 import {deliveryCategory,filterAndSortRequests,type DeliveryFilter,type RequestTagFilter,type RequestListSort} from '~/../shared/requestListFilters';
 import {formulaOrders,allFormulasSpecialOrder,hasFormulaAwaitingEta} from '~/../shared/formulaOrders';
+import {fulfillmentProgress,hasSplitOrderAllocation} from '~/../shared/fulfillmentAllocations';
 import {formatEtaDate,formatDisplayDate,formulaFormLabel} from '~/../shared/requestPresentation';
 import {formatShippingAddress} from '~/../shared/shipping';
 import {canEditSubmission,hasPendingMoreInfo} from '~/../shared/requestEditing';
@@ -16,15 +17,19 @@ const route=useRoute();
 const openError=ref('');
 const listToday=ref(localDate());
 function shippingSummary(request:RequestRecord) {return shipmentListSummary(request,listToday.value);}
+function specialOrderLabel(formula:ReturnType<typeof formulaOrders>[number]){return formula.specialOrderCases!==undefined&&formula.standardCases!==undefined&&formula.standardCases>0?`${formula.specialOrderCases} Special Order ${formula.specialOrderCases===1?'case':'cases'}`:'Special Order';}
 function etaLabel(request:RequestRecord){
     const summary=shippingSummary(request);
     if(summary.nextEta)return formatEtaDate(summary.nextEta);
+    const specialPending=(shipmentFeatures.splitOrderTypes||hasSplitOrderAllocation(request))&&fulfillmentProgress(request).some(row=>row.special.pending>0);
+    if(specialPending&&!hasFormulaAwaitingEta(request,true))return 'Special order pending';
     if(request.status==='complete' && summary.total && !summary.awaiting)return 'All deliveries closed';
     if((request.approved===true||request.status==='approved') && hasFormulaAwaitingEta(request,true))return 'ETA pending';
     if(hasFormulaAwaitingEta(request))return '';
     return summary.total&&!summary.awaiting?'All deliveries closed':'';
 }
 const shipmentFeatures=shipmentFeatureFlags(useRuntimeConfig().public);
+function showSplitOrderProgress(request:RequestRecord){return shipmentFeatures.splitOrderTypes||hasSplitOrderAllocation(request);}
 function needsCaseReview(request:RequestRecord) {if(!shipmentFeatures.caseReconciliation&&!shipmentFeatures.potentialOverDelivery)return false;const balance=caseBalance(request);return (shipmentFeatures.caseReconciliation&&(balance.excess>0||balance.needsApproval))||(shipmentFeatures.potentialOverDelivery&&balance.projectedExcess>0);}
 const deliveryFilter = ref<DeliveryFilter>('all');
 const tagFilter = ref<RequestTagFilter>('all');
@@ -92,7 +97,7 @@ watch([()=>route.query.request,()=>props.requests],async([id],[previousId])=>{co
             <span class="request-formula-list">
                 <span v-for="(formula,index) in formulaOrders(request)" :key="index" class="request-formula-item">
                     <strong>{{formula.productName}}</strong>
-                    <small>{{formulaFormLabel(formula.productForm)}}<template v-if="formula.flavor"> · {{formula.flavor}}</template><span v-if="formula.specialOrder" class="status-badge status-special-order formula-order-tag">Special Order</span></small>
+                    <small>{{formulaFormLabel(formula.productForm)}}<template v-if="formula.flavor"> · {{formula.flavor}}</template><span v-if="formula.specialOrder" class="status-badge status-special-order formula-order-tag">{{specialOrderLabel(formula)}}</span></small>
                 </span>
             </span>
             <span
@@ -102,7 +107,7 @@ watch([()=>route.query.request,()=>props.requests],async([id],[previousId])=>{co
                     <span v-if="identity!=='agency' && needsCaseReview(request)" class="request-tag shipping-issue-tag">Case Count Review</span>
                     <span v-if="deliveryCategory(request) === 'issue'" class="request-tag shipping-issue-tag">Shipping Issue</span>
                     <span
-                        v-if="allFormulasSpecialOrder(request)"
+                        v-if="allFormulasSpecialOrder(request) && request.status!=='complete'"
                         class="status-badge status-special-order"
                     >Special Order</span>
                     <span
@@ -114,6 +119,10 @@ watch([()=>route.query.request,()=>props.requests],async([id],[previousId])=>{co
             <span class="shipment-eta-cell" :title="shippingSummary(request).nextEta ? `Next ETA: ${formatEtaDate(shippingSummary(request).nextEta)}` : undefined">
                 <strong :class="{'eta-overdue':shippingSummary(request).overdue}">{{etaLabel(request)}}</strong>
                 <small v-if="shippingSummary(request).awaiting">{{shippingSummary(request).awaiting}} awaiting receipt<template v-if="shippingSummary(request).overdue"> · Overdue</template></small>
+                <template v-for="progress in fulfillmentProgress(request).filter(row=>row.standard.pending>0||row.special.pending>0)" :key="progress.formula">
+                    <small v-if="showSplitOrderProgress(request) && progress.standard.pending">{{progress.formula}} · {{progress.standard.pending}} Standard case(s) awaiting shipment</small>
+                    <small v-if="showSplitOrderProgress(request) && progress.special.pending">{{progress.formula}} · {{progress.special.pending}} Special Order case(s) pending</small>
+                </template>
             </span>
             <span class="row-arrow">›</span>
         </button>

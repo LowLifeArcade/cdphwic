@@ -1,12 +1,12 @@
 import {it,expect} from 'vitest';
 import {shipmentFeatureFlags,shipmentCaseActionEnabled,shipmentFeatureDefaults} from '../shared/featureFlags';
 it('disables over-delivery tracking and case reconciliation by default',()=>{
- expect(shipmentFeatureFlags(shipmentFeatureDefaults)).toEqual({casesShipped:true,receiptQuantities:true,quantityTracking:false,potentialOverDelivery:false,caseReconciliation:false});
- expect(shipmentFeatureFlags({})).toEqual({casesShipped:true,receiptQuantities:true,quantityTracking:false,potentialOverDelivery:false,caseReconciliation:false});
- expect(shipmentFeatureFlags({shipmentPotentialOverDelivery:'false',shipmentCaseReconciliation:'false'})).toEqual({casesShipped:true,receiptQuantities:true,quantityTracking:false,potentialOverDelivery:false,caseReconciliation:false});
+ expect(shipmentFeatureFlags(shipmentFeatureDefaults)).toEqual({casesShipped:true,receiptQuantities:true,quantityTracking:false,potentialOverDelivery:false,caseReconciliation:false,compactRows:false,splitOrderTypes:false});
+ expect(shipmentFeatureFlags({})).toEqual({casesShipped:true,receiptQuantities:true,quantityTracking:false,potentialOverDelivery:false,caseReconciliation:false,compactRows:false,splitOrderTypes:false});
+ expect(shipmentFeatureFlags({shipmentPotentialOverDelivery:'false',shipmentCaseReconciliation:'false'})).toEqual({casesShipped:true,receiptQuantities:true,quantityTracking:false,potentialOverDelivery:false,caseReconciliation:false,compactRows:false,splitOrderTypes:false});
 });
 it('allows independent explicit flags and gates reconciliation mutations',()=>{
- const flags=shipmentFeatureFlags({shipmentQuantityTracking:true,shipmentPotentialOverDelivery:'true',shipmentCaseReconciliation:true});expect(flags).toEqual({casesShipped:true,receiptQuantities:true,quantityTracking:true,potentialOverDelivery:true,caseReconciliation:true});
+ const flags=shipmentFeatureFlags({shipmentQuantityTracking:true,shipmentPotentialOverDelivery:'true',shipmentCaseReconciliation:true});expect(flags).toEqual({casesShipped:true,receiptQuantities:true,quantityTracking:true,potentialOverDelivery:true,caseReconciliation:true,compactRows:false,splitOrderTypes:false});
  for(const action of ['returned','destroyed','received-count'])expect(shipmentCaseActionEnabled(action,shipmentFeatureFlags({}))).toBe(false);
  for(const action of ['replacement','close-replaced'])expect(shipmentCaseActionEnabled(action,shipmentFeatureFlags({}))).toBe(false);
  expect(shipmentCaseActionEnabled('returned',flags)).toBe(true);
@@ -14,7 +14,7 @@ it('allows independent explicit flags and gates reconciliation mutations',()=>{
 
 it('keeps reconciliation and overage disabled while receipts remain available',()=>{
  const flags=shipmentFeatureFlags({shipmentQuantityTracking:false,shipmentCaseReconciliation:true,shipmentPotentialOverDelivery:true});
- expect(flags).toEqual({casesShipped:true,receiptQuantities:true,quantityTracking:false,caseReconciliation:false,potentialOverDelivery:false});
+ expect(flags).toEqual({casesShipped:true,receiptQuantities:true,quantityTracking:false,caseReconciliation:false,potentialOverDelivery:false,compactRows:false,splitOrderTypes:false});
  for(const action of ['replacement','close-replaced','returned','destroyed','received-count'])expect(shipmentCaseActionEnabled(action,flags)).toBe(false);
 });
 
@@ -25,4 +25,11 @@ it('controls Cases Shipped independently of reconciliation and overage',()=>{
  expect(flags.casesShipped).toBe(true);expect(flags.caseReconciliation).toBe(false);expect(flags.potentialOverDelivery).toBe(false);
  expect(shipmentFeatureFlags({shipmentCasesShipped:false,shipmentQuantityTracking:true}).casesShipped).toBe(false);
  expect(shipmentFeatureFlags({shipmentCasesShipped:'false'}).casesShipped).toBe(false);
+});
+
+it('keeps compact rows and split order fulfillment disabled by default',()=>{
+ expect(shipmentFeatureFlags({})).toMatchObject({compactRows:false,splitOrderTypes:false});
+ expect(shipmentFeatureFlags({shipmentCompactRows:true}).compactRows).toBe(true);
+ expect(shipmentFeatureFlags({shipmentCompactRows:'false'}).compactRows).toBe(false);
+ expect(shipmentFeatureFlags({shipmentSplitOrderTypes:true}).splitOrderTypes).toBe(true);
 });

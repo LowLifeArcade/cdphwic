@@ -71,8 +71,8 @@ it('does not make an unsent sibling confirmable when a sent shipment has an issu
 });
 it('appends CDPH/WIC responses without resolving the report and retains responses when an open report is edited',()=>{
  const request=fixture();const reported={...request,...applyShipmentIssue(request,command(request),100)};
- const responded={...reported,...applyShipmentIssue(reported,{...command(reported),action:'respond',notes:'We are checking with the carrier.'},200,'2026-11-02T10:00:00Z')};
- expect(responded.shipments![0]!.issue!.responses).toEqual([{notes:'We are checking with the carrier.',createdAt:'2026-11-02T10:00:00Z',createdBy:200}]);
+ const responded={...reported,...applyShipmentIssue(reported,{...command(reported),action:'respond',notes:'We are checking with the carrier.'},200,'2026-11-02T10:00:00Z','reviewer')};
+ expect(responded.shipments![0]!.issue!.responses).toEqual([{notes:'We are checking with the carrier.',createdAt:'2026-11-02T10:00:00Z',createdBy:200,senderType:'reviewer'}]);
  expect(responded.shipments![0]!.issue!.resolvedAt).toBeUndefined();expect(responded.status).toBe('damaged');
  const edited={...responded,...applyShipmentIssue(responded,{...command(responded),action:'update',notes:'Updated agency details'},100)};
  expect(edited.shipments![0]!.issue!.responses).toEqual(responded.shipments![0]!.issue!.responses);

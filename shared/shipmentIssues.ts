@@ -11,7 +11,7 @@ export function shipmentIssueSummary(request:RequestRecord,shipments:RequestShip
     const allReceived=shipments.every(row=>shipmentFinished(request,row));
     return {status:allReceived?'complete':shipments.every(row=>shipmentDispatched(request,row))?'shipped':'in_progress',receivedStatus:allReceived?'received':'shipped'};
 }
-export function applyShipmentIssue(request:RequestRecord,command:ShipmentIssueCommand,actorId:number,now=new Date().toISOString()):Partial<RequestRecord> {
+export function applyShipmentIssue(request:RequestRecord,command:ShipmentIssueCommand,actorId:number,now=new Date().toISOString(),senderType?:'agency'|'reviewer'):Partial<RequestRecord> {
     const fail=(message:string):never=>{throw Object.assign(new Error(message),{statusCode:409,statusMessage:message});};
     const rows=requestShipments(request).map(row=>({...row,dispatched:shipmentDispatched(request,row),...(shipmentReceived(request,row)?{receiptConfirmed:true}:{})}));
     if (!command || !Number.isSafeInteger(command.index) || command.index<0 || !rows[command.index]) fail('Select a valid shipment.');
@@ -41,7 +41,7 @@ export function applyShipmentIssue(request:RequestRecord,command:ShipmentIssueCo
     } else if (command.action==='respond') {
         if (!activeShipmentIssue(row)) fail('This shipment has no unresolved issue.');
         if (typeof command.notes!=='string' || !command.notes.trim() || command.notes.length>4000) fail('Enter a response of 4,000 characters or fewer.');
-        rows[command.index]={...row,issue:{...row.issue!,responses:[...(row.issue!.responses ?? []),{notes:command.notes!.trim(),createdAt:now,createdBy:actorId}]}};
+        rows[command.index]={...row,issue:{...row.issue!,responses:[...(row.issue!.responses ?? []),{notes:command.notes!.trim(),createdAt:now,createdBy:actorId,...(senderType?{senderType}:{})}]}};
     } else fail('Select a valid shipment issue action.');
     return {shipments:rows,...shipmentIssueSummary(request,rows)};
 }

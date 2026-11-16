@@ -19,3 +19,16 @@ it('starts unsaved formula issuance with an unselected month while preserving sa
  expect(rows.map(row=>row.benefitIssuances)).toEqual([[{month:'',quantity:0}],[{month:'',quantity:0}]]);
  expect(formulaAuthorizations(request)[0]!.benefitIssuances[0]!.month).toBe('2026-09');
 });
+
+it('defaults legacy formula order to a complete standard or special-order allocation',()=>{
+ expect(formulaAuthorizations(request)[0]).toMatchObject({standardCases:4,specialOrderCases:0});
+ expect(formulaAuthorizations({...request,specialOrder:true})[0]).toMatchObject({standardCases:0,specialOrderCases:4});
+});
+
+it('requires standard and special-order cases to equal approved cases',()=>{
+ const rows=formulaAuthorizations(request);rows[0]!.standardCases=2;rows[0]!.specialOrderCases=2;
+ rows[1]!.benefitIssuances=[{month:'2026-09',quantity:1}];
+ expect(validateFormulaAuthorizations(rows)).toEqual([]);
+ rows[0]!.specialOrderCases=1;
+ expect(validateFormulaAuthorizations(rows).join(' ')).toContain('Standard and Special Order cases must equal Approved Cases');
+});

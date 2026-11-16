@@ -95,20 +95,38 @@ it('supports CDPH/WIC responses and an agency false-alarm resolution with receip
  const saved=await updateSubmittedRequest(event.db,previous,{status:'shipped',shipments:[{eta:'2026-11-01',casesShipped:2,carrier:'ups',trackingNumbers:['A']},{eta:'2026-11-03',casesShipped:3,carrier:'fedex',trackingNumbers:['B']}]});
  const reported=await updateSubmittedShipmentIssue(event.db,saved,{index:0,key:shipmentReceiptKey(saved.shipments![0]!),expectedIssue:shipmentIssueKey(saved.shipments![0]!),action:'report',type:'missing',notes:'Not found'},getDemoUser('agency').id);
  const withReceipt=await updateSubmittedRequest(event.db,reported,confirmShipmentReceipts(reported,[{index:1,key:shipmentReceiptKey(reported.shipments![1]!),receivedCases:(reported.shipments![1]!).casesShipped,expectedReceipt:receiptQuantityKey(reported.shipments![1]!)}],getDemoUser('agency').id));
- event.body={shipmentIssue:{index:0,key:shipmentReceiptKey(withReceipt.shipments![0]!),expectedIssue:shipmentIssueKey(withReceipt.shipments![0]!),action:'respond',notes:'Please check your receiving area.'}};
+ event.body={shipmentIssue:{index:0,key:shipmentReceiptKey(withReceipt.shipments![0]!),expectedIssue:shipmentIssueKey(withReceipt.shipments![0]!),action:'respond',notes:'We found the package at our receiving desk.'}};
+ event.identity='agency';const agencyResponse=await put(event as never);
+ expect(agencyResponse.request.shipments![0]!.issue!.responses![0]).toMatchObject({notes:'We found the package at our receiving desk.',senderType:'agency'});
+ event.body={shipmentIssue:{index:0,key:shipmentReceiptKey(agencyResponse.request.shipments![0]!),expectedIssue:shipmentIssueKey(agencyResponse.request.shipments![0]!),action:'resolve'}};
  await expect(put(event as never)).rejects.toMatchObject({statusCode:403});
+ event.body={shipmentIssue:{index:0,key:shipmentReceiptKey(agencyResponse.request.shipments![0]!),expectedIssue:shipmentIssueKey(agencyResponse.request.shipments![0]!),action:'respond',notes:'Thank you for confirming.'}};
  event.identity='internal';const response=await put(event as never);
- expect(response.request.shipments![0]!.issue!.responses![0]!.createdBy).toBe(getDemoUser('internal').id);
+ expect(response.request.shipments![0]!.issue!.responses![1]).toMatchObject({createdBy:getDemoUser('internal').id,senderType:'reviewer'});
  expect(response.request.status).toBe('missing');
  event.body={shipmentIssue:{index:0,key:shipmentReceiptKey(response.request.shipments![0]!),expectedIssue:shipmentIssueKey(response.request.shipments![0]!),receivedCases:2,expectedReceipt:receiptQuantityKey(response.request.shipments![0]!),action:'resolve-received'}};
  await expect(put(event as never)).rejects.toMatchObject({statusCode:403});
  event.identity='agency';const resolved=await put(event as never);
  expect(resolved.request.status).toBe('complete');expect(resolved.request.receivedStatus).toBe('received');
  expect(resolved.request.shipments![0]!.receivedBy).toBe(getDemoUser('agency').id);
- expect(resolved.request.shipments![0]!.issue!.responses![0]!.notes).toBe('Please check your receiving area.');
+ expect(resolved.request.shipments![0]!.issue!.responses![0]!.notes).toBe('We found the package at our receiving desk.');
+});
+it('allows CDPH/WIC to resolve an active shipment issue',async()=>{
+ const event=await fixture();
+ const {updateSubmittedRequest,updateSubmittedShipmentIssue}=await import('../server/utils/submittedRequests');
+ const {shipmentReceiptKey}=await import('../shared/shipmentReceipts');
+ const {shipmentIssueKey}=await import('../shared/shipmentIssues');
+ const previous=(await submittedRequest(event.db,1000998,getDemoUser('agency')))!;
+ const saved=await updateSubmittedRequest(event.db,previous,{status:'shipped',shipments:[{eta:'2026-11-01',casesShipped:2,carrier:'ups',trackingNumbers:['A']}]});
+ const reported=await updateSubmittedShipmentIssue(event.db,saved,{index:0,key:shipmentReceiptKey(saved.shipments![0]!),expectedIssue:shipmentIssueKey(saved.shipments![0]!),action:'report',type:'missing',notes:'Not delivered'},getDemoUser('agency').id);
+ event.identity='internal';
+ event.body={shipmentIssue:{index:0,key:shipmentReceiptKey(reported.shipments![0]!),expectedIssue:shipmentIssueKey(reported.shipments![0]!),action:'resolve'}};
+ const result=await put(event as never);
+ expect(result.request.shipments![0]!.issue!.resolvedBy).toBe(getDemoUser('internal').id);
+ expect(result.request.shipments![0]!.issue!.resolvedAt).toBeTruthy();
 });
 for (const identity of ['agency','internal','admin'] as const) {
- it(`lets ${identity} update and reopen a resolved shipment issue`,async()=>{
+ it(`lets ${identity} update a resolved shipment issue`,async()=>{
   const event=await fixture();
   const {updateSubmittedRequest,updateSubmittedShipmentIssue}=await import('../server/utils/submittedRequests');
   const {shipmentReceiptKey}=await import('../shared/shipmentReceipts');
@@ -122,10 +140,13 @@ for (const identity of ['agency','internal','admin'] as const) {
   const edited=await put(event as never);
   expect(edited.request.status).toBe('complete');expect(edited.request.shipments![0]!.issue!.resolvedAt).toBeTruthy();
   event.body={shipmentIssue:{index:0,key:shipmentReceiptKey(edited.request.shipments![0]!),expectedIssue:shipmentIssueKey(edited.request.shipments![0]!),action:'reopen'}};
+  if(identity==='agency')await expect(put(event as never)).rejects.toMatchObject({statusCode:403});
+  else {
   const reopened=await put(event as never);
   expect(reopened.request.status).toBe('missing');expect(reopened.request.shipments![0]!.issue!.resolvedAt).toBeUndefined();
   expect(reopened.request.shipments![0]!.issue!.reopenedBy).toBe(getDemoUser(identity).id);
   expect(reopened.request.shipments![0]!.receivedAt).toBe(resolved.shipments![0]!.receivedAt);
+  }
  });
 }
 it('restricts replacements to reviewers, freezes approval and rejects stale shipping saves',async()=>{

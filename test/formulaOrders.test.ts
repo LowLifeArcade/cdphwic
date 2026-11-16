@@ -32,3 +32,15 @@ it('waits for ETA only for standard formulas and associates published shipments 
  expect(hasFormulaAwaitingEta(sent,true)).toBe(false);expect(hasFormulaAwaitingEta(sent)).toBe(true);
  expect(hasFormulaAwaitingEta({...mixed,formulaOrders:rows.map(f=>({...f,specialOrder:true}))},true)).toBe(false);
 });
+
+it('recognizes mixed standard and special allocations on one formula',()=>{
+ const one={...base,requestedFormulas:[base.requestedFormulas![0]],formulaAuthorizations:[{productName:'First',productForm:'powder',approvedCases:5,standardCases:2,specialOrderCases:3,benefitIssuances:[]}]};
+ expect(formulaOrders(one)[0]).toMatchObject({standardCases:2,specialOrderCases:3,specialOrder:true});
+ expect(allFormulasSpecialOrder(one)).toBe(false);
+});
+
+it('does not report standard ETA pending after the standard portion ships while keeping the special balance pending',()=>{
+ const one={...base,requestedFormulas:[base.requestedFormulas![0]],formulaAuthorizations:[{productName:'First',productForm:'powder',approvedCases:5,standardCases:2,specialOrderCases:3,benefitIssuances:[]}],shipments:[{shipmentFormula:{productName:'First',productForm:'powder'},fulfillmentType:'standard' as const,casesShipped:2,unitsPerCase:6,eta:'2026-11-20',etaSentAt:'2026-11-13',carrier:'ups' as const,trackingNumbers:['ABC']}]};
+ expect(hasFormulaAwaitingEta(one,true)).toBe(false);
+ expect(hasFormulaAwaitingEta(one)).toBe(true);
+});

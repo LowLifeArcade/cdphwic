@@ -11,7 +11,8 @@ const identity=useState<'admin'|'agency'|'internal'>('demo-identity',()=> 'admin
 const editing=ref(false);
 const deleting=ref(false);
 const responding=ref(false);
-const canRespond=computed(()=>identity.value==='admin' || identity.value==='internal');
+const canRespond=computed(()=>identity.value==='admin' || identity.value==='internal' || identity.value==='agency');
+const canResolve=computed(()=>identity.value==='admin' || identity.value==='internal');
 const issueType=ref<ShipmentIssueType>('damaged');
 const notes=ref('');
 const expectedIssue=ref('');
@@ -65,7 +66,7 @@ async function submitIssue(action:ShipmentIssueCommand['action']) {
         <ShipmentEvidencePanel v-if="shipment.issue" :request="request" :shipment="shipment" :index="index" :can-provide="canReport" @updated="record=>emit('updated',record)" />
         <div v-if="shipment.issue?.responses?.length" class="issue-responses">
             <div v-for="(response,responseIndex) in shipment.issue.responses" :key="responseIndex" class="issue-response">
-                <strong>CDPH/WIC Response</strong>
+                <strong>{{response.senderType==='agency'?'Local Agency':'CDPH/WIC'}}</strong>
                 <p class="issue-notes">{{response.notes}}</p>
                 <small>{{formatEtaDate(submissionDateOnly(response.createdAt))}}</small>
             </div>
@@ -75,8 +76,8 @@ async function submitIssue(action:ShipmentIssueCommand['action']) {
         </div>
         <div v-if="shipment.issue && !editing" class="issue-actions">
             <button v-if="canRespond" class="button button-ghost" type="button" :disabled="disabled || saving" :aria-label="`Update issue for shipment ${index+1}`" @click="startUpdate">Update Issue</button>
-            <button v-if="shipment.issue?.resolvedAt" class="button button-secondary" type="button" :disabled="disabled || saving" :aria-label="`Reopen issue for shipment ${index+1}`" @click="submitIssue('reopen')">Reopen Issue</button>
-            <button v-if="canReport && activeShipmentIssue(shipment)" class="button button-secondary" type="button" :disabled="disabled || saving" :aria-label="`Resolve issue for shipment ${index+1}`" @click="submitIssue('resolve')">Mark Issue Resolved</button>
+            <button v-if="canResolve && shipment.issue?.resolvedAt" class="button button-secondary" type="button" :disabled="disabled || saving" :aria-label="`Reopen issue for shipment ${index+1}`" @click="submitIssue('reopen')">Reopen Issue</button>
+            <button v-if="canResolve && activeShipmentIssue(shipment)" class="button button-secondary" type="button" :disabled="disabled || saving" :aria-label="`Resolve issue for shipment ${index+1}`" @click="submitIssue('resolve')">Mark Issue Resolved</button>
         </div>
         <div v-if="canReport && shipment.issue && !editing" class="issue-actions">
             <button class="button button-ghost" type="button" :disabled="disabled || saving" :aria-label="`Delete issue for shipment ${index+1}`" @click="startDelete">Delete Issue</button>
@@ -88,7 +89,7 @@ async function submitIssue(action:ShipmentIssueCommand['action']) {
         </div>
         <div v-if="editing" class="issue-editor">
             <label v-if="!responding" class="field-label">Issue Type<select v-model="issueType" class="form-input" :aria-label="`Shipment ${index+1} issue type`" :disabled="saving"><option value="damaged">Damaged</option><option value="missing">Missing</option><option value="incomplete">Incomplete</option></select></label>
-            <label class="field-label">{{responding?'Response':'Notes'}}<textarea v-model="notes" class="form-textarea" maxlength="4000" :placeholder="responding?'Enter a response to the local agency.':'Describe the issue with this shipment.'" :aria-label="responding?`Shipment ${index+1} response`:`Shipment ${index+1} issue notes`" :disabled="saving" /></label>
+            <label class="field-label">{{responding?'Response':'Notes'}}<textarea v-model="notes" class="form-textarea" maxlength="4000" :placeholder="responding?'Enter a response to the other party.':'Describe the issue with this shipment.'" :aria-label="responding?`Shipment ${index+1} response`:`Shipment ${index+1} issue notes`" :disabled="saving" /></label>
             <div class="issue-actions">
                 <button class="button button-secondary" type="button" :disabled="disabled || saving" @click="submitIssue(responding?'respond':'update')">{{saving?'Saving…':responding?'Send Response':'Save Issue Update'}}</button>
                 <button class="button button-ghost" type="button" :disabled="saving" @click="editing=false;error=''">Cancel</button>
