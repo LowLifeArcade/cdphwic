@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import {issuanceTransferLots,setIssuanceTransferUnits} from '~/../shared/issuanceTransfers';
 import {toRaw} from 'vue';
 import {unreadOutgoingMessage,sameRequestOutsideMessages,type MoreInfoConversation} from '~/../shared/moreInfoMessages';
 import {shipmentFormulaOptions,shipmentFormulaKey,resolveShipmentFormula,shipmentFormulaLabel,requireShipmentFormula} from '~/../shared/shipmentFormulas';
@@ -216,6 +217,29 @@ async function reserveShipmentTransfer(index:number){
     if(error.value){transferAuthorizationMessage.value=error.value;return;}
     transferAuthorizationIndex.value=null;await refreshTransferStock();
 }
+const issuanceTransferMessage=ref('');
+function formulaTransferSelections(authorization:FormulaAuthorization){return (draft.shipments??[]).map((row,index)=>({row,index})).filter(({row})=>row.shipmentSource==='agency'&&row.replacementFor===undefined&&shipmentFormulaKey(shipmentFormula(row))===shipmentFormulaKey(authorization));}
+function otherAgencyLots(authorization:FormulaAuthorization){return props.request?issuanceTransferLots(props.request,authorization,transferStock.value?.lots??[],localDate()):[];}
+function selectIssuanceTransfer(authorization:FormulaAuthorization,lot:SurplusLot,units:number){
+ issuanceTransferMessage.value='';
+ try{draft.shipments=setIssuanceTransferUnits(draft.shipments??[],authorization,lot,units,transferCatalogUnitsPerCase(lot,props.products??[])??authorizationUnitsPerCase(authorization));}
+ catch(error){issuanceTransferMessage.value=(error as Error).message;}
+}
+function removeIssuanceTransfer(index:number){if(!draft.shipments?.[index]?.transferId)draft.shipments?.splice(index,1);}
+async function reserveIssuanceTransfer(index:number){
+ issuanceTransferMessage.value='';
+ const rows=JSON.parse(JSON.stringify(draft.shipments??[])) as RequestShipment[];
+ const row=rows[index];if(!row||!props.request)return;
+ const publishedCount=requestShipments(props.request).length;
+ if(index>publishedCount){rows.splice(index,1);rows.splice(publishedCount,0,row);index=publishedCount;}
+ const validation=transferStock.value?transferAuthorizationError(shipmentRequest(row),row,transferStock.value.lots):'Surplus inventory is not available yet.';
+ if(validation){issuanceTransferMessage.value=validation;return;}
+ await saveStaffFields();
+ if(error.value){issuanceTransferMessage.value=error.value;return;}
+ draft.shipments=rows;
+ await reserveShipmentTransfer(index);
+ issuanceTransferMessage.value=transferAuthorizationMessage.value||error.value;
+}
 const canRepEdit = computed(() => identity.value === 'admin' || identity.value === 'agency');
 const selectedProduct = computed(() => props.products?.find((product) => product.id === props.request?.productId));
 
@@ -317,8 +341,8 @@ watch([()=>props.request?.id,()=>transferRoute.query.surplusLot,()=>transferStoc
  const rows=draft.shipments??[];
  const existing=rows.findIndex(r=>r.sourceLotId===lotId&&!r.transferId&&!r.etaSentAt);
  if(existing<0){const blank=rows.findIndex((r,i)=>canDeleteShipment({...request,shipmentDrafts:rows},i)&&!r.shipmentSource&&!r.supplier&&!r.shipmentFormula&&!r.transferId&&!r.etaSentAt&&!r.sourceLotId&&!r.distributorId&&!r.casesShipped&&!r.trackingNumbers.length&&!r.eta&&!r.issue&&!r.receiptConfirmed&&r.receivedCases===undefined&&r.receivedUnits===undefined);if(blank>=0)rows[blank]=row;else rows.push(row);draft.shipments=rows;}
- shortcutNotice.value='Surplus selected. Enter the quantity, then Reserve Stock to request confirmation from the sending agency.';
- await nextTick();document.getElementById(`shipments-${request.id}`)?.scrollIntoView({block:'start'});
+ shortcutNotice.value='Surplus selected in Issuance. Enter the transfer units, then Reserve Stock to request confirmation from the sending agency.';
+ await nextTick();document.getElementById(`issuance-${request.id}`)?.scrollIntoView({block:'start'});
 },{immediate:true,flush:'post'});
 watch([()=>props.request?.id,()=>transferRoute.hash],async()=>{if(props.request&&transferRoute.hash===`#shipments-${props.request.id}`){await nextTick();document.getElementById(`shipments-${props.request.id}`)?.scrollIntoView({block:'start'});}},{immediate:true,flush:'post'});
 onMounted(async()=>{if(props.request&&transferRoute.hash===`#shipments-${props.request.id}`){await nextTick();shippingSection.value?.scrollIntoView({block:'start',behavior:'instant'});}});
@@ -932,7 +956,7 @@ async function saveAgencyUpdate() {
             class="detail-section cdph-review-section"
         >
             <fieldset class="cdph-fields" :disabled="draft.status === 'denied'">
-            <div class="issuance-heading"><h3>Issuance</h3></div>
+            <div :id="`issuance-${request.id}`" class="issuance-heading"><h3>Issuance</h3></div>
             <fieldset v-for="(authorization,formulaIndex) in draft.formulaAuthorizations" :key="`${authorization.productName}-${authorization.productForm}-${authorization.flavor}`" class="authorization-formula">
                 <legend v-if="(draft.formulaAuthorizations?.length??0)>1">Formula {{formulaIndex+1}}</legend>
             <label v-if="!splitOrderTypesEnabled && formulaOrders(request)[formulaIndex]" class="field-label formula-order-type">Order Type
@@ -965,7 +989,7 @@ async function saveAgencyUpdate() {
                 </div>
             </div>
             <div class="form-grid issuance-total-units">
-                <label class="field-label">Total Unit(s) Issued<input v-model.number="authorization.totalUnitsIssued" class="form-input authorization-number" type="number" inputmode="numeric" min="0" step="1" :aria-label="`Formula ${formulaIndex+1} Total Units Issued`" @input="updateUnitsToOrder(formulaIndex)" /></label>
+                <label class="field-label">Total Unit(s) Approved<input v-model.number="authorization.totalUnitsIssued" class="form-input authorization-number" type="number" inputmode="numeric" min="0" step="1" :aria-label="`Formula ${formulaIndex+1} Total Units Approved`" @input="updateUnitsToOrder(formulaIndex)" /></label>
             </div>
             <fieldset v-if="localAgencySurplusLots(authorization,formulaIndex).length || assignedUnits(authorization)>0" class="local-surplus-assignment">
                 <legend>Assign Local Agency Surplus</legend>
@@ -978,15 +1002,13 @@ async function saveAgencyUpdate() {
                 </div>
                 <p class="local-surplus-total">Assigned from agency surplus: <strong>{{assignedUnits(authorization)}} unit(s)</strong></p>
             </fieldset>
-            <div class="form-grid compact-form-grid">
-                <label class="field-label">Unit(s) to Order/Transfer<input v-model.number="authorization.unitsToOrder" class="form-input authorization-number" type="number" inputmode="numeric" min="0" step="1" :aria-label="`Formula ${formulaIndex+1} Units to Order or Transfer`" @input="recalculateCasesFromUnitsToOrder(formulaIndex)" /></label>
-                <label class="field-label">Case(s) to Order/Transfer<input v-model.number="authorization.approvedCases" class="form-input authorization-number" type="number" inputmode="numeric" min="0" :aria-label="`Formula ${formulaIndex+1} Cases to Order or Transfer`" @input="adjustFulfillmentAllocation(formulaIndex)" /></label>
-            </div>
             <div v-if="splitOrderTypesEnabled" class="form-grid fulfillment-allocation-fields">
                 <label class="field-label">Standard Order Cases<input v-model.number="authorization.standardCases" class="form-input authorization-number" type="number" inputmode="numeric" min="0" step="1" :aria-label="`Formula ${formulaIndex+1} Standard Order Cases`" :disabled="saving" /></label>
                 <label class="field-label">Special Order Cases<input v-model.number="authorization.specialOrderCases" class="form-input authorization-number" type="number" inputmode="numeric" min="0" step="1" :aria-label="`Formula ${formulaIndex+1} Special Order Cases`" :disabled="saving" /></label>
                 <p class="muted-copy fulfillment-allocation-help">Standard and Special Order cases must total {{authorization.approvedCases??0}} cases to order.</p>
             </div>
+            <RequestTransferAllocation :lots="otherAgencyLots(authorization)" :selections="formulaTransferSelections(authorization)" :agencies="transferAgencies?.agencies??[]" :busy="saving" :loaded="!!transferStock" :load-error="!!transferStockError" :message="issuanceTransferMessage" @select="(lot,units)=>selectIssuanceTransfer(authorization,lot,units)" @reserve="reserveIssuanceTransfer" @remove="removeIssuanceTransfer" @refresh="refreshTransferStock" />
+            <RequestSupplyPlan :request="{...request,...draft}" :authorization="authorization" :units-per-case="authorizationUnitsPerCase(authorization)" />
             </fieldset>
             <label class="field-label">
                 Next Steps
@@ -1059,18 +1081,15 @@ async function saveAgencyUpdate() {
                     <fieldset class="shipment-card">
                     <legend v-if="!shipmentFeatures.compactRows">{{ (canStaffEdit ? draft.shipments?.length : requestShipments(request).length)! > 1 ? `Shipment ${index + 1}` : 'Shipment' }}</legend>
                     <div class="detail-grid">
-                        <label v-if="editingShipmentPlan(shipment,index) && !shipment.etaSentAt" class="field-label detail-field-wide">Formula<select :value="shipmentFormulaKey(shipmentFormula(shipment))" class="form-input" :aria-label="`Shipment ${index+1} Formula`" :disabled="saving || shipmentFormulaChoices.length===1" @change="selectShipmentFormula(shipment,($event.target as HTMLSelectElement).value)"><option value="">Select Formula</option><option v-for="formula in shipmentFormulaChoices" :key="shipmentFormulaKey(formula)" :value="shipmentFormulaKey(formula)">{{shipmentFormulaLabel(formula)}}</option></select></label>
+                        <label v-if="editingShipmentPlan(shipment,index) && !shipment.etaSentAt && shipment.shipmentSource!=='agency'" class="field-label detail-field-wide">Formula<select :value="shipmentFormulaKey(shipmentFormula(shipment))" class="form-input" :aria-label="`Shipment ${index+1} Formula`" :disabled="saving || shipmentFormulaChoices.length===1" @change="selectShipmentFormula(shipment,($event.target as HTMLSelectElement).value)"><option value="">Select Formula</option><option v-for="formula in shipmentFormulaChoices" :key="shipmentFormulaKey(formula)" :value="shipmentFormulaKey(formula)">{{shipmentFormulaLabel(formula)}}</option></select></label>
                         <div v-else class="detail-field-wide"><span>Formula</span><strong>{{shipmentFormulaLabel(shipmentFormula(shipment))}}</strong></div>
                         <label v-if="splitOrderTypesEnabled && editingShipmentPlan(shipment,index)" class="field-label">Fulfillment Type<select :value="shipment.fulfillmentType??(shipmentFulfillmentType(request,shipment)??'')" class="form-input" :aria-label="`Shipment ${index+1} Fulfillment Type`" :disabled="saving || !!requestShipments(request)[index]?.etaSentAt" @change="shipment.fulfillmentType=($event.target as HTMLSelectElement).value as 'standard'|'special'"><option value="">Select type</option><option value="standard">Standard</option><option value="special">Special Order</option></select></label>
                         <div v-else-if="splitOrderTypesEnabled"><span>Fulfillment Type</span><strong>{{shipmentFulfillmentType(request,shipment)==='special'?'Special Order':'Standard'}}</strong></div>
-                        <label v-if="editingShipmentPlan(shipment,index)" class="field-label detail-field-wide">Shipment Source<select :value="shipment.shipmentSource??''" class="form-input" :aria-label="`Shipment ${index+1} Source`" :disabled="saving || !!requestShipments(request)[index]?.etaSentAt" @change="changeShipmentSource(shipment,($event.target as HTMLSelectElement).value)"><option disabled value="">Select source</option><option value="distributor">Distributor</option><option value="agency">Local Agency Transfer</option></select></label>
+                        <label v-if="editingShipmentPlan(shipment,index) && shipment.shipmentSource!=='agency'" class="field-label detail-field-wide">Shipment Source<select :value="shipment.shipmentSource??''" class="form-input" :aria-label="`Shipment ${index+1} Source`" :disabled="saving || !!requestShipments(request)[index]?.etaSentAt" @change="changeShipmentSource(shipment,($event.target as HTMLSelectElement).value)"><option disabled value="">Select source</option><option value="distributor">Distributor</option></select></label>
                         <template v-if="shipment.shipmentSource==='agency'">
-                            <label v-if="editingShipmentPlan(shipment,index)" class="field-label">Sending Local Agency<select :value="shipment.sourceAgencyId??''" class="form-input" :aria-label="`Shipment ${index+1} Sending Local Agency`" :disabled="saving" @change="shipment.sourceAgencyId=Number(($event.target as HTMLSelectElement).value);shipment.sourceClinicId=undefined;shipment.sourceClinicName=undefined;shipment.sourceClinicAddress=undefined"><option value="">Select Local Agency</option><option v-for="item in transferAgencies?.agencies.filter(a=>a.id!==request.agencyId)" :key="item.id" :value="item.id">{{item.name}}</option></select></label>
-                            <div v-else><span>From</span><strong>{{shipment.sourceAgencyName}}<br />{{shipment.sourceClinicName || 'Clinic not specified'}}</strong><small v-if="shipment.sourceClinicAddress">Pickup: {{formatClinic(shipment.sourceClinicAddress)}}</small></div>
+                            <div><span>From</span><strong>{{shipment.sourceAgencyName||transferAgencies?.agencies.find(a=>a.id===shipment.sourceAgencyId)?.name||'Agency not selected'}}<br />{{shipment.sourceClinicName || 'Clinic not specified'}}</strong><small v-if="shipment.sourceClinicAddress">Pickup: {{formatClinic(shipment.sourceClinicAddress)}}</small></div>
                             <div><span>To</span><strong>{{agency?.name}}</strong></div>
-                            <p v-if="editingShipmentPlan(shipment,index) &amp;&amp; transferStockError" class="form-error" role="alert">Surplus clinics and inventory could not be loaded. Try again before choosing stock.</p>
-                            <div v-if="editingShipmentPlan(shipment,index)" class="field-label detail-field-wide matching-surplus-picker"><span>Available Surplus</span><div v-if="transferLots(shipment).length" class="matching-surplus-options"><label v-for="lot in transferLots(shipment)" :key="lot.id" class="matching-surplus-option"><input type="checkbox" :checked="selectedTransferLotIds(shipment).includes(lot.id)" :disabled="saving" @change="toggleTransferLot(shipment,lot.id,($event.target as HTMLInputElement).checked)" /><span><strong>{{transferLotFormulaLabel(lot)}}</strong><small>{{lot.clinicName || 'Clinic not specified'}} · {{lot.onHand-lot.reserved}} unit(s) · Exp {{formatDisplayDate(lot.expirationDate)}}</small></span></label></div><small v-if="shipment.sourceAgencyId">Select one or more lots. Each lot creates its own shipment line.</small><small v-if="shipment.sourceAgencyId && !transferLots(shipment).length">No matching, available surplus at this agency.</small></div>
-                            <div v-else class="detail-field-wide"><span>Transferred Formula</span><strong>{{shipment.transferFormulaName}} {{formulaFormLabel(shipment.transferForm)}}<template v-if="shipment.transferFlavor"> {{shipment.transferFlavor}}</template> · Exp {{formatDisplayDate(shipment.transferExpiration)}}</strong></div>
+                            <a v-if="canStaffEdit && !shipment.transferId" class="text-button" :href="`#issuance-${request.id}`">Select and reserve transfer stock in Issuance</a>
                         </template>
                         <template v-else>
                         <label v-if="editingShipmentPlan(shipment,index)" class="field-label">Distributor<select :value="shipment.distributorId ?? ''" class="form-input" :aria-label="`Shipment ${index+1} Distributor`" :disabled="saving" @change="selectDistributor(shipment,($event.target as HTMLSelectElement).value)"><option value="">{{!shipment.distributorId && shipment.supplier?`${shipment.supplier} (legacy supplier)`:'Select Distributor'}}</option><option v-for="item in distributorData?.distributors" :key="item.id" :value="item.id">{{item.name}}</option></select></label>
@@ -1081,11 +1100,7 @@ async function saveAgencyUpdate() {
                         <div v-else><span>ETA</span><strong>{{shipment.shipmentSource==='agency' && shipment.transferStatus==='reserved' && identity==='agency' ? 'Pending GSO pickup' : formatDisplayDate(shipment.eta)}}</strong></div>
                         </template>
                         <template v-if="shipment.shipmentSource==='agency'">
-                            <template v-if="editingShipmentPlan(shipment,index)">
-                                <label class="field-label">Cases to Transfer<input v-model.number="shipment.casesShipped" class="form-input" type="number" inputmode="numeric" min="0" step="1" :aria-label="`Shipment ${index+1} Cases to Transfer`" :disabled="saving" @input="syncTransferQuantity(shipment)" /></label>
-                                <label class="field-label">Unit(s) to Transfer<input v-model.number="shipment.looseUnitsShipped" class="form-input" type="number" inputmode="numeric" min="0" :max="(shipment.unitsPerCase??1)-1" step="1" :aria-label="`Shipment ${index+1} Unit(s) to Transfer`" :disabled="saving" @input="syncTransferQuantity(shipment)" /></label>
-                            </template>
-                            <template v-else><div><span>Cases to Transfer</span><strong>{{shipment.casesShipped}}</strong></div><div><span>Units to Transfer</span><strong>{{shipment.looseUnitsShipped??0}}</strong></div></template>
+                            <div><span>Cases to Transfer</span><strong>{{shipment.casesShipped}}</strong></div><div><span>Units to Transfer</span><strong>{{shipment.looseUnitsShipped??0}}</strong></div>
                             <div class="detail-field-wide"><span>Total Transfer Quantity</span><strong>{{shipment.transferQuantity??shipment.unitsToTransfer??0}} units</strong></div>
                         </template>
                         <template v-else-if="shipmentFeatures.casesShipped">
@@ -1107,7 +1122,7 @@ async function saveAgencyUpdate() {
                     <ShipmentCasePanel :key="`cases-${request.id}-${index}`" v-if="shipmentFeatures.quantityTracking && requestShipments(request)[index] && (!canStaffEdit || shipmentReceiptKey(shipment)===shipmentReceiptKey(requestShipments(request)[index]!))" :request="request" :shipment="requestShipments(request)[index]!" :index="index" :can-manage="canStaffEdit" :disabled="saving" @updated="applyShipmentIssueResult" />
                     <ShipmentIssuePanel :key="`${request.id}-${index}`" v-if="requestShipments(request)[index] && (!canStaffEdit || shipmentReceiptKey(shipment)===shipmentReceiptKey(requestShipments(request)[index]!))" :request="request" :shipment="requestShipments(request)[index]!" :index="index" :can-report="canRepEdit" :receipt-editing="!!receiptEditors[index]" :catalog-units-per-case="shipmentCatalogSize(requestShipments(request)[index]!)" :disabled="saving" @updated="applyShipmentIssueResult" />
                     <div v-if="shipment.shipmentSource==='agency'" class="shipping-save-action">
-                        <button v-if="canStaffEdit && !shipment.transferId" class="button button-secondary" type="button" :disabled="saving" @click="reserveShipmentTransfer(index)">{{saving && transferAuthorizationIndex===index?'Reserving…':'Reserve Stock'}}</button>
+
                         <template v-if="canStaffEdit && shipment.transferId && shipment.transferStatus==='reserved'">
                             <button v-if="hasTransferLabelRequest(shipment)" class="button button-secondary" type="button" :disabled="saving || !shipment.transferStockConfirmedAt || !transferLabelsReady[shipment.transferId!]" @click="editOrSendTransferEta(index)">{{sendingEtaIndex===index?'Sending…':shipment.transferEtaSentAt?(editingShipmentLogistics(shipment,index)?'Send Shipping Update':'Edit Shipping Details'):'Send Labels & Shipping Details'}}</button>
                             <button v-if="shipment.transferEtaSentAt && editingShipmentLogistics(shipment,index)" class="button button-ghost" type="button" :disabled="saving" @click="cancelEtaEdit(index)">Cancel</button>
