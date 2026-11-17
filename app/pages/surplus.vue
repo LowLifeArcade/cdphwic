@@ -8,8 +8,10 @@ import {surplusMovementReason} from '~/../shared/surplusMovement';
 import type {RequestRecord} from '~/../shared/domain';
 import type { SurplusLot } from '~/../shared/surplus';
 function pickupAddress(json?:string|null){try{const value=JSON.parse(json??'null') as ClinicAddress|null;return value?formatClinic(value):'';}catch{return '';}}
+function dayAfter(date:string){return new Date(Date.parse(`${date}T00:00:00Z`)+86400000).toISOString().slice(0,10);}
+function movementLabel(kind:string){return ({reconcile:'Physical count','correct-entry':'Correction',deduct:'Stock adjustment',reserve:'Reservation',ship:'Shipment',receive:'Receipt',cancel:'Cancellation',expire:'Expiration'} as Record<string,string>)[kind]??kind;}
 const route = useRoute();
-const view=ref<'inventory'|'transfers'|'counts'>(route.query.transfer?'transfers':'inventory');
+const view=ref<'inventory'|'transfers'>(route.query.transfer?'transfers':'inventory');
 watch(()=>route.query.transfer,id=>{if(id)view.value='transfers';});
 const requestChoices=ref<RequestRecord[]>([]);
 const requestsLoading=ref(false);
@@ -42,6 +44,7 @@ watch([()=>route.query.transfer,()=>data.value?.transfers],async([selected])=>{
 },{immediate:true,flush:'post'});
 
 const reviewer = computed(() => data.value?.user && isReviewer(data.value.user));
+const pendingAgencyCounts=computed(()=>data.value?.reports.filter((report:any)=>report.status==='pending')??[]);
 const search = ref(String(route.query.formula ?? ''));
 const agency = ref(String(route.query.agency ?? ''));
 const clinic = ref('');
@@ -63,15 +66,25 @@ const inventoryRows=computed(()=>groupSurplusLots(lots.value).flatMap(group=>gro
  ? [{kind:'lot' as const,key:`lot:${group.lots[0]!.id}`,group,lot:group.lots[0]!}]
  : [{kind:'group' as const,key:`group:${group.key}`,group},...(expandedInventoryGroups.value[group.key]?group.lots.map(lot=>({kind:'lot' as const,key:`lot:${lot.id}`,group,lot})):[])]));
 function toggleInventoryGroup(key:string){expandedInventoryGroups.value[key]=!expandedInventoryGroups.value[key];}
+function moveSurplusTab(event:KeyboardEvent){
+    const tabs=['inventory','transfers'] as const;
+    const current=tabs.indexOf(view.value);
+    const next=event.key==='ArrowRight'?tabs[(current+1)%tabs.length]:event.key==='ArrowLeft'?tabs[(current+tabs.length-1)%tabs.length]:event.key==='Home'?tabs[0]:event.key==='End'?tabs[tabs.length-1]:undefined;
+    if(!next)return;
+    event.preventDefault();
+    view.value=next;
+    nextTick(()=>document.getElementById(`${next}-tab`)?.focus());
+}
 const agencyName = (id: number) => agencyData.value?.agencies.find((a) => a.id === id)?.name ?? `Agency ${id}`;
 const operationId = ref('');
 const modal = ref('');
-const modalTitles:Record<string,string>={'assign-clinic':'Assign Clinic',new:'Record physical count',review:'Reconcile reported count',forecast:'Anticipated surplus',confirm:'Confirm actual usable, uncommitted surplus',destroy:'Record verified destruction','correct-expiry':'Correct verified expiration date',reconcile:'Reconcile physical count',deduct:'Deduct surplus','use-request':'Use surplus in a Request',cancel:'Cancel reservation',history:'Inventory history'};
-const modalTitle=computed(()=>modal.value==='new'&&!reviewer.value?'Record surplus count':modalTitles[modal.value]??'');
+const modalTitles:Record<string,string>={'edit-inventory':'Edit Inventory', 'assign-clinic':'Assign Clinic',new:'Record physical count',review:'Review reported count',forecast:'Anticipated Surplus',confirm:'Confirm actual usable, uncommitted surplus',donate:'Record formula donation',destroy:'Record verified destruction','correct-entry':'Correct inventory entry','correct-expiry':'Correct verified expiration date',reconcile:'Update physical count',deduct:'Deduct surplus','use-request':'Use in Request',cancel:'Cancel reservation',history:'Inventory History'};
+const modalTitle=computed(()=>modal.value==='new'&&!reviewer.value?'Record Surplus':modalTitles[modal.value]??'');
 const selected = ref<SurplusLot>();
 const report = ref<any>();
 const forecast = ref<any>();
 const transfer = ref<any>();
+const correctionTarget=ref<any>();
 const history = ref<any[]>([]);
 const input = reactive({
     clinicId: '',
@@ -99,6 +112,7 @@ function start(kind: string, lot?: SurplusLot, item?: any) {
     report.value = undefined;
     forecast.value = undefined;
     transfer.value = undefined;
+    correctionTarget.value=undefined;
     message.value = '';
     Object.assign(input, {
         clinicId: lot?.clinicId ?? item?.clinic_id ?? '',
@@ -112,6 +126,11 @@ function start(kind: string, lot?: SurplusLot, item?: any) {
         trackingReference: '',
     });
     if(kind==='new'&&!reviewer.value)input.agencyId=data.value?.user.agencyId??0;
+    if(kind==='donate')input.reason='Donation';
+    if(kind==='correct-entry'){
+        correctionTarget.value=item;
+        input.quantity=item?.effective_quantity??item?.quantity??0;
+    }
     if (kind === 'review') {
         report.value = item;
         selected.value = ((data.value?.lots as SurplusLot[]) ?? []).find(
@@ -185,10 +204,20 @@ async function run(work: () => Promise<unknown>) {
     if (busy.value || resolvingCount.value || (modal.value === 'review' && !countReady.value)) return;
     busy.value = true;
     message.value = '';
+    const returnToHistory=modal.value==='correct-entry';
+    const historyLot=selected.value;
     try {
         await work();
-        modal.value = '';
-        await refreshTransferState();
+        if(returnToHistory&&historyLot){
+            modal.value='history';
+            await refreshTransferState();
+            const refreshedLot=((data.value?.lots??[]) as SurplusLot[]).find(lot=>lot.id===historyLot.id);
+            if(refreshedLot)selected.value=refreshedLot;
+            history.value=await $fetch<any[]>('/api/surplus/history',{headers:headers.value,query:{lotId:historyLot.id}});
+        }else{
+            modal.value = '';
+            await refreshTransferState();
+        }
     } catch (e: any) {
         message.value = e.data?.message ?? e.data?.statusMessage ?? e.message ?? 'Unable to save.';
     } finally {
@@ -198,6 +227,10 @@ async function run(work: () => Promise<unknown>) {
 async function submit() {
     await run(async () => {
         if(modal.value==='assign-clinic'){if(!selected.value||!input.clinicId)throw new Error('Select a clinic.');return $fetch(`/api/surplus/lots/${selected.value.id}/clinic`,{method:'POST',headers:headers.value,body:{clinicId:input.clinicId,expectedVersion:selected.value.version}});}
+        if(modal.value==='correct-entry'){
+            if(!selected.value||!correctionTarget.value)throw new Error('Select a history entry to correct.');
+            return $fetch('/api/surplus/commands',{method:'POST',headers:headers.value,body:{operationId:operationId.value,kind:'correct-entry',correctionOf:correctionTarget.value.id,lotId:selected.value.id,quantity:Number(input.quantity),reason:input.reason,confirmerName:input.confirmerName,date:input.date,expectedVersion:selected.value.version}});
+        }
         if(modal.value==='new'&&!reviewer.value)
             return $fetch('/api/surplus/counts',{method:'POST',headers:headers.value,body:{operationId:operationId.value,formulaName:input.formulaName,form:input.form,flavor:input.flavor,clinicId:input.clinicId||undefined,quantity:Number(input.quantity),expirationDate:input.expirationDate,date:input.date,confirmerName:input.confirmerName,reason:input.reason}});
         if (modal.value === 'forecast')
@@ -236,7 +269,7 @@ async function submit() {
                 operationId: operationId.value,
                 kind: ['new', 'review'].includes(modal.value)
                     ? 'reconcile'
-                    : modal.value === 'destroy'
+                    : ['destroy','donate'].includes(modal.value)
                       ? 'deduct'
                       : modal.value,
                 lotId: lot.id,
@@ -292,10 +325,6 @@ async function upload(kind: string, event: Event) {
                 <h1>Formula Surplus</h1>
                 <p>View agency inventory and manage surplus counts. Reserve stock and send shipping details from a request’s Shipment section.</p>
             </div>
-            <div v-if="view==='counts'&&data">
-                <button class="button" @click="start('new')">{{reviewer?'Record physical count':'Record surplus count'}}</button>
-                <button v-if="reviewer" class="button button-main" @click="start('forecast')">Anticipated surplus</button>
-            </div>
         </div>
         <p
             v-if="error"
@@ -309,12 +338,11 @@ async function upload(kind: string, event: Event) {
         >
             {{ message }}
         </p>
-        <nav class="surplus-views" aria-label="Surplus views">
-            <button class="button" :aria-pressed="view==='inventory'" @click="view='inventory'">Inventory</button>
-            <button class="button" :aria-pressed="view==='transfers'" @click="view='transfers'">Transfers</button>
-            <button class="button" :aria-pressed="view==='counts'" @click="view='counts'">Counts &amp; Forecasts</button>
-        </nav>
-        <section v-show="view==='transfers'" id="transfers">
+        <div class="surplus-views" role="tablist" aria-label="Formula Surplus sections">
+            <button id="inventory-tab" class="surplus-tab" role="tab" :aria-selected="view==='inventory'" :tabindex="view==='inventory'?0:-1" aria-controls="inventory-panel" @keydown="moveSurplusTab" @click="view='inventory'">Inventory</button>
+            <button id="transfers-tab" class="surplus-tab" role="tab" :aria-selected="view==='transfers'" :tabindex="view==='transfers'?0:-1" aria-controls="transfers-panel" @keydown="moveSurplusTab" @click="view='transfers'">Transfers</button>
+        </div>
+        <section v-show="view==='transfers'" id="transfers-panel" role="tabpanel" aria-labelledby="transfers-tab" tabindex="0">
             <h2>Transfers</h2>
             <p>{{reviewer?'Reserve stock, provide labels, and send shipping details in the request’s Shipment section.':'Confirm reserved product availability here. When CDPH/WIC provides shipping labels, arrange and confirm pickup.'}}</p>
             <p v-if="!data?.transfers?.length">No transfers yet.</p>
@@ -334,8 +362,11 @@ async function upload(kind: string, event: Event) {
                 </details>
             </article>
         </section>
-        <div v-show="view==='inventory'">
-        <h2>Available inventory</h2>
+        <div v-show="view==='inventory'" id="inventory-panel" role="tabpanel" aria-labelledby="inventory-tab" tabindex="0">
+        <header class="inventory-section-heading">
+            <h2>Available Inventory</h2>
+            <button v-if="data && !reviewer" class="button" type="button" @click="start('new')">Record Surplus</button>
+        </header>
         <div class="surplus-filters">
             <label
                 >Search formula<input
@@ -380,25 +411,17 @@ async function upload(kind: string, event: Event) {
                 <tbody>
                     <tr v-for="row in inventoryRows" :key="row.key" :class="row.kind==='group'?'inventory-group-row':row.group.lots.length>1?'inventory-lot-detail':''">
                         <template v-if="row.kind==='group'">
-                            <td class="inventory-product"><strong>{{row.group.formulaName}} {{row.group.form==='concentrate'?'Concentrate':formulaFormLabel(row.group.form)}}</strong><span><template v-if="row.group.flavor">{{row.group.flavor}} · </template>{{agencyName(row.group.agencyId)}}</span><span>{{row.group.clinicName||'Clinic not specified'}}</span></td>
-                            <td>{{row.group.lots.length}} lots · earliest {{formatDisplayDate(row.group.earliestExpiration)}}</td>
-                            <td>{{row.group.onHand}}</td><td>{{row.group.reserved}}</td><td class="inventory-available">{{row.group.available}}</td><td>{{row.group.expiredUnits}}</td><td>{{row.group.total}}</td>
+                            <td class="inventory-product"><strong>{{row.group.formulaName}} {{row.group.form==='concentrate'?'Concentrate':formulaFormLabel(row.group.form)}}</strong><span v-if="reviewer || row.group.flavor"><template v-if="row.group.flavor">{{row.group.flavor}}<template v-if="reviewer"> · </template></template><template v-if="reviewer">{{agencyName(row.group.agencyId)}}</template></span><span>{{row.group.clinicName||'Clinic not specified'}}</span></td>
+                            <td>{{row.group.lots.length}} lots · earliest <strong class="inventory-expiration">{{formatDisplayDate(row.group.earliestExpiration)}}</strong></td>
+                            <td><strong class="inventory-quantity">{{row.group.onHand}}</strong></td><td><strong class="inventory-quantity">{{row.group.reserved}}</strong></td><td class="inventory-available"><strong>{{row.group.available}}</strong></td><td><strong class="inventory-quantity">{{row.group.expiredUnits}}</strong></td><td><strong class="inventory-quantity">{{row.group.total}}</strong></td>
                             <td class="row-actions"><button class="button" type="button" :aria-expanded="!!expandedInventoryGroups[row.group.key]" @click="toggleInventoryGroup(row.group.key)">{{expandedInventoryGroups[row.group.key]?'Hide':'View'}} {{row.group.lots.length}} expiration lots</button></td>
                         </template>
                         <template v-else>
-                            <td class="inventory-product"><template v-if="row.group.lots.length===1"><strong>{{row.group.formulaName}} {{row.group.form==='concentrate'?'Concentrate':formulaFormLabel(row.group.form)}}</strong><span><template v-if="row.group.flavor">{{row.group.flavor}} · </template>{{agencyName(row.group.agencyId)}}</span><span>{{row.group.clinicName||'Clinic not specified'}}</span></template><span v-else class="inventory-lot-label">Expiration lot</span></td>
-                            <td>{{formatDisplayDate(row.lot.expirationDate)}}</td><td>{{row.lot.onHand}}</td><td>{{row.lot.reserved}}</td><td class="inventory-available">{{availableUnits(row.lot)}}</td><td>{{row.lot.expiredUnits}}</td><td>{{row.lot.onHand+row.lot.expiredUnits}}</td>
+                            <td class="inventory-product"><template v-if="row.group.lots.length===1"><strong>{{row.group.formulaName}} {{row.group.form==='concentrate'?'Concentrate':formulaFormLabel(row.group.form)}}</strong><span v-if="reviewer || row.group.flavor"><template v-if="row.group.flavor">{{row.group.flavor}}<template v-if="reviewer"> · </template></template><template v-if="reviewer">{{agencyName(row.group.agencyId)}}</template></span><span>{{row.group.clinicName||'Clinic not specified'}}</span></template><span v-else class="inventory-lot-label">Expiration lot</span></td>
+                            <td><strong class="inventory-expiration">{{formatDisplayDate(row.lot.expirationDate)}}</strong></td><td><strong class="inventory-quantity">{{row.lot.onHand}}</strong></td><td><strong class="inventory-quantity">{{row.lot.reserved}}</strong></td><td class="inventory-available"><strong>{{availableUnits(row.lot)}}</strong></td><td><strong class="inventory-quantity">{{row.lot.expiredUnits}}</strong></td><td><strong class="inventory-quantity">{{row.lot.onHand+row.lot.expiredUnits}}</strong></td>
                             <td class="row-actions">
                                 <button v-if="reviewer && availableUnits(row.lot)>0 && !row.lot.expiredUnits && row.lot.expirationDate>=localDate()" class="button button-secondary" @click="useInRequest(row.lot)">Use in Request</button>
-                                <details class="inventory-actions"><summary>More</summary><div>
-                                    <button class="text-button" @click="showHistory(row.lot)">History</button><button v-if="!row.lot.clinicId &amp;&amp; !row.lot.reserved &amp;&amp; reviewer" class="text-button" @click="start('assign-clinic',row.lot)">Assign Clinic</button>
-                                    <template v-if="reviewer">
-                                        <button class="text-button" @click="start('reconcile',row.lot)">Reconcile count</button>
-                                        <button v-if="availableUnits(row.lot)>0" class="text-button" @click="start('deduct',row.lot)">Deduct stock</button>
-                                        <button v-if="row.lot.expiredUnits>0" class="text-button" @click="start('destroy',row.lot)">Record destruction</button>
-                                        <button class="text-button" @click="start('correct-expiry',row.lot)">Correct expiration</button>
-                                    </template>
-                                </div></details>
+                                <button class="text-button" type="button" @click="start('edit-inventory',row.lot)">Edit</button>
                             </td>
                         </template>
                     </tr>
@@ -408,28 +431,34 @@ async function upload(kind: string, event: Event) {
                 </tbody>
             </table>
         </div>
-        </div>
-        <section v-show="view==='counts'">
-            <h2>Pending physical counts</h2>
-            <p>Counts replace the verified balance after review; they are never added to it.</p>
+        <section v-if="reviewer" class="surplus-counts-section" aria-labelledby="counts-heading">
+        <header class="surplus-counts-heading">
+            <h2 id="counts-heading">Counts &amp; Forecasts</h2>
+            <div v-if="data" class="counts-actions">
+            <button v-if="reviewer" class="button button-main" @click="start('forecast')">Anticipated Surplus</button>
+            </div>
+        </header>
+        <section v-if="pendingAgencyCounts.length">
+            <h2>Pending Agency Counts for Review</h2>
+            <p>These counts were submitted by Local Agencies and await CDPH/WIC review before they update available inventory.</p>
             <article
-                v-for="r in data?.reports.filter((r: any) => r.status === 'pending')"
+                v-for="r in pendingAgencyCounts"
                 :key="r.id"
             >
                 <strong>{{ agencyName(r.agency_id) }} · {{ r.formula_name }}</strong> · {{ formulaFormLabel(r.form) }} {{ r.flavor }} ·
                 {{ r.reported_units }} unit(s) · expires {{ formatDisplayDate(r.expiration_date) }}
-                <p>{{r.clinic_name || 'Clinic not specified'}}</p><p>Counted {{ r.counted_at }} by {{ r.confirmer_name }}. {{ r.reason }}</p>
+                <p>{{r.clinic_name || 'Clinic not specified'}}</p><p>Counted {{ formatDisplayDate(r.counted_at) }} by {{ r.confirmer_name }}. {{ r.reason }}</p>
                 <button
                     v-if="reviewer"
                     class="button"
                     @click="start('review', undefined, r)"
                 >
-                    Review and reconcile
+                    Review count
                 </button>
             </article>
         </section>
-        <section v-show="view==='counts'">
-            <h2>Anticipated surplus</h2>
+        <section>
+            <h2>Anticipated Surplus</h2>
             <article
                 v-for="f in data?.forecasts"
                 :key="f.id"
@@ -448,7 +477,7 @@ async function upload(kind: string, event: Event) {
                 </button>
             </article>
         </section>
-        <section v-if="view==='counts' && data?.user.role === 'admin'">
+        <section v-if="data?.user.role === 'admin'">
             <h2>Agency notice forms</h2>
             <p>Upload the current forms used by donation and destruction notices.</p>
             <label
@@ -463,6 +492,8 @@ async function upload(kind: string, event: Event) {
                     @change="upload('destruction', $event)"
             /></label>
         </section>
+        </section>
+        </div>
         <div
             v-if="modal"
             class="surplus-backdrop"
@@ -475,7 +506,7 @@ async function upload(kind: string, event: Event) {
                 aria-labelledby="surplus-dialog-title"
             >
                 <h2 id="surplus-dialog-title">{{modalTitle}}</h2>
-                <p v-if="selected">
+                <p v-if="selected && !['history','edit-inventory','use-request'].includes(modal)">
                     {{ selected.formulaName }} · {{ selected.form }} {{ selected.flavor }} ·
                     {{ agencyName(selected.agencyId) }} · {{selected.clinicName || 'Clinic not specified'}}
                 </p>
@@ -486,16 +517,28 @@ async function upload(kind: string, event: Event) {
                     {{ message }}
                 </p>
                 <div v-if="modal === 'history'">
+                    <div v-if="selected" class="history-product">
+                        <strong>{{[selected.formulaName,formulaFormLabel(selected.form),selected.flavor].filter(Boolean).join(' ')}}</strong>
+                        <span>{{agencyName(selected.agencyId)}} · {{selected.clinicName || 'Clinic not specified'}}</span>
+                    </div>
+                    <p v-if="!history.length" class="history-empty">No inventory history for this lot yet.</p>
                     <article
+                        class="history-entry"
                         v-for="h in history"
                         :key="h.id"
                     >
-                        {{ h.created_at }} · {{ h.kind }} · {{ h.quantity }} unit(s)
-                        <p>
-                            Usable {{ h.on_hand }} / reserved {{ h.reserved }} / expired {{ h.expired_units }} ·
-                            {{ h.request_ref }}
-                        </p>
-                        <p>{{ surplusMovementReason(h.reason) }}</p>
+                        <header class="history-entry-heading">
+                            <div><strong>{{formatDisplayDate(h.created_at)}}</strong><span>{{movementLabel(h.kind)}}</span></div>
+                            <strong class="history-quantity">{{h.effective_quantity??h.quantity}} unit(s)</strong>
+                        </header>
+                        <p class="history-balance">On Hand {{h.on_hand}} · Reserved {{h.reserved}} · Expired {{h.expired_units}}</p>
+                        <p v-if="h.request_ref" class="history-reference">Request {{h.request_ref}}</p>
+                        <p class="history-actor">Recorded by {{h.actor_name||'Unknown user'}}</p>
+                        <p v-if="surplusMovementReason(h.reason)" class="history-reason">{{ surplusMovementReason(h.reason) }}</p>
+                        <p v-if="h.effective_quantity!==undefined && h.effective_quantity!==h.quantity" class="history-correction-note">Updated to {{ h.effective_quantity }} unit(s). Original entry remains in history.</p>
+                        <p v-if="h.corrects_movement_id && h.correction_target" class="history-correction-note">Corrects {{movementLabel(h.correction_target.kind).toLowerCase()}} from {{formatDisplayDate(h.correction_target.created_at)}} (original {{h.correction_target.quantity}} unit(s)).</p>
+                        <p v-else-if="h.corrects_movement_id" class="history-correction-note">Corrects an earlier inventory entry; updated quantity {{h.corrected_quantity}} unit(s).</p>
+                        <button v-if="h.correctable" class="text-button" type="button" @click="start('correct-entry',selected,h)">Correct entry</button>
                     </article>
                     <button
                         class="button"
@@ -504,16 +547,57 @@ async function upload(kind: string, event: Event) {
                         Close
                     </button>
                 </div>
+                <div v-else-if="modal==='edit-inventory'" class="inventory-edit-actions">
+                    <div v-if="selected" class="history-product">
+                        <strong>{{[selected.formulaName,formulaFormLabel(selected.form),selected.flavor].filter(Boolean).join(' ')}}</strong>
+                        <span>{{agencyName(selected.agencyId)}} · {{selected.clinicName || 'Clinic not specified'}}</span>
+                    </div>
+                    <p>Select an inventory action for this lot.</p>
+                    <button class="button" type="button" @click="selected && showHistory(selected)">Inventory History</button>
+                    <button v-if="reviewer && !selected?.clinicId && !selected?.reserved" class="button" type="button" @click="start('assign-clinic',selected)">Assign Clinic</button>
+                    <button v-if="reviewer && selected && availableUnits(selected)>0" class="button" type="button" @click="start('deduct',selected)">Deduct stock</button>
+                    <button v-if="reviewer" class="button" type="button" @click="start('correct-expiry',selected)">Correct expiration</button>
+                    <button v-if="!reviewer && selected && availableUnits(selected)>0 && daysRemaining(selected.expirationDate,localDate())>=30 && daysRemaining(selected.expirationDate,localDate())<=60" class="button" type="button" @click="start('donate',selected)">Record donation</button>
+                    <button v-if="selected?.expiredUnits>0" class="button" type="button" @click="start('destroy',selected)">Record destruction</button>
+                    <div class="dialog-actions"><button class="button" type="button" @click="modal=''">Close</button></div>
+                </div>
                 <form v-else-if="modal==='use-request'" @submit.prevent="openShipment">
+                    <div v-if="selected" class="history-product">
+                        <strong>{{[selected.formulaName,formulaFormLabel(selected.form),selected.flavor].filter(Boolean).join(' ')}}</strong>
+                        <span>{{agencyName(selected.agencyId)}} · {{selected.clinicName || 'Clinic not specified'}}</span>
+                    </div>
                     <p>Select a matching request. You’ll choose the quantity and reserve stock in its Shipment section.</p>
                     <p v-if="requestsLoading" role="status">Loading matching requests…</p>
                     <p v-else-if="requestChoiceError" role="alert">{{requestChoiceError}}</p>
                     <template v-else>
-                        <label>Find request<input v-model="requestSearch" type="search" placeholder="Request number, participant, or receiving agency" /></label>
-                        <label>Destination request<select v-model="destinationRequest" required><option disabled value="">Select a request</option><option v-for="r in matchingRequests" :key="r.id" :value="String(r.id)">#{{r.id}} · {{r.participantName}} · {{agencyName(r.agencyId)}}</option></select></label>
+                        <label>Find Request<input v-model="requestSearch" type="search" placeholder="Request number, participant, or receiving agency" /></label>
+                        <label>Destination Request<select v-model="destinationRequest" required><option disabled value="">Select a Request</option><option v-for="r in matchingRequests" :key="r.id" :value="String(r.id)">#{{r.id}} · {{r.participantName}} · {{agencyName(r.agencyId)}}</option></select></label>
                         <p v-if="!matchingRequests.length">No matching requests. The request must include this formula and belong to a different agency.</p>
                     </template>
                     <div class="dialog-actions"><button class="button" type="button" @click="modal=''">Cancel</button><button class="button button-secondary" :disabled="requestsLoading || !matchingRequests.some(r=>String(r.id)===destinationRequest)" type="submit">Continue to Shipment</button></div>
+                </form>
+                <form v-else-if="modal==='correct-entry'" class="correction-form" @submit.prevent="submit">
+                    <div v-if="selected" class="history-product">
+                        <strong>{{[selected.formulaName,formulaFormLabel(selected.form),selected.flavor].filter(Boolean).join(' ')}}</strong>
+                        <span>{{agencyName(selected.agencyId)}} · {{selected.clinicName || 'Clinic not specified'}}</span>
+                    </div>
+                    <article v-if="correctionTarget" class="history-entry correction-original-entry">
+                        <header class="history-entry-heading">
+                            <div><strong>{{formatDisplayDate(correctionTarget.created_at)}}</strong><span>{{movementLabel(correctionTarget.kind)}}</span></div>
+                            <strong class="history-quantity">{{correctionTarget.effective_quantity??correctionTarget.quantity}} unit(s)</strong>
+                        </header>
+                        <p class="history-balance">Original entry: {{correctionTarget.quantity}} unit(s). The original record stays in history; this correction is added as a separate entry.</p>
+                    </article>
+                    <div class="correction-fields">
+                        <label>Corrected unit(s)<input v-model.number="input.quantity" type="number" min="0" step="1" required /></label>
+                        <label>Correction explanation<textarea v-model="input.reason" rows="2" required></textarea></label>
+                        <label>Correcting staff name<input v-model="input.confirmerName" required /></label>
+                        <label>Correction date<input v-model="input.date" type="date" :max="localDate()" required /></label>
+                    </div>
+                    <div class="dialog-actions">
+                        <button class="button" type="button" :disabled="busy" @click="modal='history'">Cancel</button>
+                        <button class="button button-main" :disabled="busy">{{busy?'Saving…':'Save correction'}}</button>
+                    </div>
                 </form>
                 <form
                     v-else
@@ -549,7 +633,7 @@ async function upload(kind: string, event: Event) {
                     <p v-if="clinicError &amp;&amp; ['new','forecast','review','confirm','assign-clinic'].includes(modal)" role="alert">Clinics could not be loaded. Close and try again.</p>
                     <label
                         v-if="
-                            ['new', 'reconcile', 'deduct', 'destroy', 'confirm', 'forecast'].includes(modal)
+                            ['new', 'reconcile', 'deduct', 'donate', 'destroy', 'confirm', 'forecast'].includes(modal)
                         "
                         >{{ modal === 'forecast' ? 'Anticipated Unit(s)' : 'Unit(s)'
                         }}<input
@@ -596,7 +680,7 @@ async function upload(kind: string, event: Event) {
                             <option value="">Select reason</option>
                             <option value="Request fulfillment">Request fulfillment</option>
                             <option
-                                v-if="selected && daysRemaining(selected.expirationDate, localDate()) >= 60"
+                                v-if="selected && daysRemaining(selected.expirationDate, localDate()) >= 30 && daysRemaining(selected.expirationDate, localDate()) <= 60"
                                 value="Donation"
                             >
                                 Donation
@@ -604,24 +688,26 @@ async function upload(kind: string, event: Event) {
                             <option value="Inventory correction">Inventory correction</option>
                         </select></label
                     >
-                    <label v-if="['deduct', 'destroy', 'forecast'].includes(modal)"
+                    <label v-if="modal === 'forecast' || (reviewer && ['deduct', 'destroy'].includes(modal))"
                         >Request / reference<input
                             v-model="input.requestRef"
-                            required /></label
+                            :required="modal !== 'forecast'" /></label
                     >
-                    <template v-if="['confirm', 'destroy'].includes(modal)||(modal==='new'&&!reviewer)"
+                    <template v-if="['confirm', 'destroy', 'donate'].includes(modal)||(modal==='new'&&!reviewer)"
                         ><label
-                            >Staff name<input
+                            >{{ modal === 'donate' ? 'Staff name attesting to donation' : 'Staff name' }}<input
                                 v-model="input.confirmerName"
                                 required /></label
                         ><label
-                            >{{ modal === 'destroy' ? 'Verified destruction date' : 'Physical count date'
+                            >{{ modal === 'destroy' ? 'Verified destruction date' : modal === 'donate' ? 'Donation date' : 'Physical count date'
                             }}<input
                                 v-model="input.date"
                                 type="date"
+                                :min="modal === 'destroy' && selected ? dayAfter(selected.expirationDate) : undefined"
                                 :max="localDate()"
                                 required /></label></template
                     >
+                    <p v-if="modal === 'donate'">Record formula donated while it is 30–60 days from expiration. Only unreserved unit(s) can be donated.</p>
                     <p v-if="modal === 'destroy'">
                         Confirm these unit(s) have been physically destroyed and the Formula Destruction Form completed.
                     </p>
@@ -678,12 +764,15 @@ async function upload(kind: string, event: Event) {
 .legacy-transfer summary {font-size:13px;line-height:1.4;color:var(--muted);cursor:pointer;width:fit-content;}
 @media(max-width:800px){.legacy-transfer-summary{grid-template-columns:repeat(2,minmax(0,1fr));}}
 
-.surplus-views {display:flex;gap:8px;flex-wrap:wrap;margin:16px 0 24px;}
-.surplus-views .button,.surplus-filters .button {font-size:13px;line-height:1.4;padding:6px 12px;min-height:32px;}
+.surplus-views {display:flex;gap:4px;flex-wrap:wrap;margin:16px 0 24px;border-bottom:1px solid var(--line);}
+.surplus-views .surplus-tab {appearance:none;border:1px solid transparent;border-bottom:0;border-radius:7px 7px 0 0;background:transparent;color:var(--muted);font:inherit;font-size:14px;line-height:1.4;padding:9px 16px;min-height:40px;cursor:pointer;}
+.surplus-views .surplus-tab:hover {background:var(--surface-raised);color:var(--text);}
+.surplus-views .surplus-tab[aria-selected="true"] {background:var(--purple);border-color:var(--purple);color:#fff;font-weight:700;box-shadow:0 2px 0 var(--purple);}
+.surplus-views .surplus-tab:focus-visible {outline:3px solid var(--focus-ring,#1976d2);outline-offset:2px;z-index:1;}
+.surplus-filters .button {font-size:13px;line-height:1.4;padding:6px 12px;min-height:32px;}
 .surplus-page h2 {font-size:20px;line-height:1.4;margin:0 0 12px;}
-#transfers {margin-top:0;}
-#transfers > p {font-size:13px;line-height:1.4;margin:0 0 16px;}
-.surplus-views .button[aria-pressed="true"] {background:var(--purple);color:white;border-color:var(--purple);}
+#transfers-panel {margin-top:0;}
+#transfers-panel > p {font-size:13px;line-height:1.4;margin:0 0 16px;}
 .inventory-actions {margin-top:8px;font-size:13px;}
 .inventory-actions summary {cursor:pointer;}
 .inventory-actions > div {display:grid;gap:10px;padding-top:10px;justify-items:start;}
@@ -704,6 +793,13 @@ async function upload(kind: string, event: Event) {
     align-items: end;
     justify-content: space-between;
 }
+.counts-actions {display:flex;gap:10px;align-items:center;margin:0 0 20px;min-height:40px;}
+.surplus-counts-section {margin-top:32px;padding-top:20px;border-top:1px solid var(--line);}
+.surplus-counts-heading {display:flex;gap:16px;align-items:center;justify-content:space-between;flex-wrap:wrap;margin-bottom:8px;}
+.surplus-counts-heading h2 {margin:0;}
+.surplus-counts-heading .counts-actions {margin:0;}
+.inventory-section-heading {display:flex;align-items:center;justify-content:space-between;gap:16px;}
+.inventory-section-heading h2 {margin:0;}
 .surplus-filters {
     justify-content: start;
     flex-wrap: wrap;
@@ -726,10 +822,31 @@ async function upload(kind: string, event: Event) {
 .inventory-product strong {display:block;font-size:14px;line-height:1.4;}
 .inventory-product span {display:block;color:var(--muted);font-size:12px;line-height:1.4;margin-top:4px;}
 .inventory-available {font-weight:700;}
+.inventory-table .inventory-expiration {font-size:14px;font-weight:700;white-space:nowrap;}
+.inventory-table .inventory-quantity {font-size:15px;font-weight:700;font-variant-numeric:tabular-nums;}
 .inventory-table .row-actions {min-width:165px;white-space:nowrap;}
 .inventory-table .row-actions .button {margin:0 8px 0 0;padding:6px 10px;font-size:13px;line-height:1.4;min-height:32px;}
 .inventory-table .inventory-actions {display:inline-block;margin:0;position:relative;font-size:13px;line-height:1.4;}
 .inventory-table .inventory-actions > div {min-width:150px;padding:10px 0 2px;white-space:normal;}
+.inventory-edit-actions {display:grid;justify-items:start;gap:10px;}
+.inventory-edit-actions > p {margin:0 0 4px;}
+.inventory-edit-actions > .button {min-width:190px;text-align:left;}
+.history-product {display:grid;gap:4px;padding:12px;margin:0 0 8px;background:var(--surface-raised);border-radius:8px;}
+.history-product strong {font-size:16px;}
+.history-product span,.history-actor,.history-reference {font-size:12px;color:var(--muted);}
+.history-empty {padding:16px 0;color:var(--muted);}
+.history-entry {border-bottom:1px solid var(--line);padding:14px 0;}
+.history-entry-heading {display:flex;align-items:center;justify-content:space-between;gap:12px;}
+.history-entry-heading > div {display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;}
+.history-entry-heading > div > strong {font-size:14px;}
+.history-entry-heading > div > span {font-size:12px;color:var(--muted);}
+.history-quantity {font-size:15px;white-space:nowrap;}
+.history-entry :is(.history-balance,.history-reference,.history-actor,.history-reason,.history-correction-note) {margin:6px 0 0;font-size:12px;line-height:1.4;}
+.history-balance {font-weight:600;font-variant-numeric:tabular-nums;}
+.history-entry .history-actor,.history-entry .history-correction-note {color:var(--muted);}
+.correction-original-entry {margin:8px 0 16px;padding:12px;border:1px solid var(--line);border-radius:8px;background:var(--surface-raised);}
+.correction-fields {display:grid;gap:8px;}
+.correction-fields label {margin:0;font-size:13px;font-weight:600;}
 label {
     display: grid;
     gap: 6px;

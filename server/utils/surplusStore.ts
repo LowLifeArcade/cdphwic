@@ -1,6 +1,6 @@
 import type { SurplusReport, SurplusForecast, SurplusTransfer, SurplusMovement } from '../../shared/surplus';
 import {resolveSurplusClinic,decodeSurplusLot,surplusLotColumns} from './surplusClinicLocations';
-import { SEED_AGENCIES } from '../data/seed';
+import { SEED_AGENCIES,SEED_USERS } from '../data/seed';
 import type { SessionUser } from '../../shared/domain';
 import {
     canSeeAgency,
@@ -63,13 +63,40 @@ export async function executeSurplusCommand(
     const initial=await db.prepare(`SELECT ${columns} FROM surplus_lots WHERE id=?`).bind(c.lotId).first<SurplusLot>();
     if(!initial)fail('Inventory lot not found.');
     const initialLot=decodeSurplusLot(initial);
+    if(c.kind==='correct-entry'&&(isReviewer(user)||user.memberType!=='agency'||user.agencyId!==initialLot.agencyId))
+        throw Object.assign(new Error('Only the Local Agency can correct entries for its own inventory.'),{statusCode:403});
+    const agencyAdjustment = c.kind === 'deduct' && ['Donation', 'Destruction'].includes(c.reason ?? '');
+    let correctionTarget:any;
+    if(c.kind==='correct-entry'){
+        if(!c.correctionOf)fail('Select the inventory history entry to correct.');
+        correctionTarget=await db.prepare('SELECT m.*,c.payload AS command_payload FROM surplus_movements m JOIN surplus_commands c ON c.id=m.operation_id WHERE m.id=? AND m.lot_id=?').bind(c.correctionOf,c.lotId).first<any>();
+        if(!correctionTarget||correctionTarget.corrects_movement_id)fail('Only an original eligible inventory entry can be corrected.');
+        let originalCommand:any={};
+        let originalReason:any={};
+        try{originalCommand=JSON.parse(correctionTarget.command_payload??'{}');}catch{}
+        try{originalReason=JSON.parse(correctionTarget.reason??'{}');}catch{}
+        const agencyCount=correctionTarget.kind==='reconcile'&&originalCommand.kind==='reconcile'&&!originalCommand.reportId;
+        const agencyAdjustment=correctionTarget.kind==='deduct'&&originalCommand.kind==='deduct'&&['Donation','Destruction'].includes(originalReason.reason??'');
+        const originalActor=SEED_USERS.find(actor=>actor.id===correctionTarget.actor_id);
+        const ownAgencyAdjustment=agencyAdjustment&&originalActor?.memberType==='agency'&&originalActor.agencyId===initialLot.agencyId;
+        if(!agencyCount&&!ownAgencyAdjustment)
+            fail('This inventory entry is not eligible for agency correction.');
+    }
     if(!isReviewer(user)){
-        if(user.memberType!=='agency'||user.agencyId!==initialLot.agencyId||c.kind!=='reconcile'||c.reportId)
-            throw Object.assign(new Error('Local Agencies may only attest to counts for their own inventory.'),{statusCode:403});
-        if(!c.confirmerName?.trim()||!validDate(c.date??'')||c.date!>today)
+        const ownsLot = user.memberType === 'agency' && user.agencyId === initialLot.agencyId;
+        const allowedAction = (c.kind === 'reconcile' && !c.reportId) || agencyAdjustment || c.kind==='correct-entry';
+        if (!ownsLot || !allowedAction)
+            throw Object.assign(new Error('Local Agencies may only count, adjust, or correct entries for their own inventory.'),{statusCode:403});
+        if(c.kind === 'reconcile' && (!c.confirmerName?.trim()||!validDate(c.date??'')||c.date!>today))
             throw Object.assign(new Error('Enter the count date and staff name attesting to the count.'),{statusCode:400});
-        if((c.clinicId??'')!==(initialLot.clinicId??''))
+        if(c.kind === 'reconcile' && (c.clinicId??'')!==(initialLot.clinicId??''))
             throw Object.assign(new Error('A Local Agency can only count inventory at the selected clinic.'),{statusCode:403});
+        if (agencyAdjustment && (!c.confirmerName?.trim() || !validDate(c.date ?? '') || c.date! > today))
+            throw Object.assign(new Error('Enter the adjustment date and staff name attesting to the inventory change.'),{statusCode:400});
+        if(c.kind==='correct-entry'&&(!c.reason?.trim()||!c.confirmerName?.trim()||!validDate(c.date??'')||c.date!>today||!Number.isInteger(c.expectedVersion)))
+            throw Object.assign(new Error('Enter the corrected quantity, explanation, correcting staff name and correction date.'),{statusCode:400});
+        if (c.kind === 'deduct' && c.reason === 'Destruction' && c.date! <= initialLot.expirationDate)
+            throw Object.assign(new Error('Destruction date must be after the lot expiration date.'),{statusCode:400});
     }
     if (c.kind !== 'expire') await expireSurplusLots(db, today);
     const stored = await db.prepare(`SELECT ${columns} FROM surplus_lots WHERE id=?`).bind(c.lotId).first<SurplusLot>();
@@ -98,10 +125,12 @@ export async function executeSurplusCommand(
     guard('EXISTS(SELECT 1 FROM surplus_lots WHERE id=? AND version=?)', [lot!.id, lot!.version]);
     let transferId = c.transferId;
     let movementLot = c.lotId;
+    let correctionOf:string|undefined;
+    let correctedQuantity:number|null=null;
     let quantity = c.quantity ?? 0;
     if (
-        ['reconcile', 'deduct', 'reserve'].includes(c.kind) &&
-        (!Number.isSafeInteger(quantity) || quantity < 0 || (c.kind !== 'reconcile' && quantity === 0))
+        ['reconcile', 'deduct', 'reserve', 'correct-entry'].includes(c.kind) &&
+        (!Number.isSafeInteger(quantity) || quantity < 0 || (!['reconcile','correct-entry'].includes(c.kind) && quantity === 0))
     )
         fail('Enter a valid whole number of units.');
     if (c.kind === 'reconcile') {
@@ -137,10 +166,11 @@ export async function executeSurplusCommand(
             );
         }
     } else if (c.kind === 'deduct') {
-        if (!c.reason?.trim() || !c.requestRef?.trim()) fail('A request/reference and reason are required.');
+        if (!c.reason?.trim() || (isReviewer(user) && !c.requestRef?.trim())) fail('A request/reference and reason are required.');
         if (c.reason === 'Destruction') {
             if (!c.confirmerName?.trim() || !c.date || !validDate(c.date) || c.date > today)
                 fail('Verified destruction date and staff name are required.');
+            if (c.date <= lot!.expirationDate) fail('Destruction date must be after the lot expiration date.');
             guard('EXISTS(SELECT 1 FROM surplus_lots WHERE id=? AND expiration_date<? AND expired_units>=?)', [
                 lot!.id,
                 today,
@@ -148,13 +178,13 @@ export async function executeSurplusCommand(
             ]);
             update('expired_units=expired_units-?', [quantity]);
         } else {
+            const donationWindowStart = new Date(Date.parse(today + 'T00:00:00Z') + 30 * 86400000).toISOString().slice(0, 10);
+            const donationWindowEnd = new Date(Date.parse(today + 'T00:00:00Z') + 60 * 86400000).toISOString().slice(0, 10);
             guard('EXISTS(SELECT 1 FROM surplus_lots WHERE id=? AND expiration_date>=? AND on_hand-reserved>=?)', [
-                lot!.id,
-                c.reason === 'Donation'
-                    ? new Date(Date.parse(today + 'T00:00:00Z') + 60 * 86400000).toISOString().slice(0, 10)
-                    : today,
-                quantity,
+                lot!.id, c.reason === 'Donation' ? donationWindowStart : today, quantity,
             ]);
+            if (c.reason === 'Donation')
+                guard('EXISTS(SELECT 1 FROM surplus_lots WHERE id=? AND expiration_date<=?)', [lot!.id, donationWindowEnd]);
             update('on_hand=on_hand-?', [quantity]);
         }
     } else if (c.kind === 'reserve') {
@@ -279,12 +309,31 @@ export async function executeSurplusCommand(
             c.expirationDate,
             lotKey({ ...lot!, expirationDate: c.expirationDate! }),
         ]);
+    } else if(c.kind==='correct-entry') {
+        if(!Number.isSafeInteger(c.quantity)||c.quantity!<0||!c.reason?.trim()||!c.confirmerName?.trim()||!validDate(c.date??'')||c.date!>today||!Number.isInteger(c.expectedVersion))
+            fail('A corrected whole-unit quantity, explanation, staff name, date and current inventory version are required.');
+        if(c.expectedVersion!==lot!.version)fail('Inventory changed. Refresh the inventory history and try again.');
+        const previousCorrection=await db.prepare('SELECT corrected_quantity FROM surplus_movements WHERE corrects_movement_id=? ORDER BY rowid DESC LIMIT 1').bind(correctionTarget.id).first<any>();
+        const effectiveQuantity=previousCorrection?.corrected_quantity??correctionTarget.quantity;
+        const isCount=correctionTarget.kind==='reconcile';
+        const balanceDelta=isCount?c.quantity!-effectiveQuantity:effectiveQuantity-c.quantity!;
+        const expired=lot!.expirationDate<today;
+        if(expired){
+            guard('EXISTS(SELECT 1 FROM surplus_lots WHERE id=? AND expired_units+?>=0)',[lot!.id,balanceDelta]);
+            update('expired_units=expired_units+?',[balanceDelta]);
+        }else{
+            guard('EXISTS(SELECT 1 FROM surplus_lots WHERE id=? AND on_hand+?>=reserved)',[lot!.id,balanceDelta]);
+            update('on_hand=on_hand+?',[balanceDelta]);
+        }
+        quantity=Math.abs(balanceDelta);
+        correctionOf=c.correctionOf;
+        correctedQuantity=c.quantity!;
     } else fail('Unknown inventory action.');
     const result = { operationId: c.operationId, lotId: c.lotId, ...(transferId ? { transferId } : {}) };
     steps.push(
         db
             .prepare(
-                `INSERT INTO surplus_movements(id,operation_id,lot_id,kind,quantity,actor_id,request_ref,reason,on_hand,reserved,expired_units) SELECT ?,?,?,?,?,?,?,?,on_hand,reserved,expired_units FROM surplus_lots WHERE id=? AND ${pending}`,
+                `INSERT INTO surplus_movements(id,operation_id,lot_id,kind,quantity,actor_id,request_ref,reason,on_hand,reserved,expired_units,corrects_movement_id,corrected_quantity) SELECT ?,?,?,?,?,?,?,?,on_hand,reserved,expired_units,?,? FROM surplus_lots WHERE id=? AND ${pending}`,
             )
             .bind(
                 crypto.randomUUID(),
@@ -293,8 +342,12 @@ export async function executeSurplusCommand(
                 c.kind,
                 quantity,
                 user.id,
-                c.requestRef ?? '',
-                JSON.stringify({ reason: c.reason ?? '', staff: c.confirmerName, date: c.date }),
+                c.kind==='correct-entry'?correctionTarget.request_ref??'':c.requestRef??'',
+                c.kind==='correct-entry'
+                    ? JSON.stringify({ reason:'Correction',note:c.reason,staff:c.confirmerName,date:c.date,correctedQuantity })
+                    : JSON.stringify({ reason: c.reason ?? '', staff: c.confirmerName, date: c.date }),
+                correctionOf??null,
+                correctedQuantity,
                 movementLot,
                 c.operationId,
             ),

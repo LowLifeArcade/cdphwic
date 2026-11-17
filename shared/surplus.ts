@@ -20,8 +20,9 @@ export interface SurplusLot extends SurplusVariant {
 export interface SurplusCommand {
     clinicId?:string;
     operationId: string;
-    kind: 'reconcile' | 'deduct' | 'reserve' | 'ship' | 'receive' | 'cancel' | 'expire' | 'correct-expiry';
+    kind: 'reconcile' | 'deduct' | 'reserve' | 'ship' | 'receive' | 'cancel' | 'expire' | 'correct-expiry' | 'correct-entry';
     lotId: string;
+    correctionOf?: string;
     quantity?: number;
     destinationAgencyId?: number;
     transferId?: string;

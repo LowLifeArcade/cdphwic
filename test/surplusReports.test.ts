@@ -134,9 +134,9 @@ describe('surplus reporting and notices', () => {
             await db.prepare('SELECT on_hand,expired_units FROM surplus_lots WHERE id=?').bind(lot.id).first(),
         ).toEqual({ on_hand: 0, expired_units: 8 });
     });
-    it('rejects stale counts and donations with fewer than 60 days', async () => {
+    it('rejects stale counts and donations outside the 30-to-60-day window', async () => {
         const { db } = surplusDb();
-        const lot = await ensureSurplusLot(db, 10, { ...variant, expirationDate: '2026-12-24' });
+        const lot = await ensureSurplusLot(db, 10, { ...variant, expirationDate: '2026-11-24' });
         await executeSurplusCommand(
             db,
             admin,
