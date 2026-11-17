@@ -1,7 +1,9 @@
+import {unitLabel} from '../../shared/quantityLabels';
 import {PDFDocument,StandardFonts,rgb} from 'pdf-lib';
 import {formatIssuanceMonth,formulaAuthorizations} from '../../shared/formulaAuthorizations';
 import {formatDisplayDate as date,formulaFormLabel} from '../../shared/requestPresentation';
 import type {AgencyMemberRecord,AgencyRecord,RequestRecord} from '../../shared/domain';
+import {issuanceSupplySources,supplyCaseDetails} from '../../shared/issuanceSupply';
 import {shipmentQuantities} from '../../shared/shipmentQuantities';
 export async function createAuthorizationFormPdf(request:RequestRecord,agency?:AgencyRecord,rep?:AgencyMemberRecord,kind:'authorization'|'shipment-confirmation'='authorization'):Promise<Uint8Array>{
  const doc=await PDFDocument.create();const regular=await doc.embedFont(StandardFonts.Helvetica);const bold=await doc.embedFont(StandardFonts.HelveticaBold);
@@ -19,33 +21,14 @@ export async function createAuthorizationFormPdf(request:RequestRecord,agency?:A
    }lines.push(line);
   }return lines;
  };
- const section=(title:string)=>{ensure(48);y-=12;page.drawText(title,{x:42,y,size:11,font:bold,color:blue});y-=8;page.drawLine({start:{x:42,y},end:{x:570,y},thickness:.5,color:rgb(.78,.81,.85)});y-=16;};
+ const section=(title:string)=>{ensure(42);y-=8;page.drawText(title,{x:42,y,size:11,font:bold,color:blue});y-=6;page.drawLine({start:{x:42,y},end:{x:570,y},thickness:.5,color:rgb(.78,.81,.85)});y-=13;};
  const authorizations=request.formulaAuthorizations?.length?request.formulaAuthorizations:formulaAuthorizations(request);
  const fullFormulaName=(formula:{productName?:string;productForm?:string;flavor?:string})=>[formula.productName,formulaFormLabel(formula.productForm),formula.flavor].filter(Boolean).join(' ');
- const formulaKey=(value:{productName?:string;productForm?:string;flavor?:string})=>JSON.stringify([(value.productName??'').trim().toLowerCase(),value.productForm??'',(value.flavor??'').trim().toLowerCase()]);
- const shipmentsFor=(authorization:typeof authorizations[number])=>{
-  return (request.shipments??[]).filter(shipment=>shipment.etaSentAt||shipment.transferEtaSentAt||shipment.dispatched).filter(shipment=>{
-   const formula=shipment.shipmentFormula??(shipment.transferFormulaName?{productName:shipment.transferFormulaName,productForm:shipment.transferForm,flavor:shipment.transferFlavor}:undefined);
-   return formula?formulaKey(formula)===formulaKey(authorization):authorizations.length===1;
-  });
- };
- const shippedUnits=(authorization:typeof authorizations[number]):number|undefined=>{
-  const rows=shipmentsFor(authorization);
-  let total=0;
-  for(const shipment of rows){
-   if(typeof shipment.unitsToTransfer==='number'){total+=shipment.unitsToTransfer;continue;}
-   if(typeof shipment.unitsPerCase==='number'&&shipment.unitsPerCase>0){total+=shipment.casesShipped*shipment.unitsPerCase+(shipment.looseUnitsShipped??0);continue;}
-   if(shipment.casesShipped===0){total+=shipment.looseUnitsShipped??0;continue;}
-   return undefined;
-  }
-  return total;
- };
  const phone=(value?:string)=>{
   if(!value)return undefined;
   let digits=value.replace(/\D/g,'');if(digits.length===11&&digits.startsWith('1'))digits=digits.slice(1);
   return digits.length===10?`(${digits.slice(0,3)}) ${digits.slice(3,6)}-${digits.slice(6)}`:value;
  };
- const quantityLabel=(quantity:number|undefined,unit?:'units'|'cases')=>quantity===undefined?'—':`${quantity} ${unit==='cases'?'case(s)':'unit(s)'}`;
  const headerLeftX=42,headerLeftWidth=174,headerMiddleX=234,headerMiddleWidth=144,headerRightX=396,headerRightWidth=174;
  const participantLines=wrap(request.participantName||'—',headerLeftWidth,15);
  const formulaLines=authorizations.flatMap(authorization=>wrap(fullFormulaName(authorization),headerLeftWidth,11));
@@ -66,32 +49,57 @@ export async function createAuthorizationFormPdf(request:RequestRecord,agency?:A
  y=headerTop-headerHeight-5;
  section('MONTHLY FORMULA ISSUANCE');
  for(const authorization of authorizations){
-  const titleLines=wrap(fullFormulaName(authorization),500,10);
-  ensure(titleLines.length*13+94);
-  for(const line of titleLines){page.drawText(line,{x:46,y,size:10,font:bold,color:blue});y-=13;}
-  const shipmentRows=shipmentsFor(authorization);const caseCount=shipmentRows.reduce((total,shipment)=>total+shipment.casesShipped,0);const caseSizes=[...new Set(shipmentRows.map(shipment=>shipment.unitsPerCase).filter((value):value is number=>typeof value==='number'&&value>0))];
-  const unitsPerCase=shipmentRows.length?(caseSizes.length===1&&shipmentRows.every(shipment=>typeof shipment.unitsPerCase==='number')?quantityLabel(caseSizes[0]):caseSizes.length>1?'Varies':'—'):'—';
-  const metrics:[string,string][]=[['Cases Shipped',String(caseCount)],['Units Per Case',unitsPerCase==='—'?unitsPerCase:unitsPerCase.replace(/ unit\(s\)$/,'')],['Units Shipped',shippedUnits(authorization)===undefined?'—':String(shippedUnits(authorization))],['On Hand',quantityLabel(authorization.agencyUnitsOnHand,authorization.agencyUnitsOnHandUnit)],['Expected Surplus',quantityLabel(authorization.expectedSurplus,authorization.expectedSurplusUnit)]];
-  const metricWidth=528/5;
-  for(const [metricIndex,[label,value]] of metrics.entries()){
-   const x=42+metricIndex*metricWidth;
-   page.drawRectangle({x,y:y-39,width:metricWidth-4,height:37,color:metricIndex===1?rgb(.91,.94,1):rgb(.95,.96,.98)});
-   page.drawText(label,{x:x+8,y:y-14,size:8,font:bold,color:muted});
-   page.drawText(value,{x:x+8,y:y-31,size:11,font:bold,color:blue});
-  }
-  y-=46;
   const issuances=authorization.benefitIssuances.filter(row=>row.month);
-  if(!issuances.length){ensure(26);page.drawRectangle({x:42,y:y-10,width:528,height:24,color:rgb(.93,.95,.98)});page.drawText('Monthly quantities not specified',{x:54,y,size:9,font:regular,color:muted});y-=30;continue;}
+  const supply=issuanceSupplySources(request,authorization);
+  type PlanRow={label:string;quantity:number|undefined;rule:boolean;lines:string[];notes:string[];height:number};
+  const planRows:PlanRow[]=supply.rows.map(row=>{
+   const lines=wrap(row.label,139,8.5),detail=supplyCaseDetails(row),notes=detail?wrap(detail,208,8):[];
+   return {label:row.label,quantity:row.units,rule:row.kind==='surplus',lines,notes,height:Math.max(22,lines.length*10+10)+notes.length*10};
+  });
+  const notes=[supply.pending?`${supply.pending} approved ${unitLabel(supply.pending)} still ${supply.pending===1?'awaits':'await'} an order or transfer.`:'',supply.unknown?'Confirm Units Per Case to complete supply quantities.':''].filter(Boolean).flatMap(note=>wrap(note,208,8));
+  const planHeight=43+planRows.reduce((sum,row)=>sum+row.height,0)+(notes.length?notes.length*10+9:0)+8;
+  const monthHeight=Math.max(35,issuances.length*35)+18;
+  // Keep the complete panel and at least one month together. Long schedules continue below it.
+  const headingHeight=wrap(fullFormulaName({...authorization,productName:authorization.formulaName||authorization.productName}),500,10).length*13+wrap(`Product Number: ${authorization.productCode||'—'}   |   Units Per Case: ${authorization.unitsPerCase??'—'}   |   Yield: ${authorization.yield===undefined?'—':`${authorization.yield} fl oz`}`,510,8.5).length*11+9;
+  ensure(Math.max(planHeight,Math.min(monthHeight,158))+headingHeight+8);
+  const titleLines=wrap(fullFormulaName({...authorization,productName:authorization.formulaName||authorization.productName}),500,10);
+  for(const line of titleLines){page.drawText(line,{x:46,y,size:10,font:bold,color:blue});y-=13;}
+  const metadata=`Product Number: ${authorization.productCode||'—'}   |   Units Per Case: ${authorization.unitsPerCase??'—'}   |   Yield: ${authorization.yield===undefined?'—':`${authorization.yield} fl oz`}`;
+  for(const line of wrap(metadata,510,8.5)){page.drawText(line,{x:46,y:y-1,size:8.5,font:regular,color:muted});y-=11;}
+  y-=9;
+
+  const top=y;
+  const panelX=338,panelWidth=232;
+  page.drawRectangle({x:panelX,y:top-planHeight,width:panelWidth,height:planHeight,color:rgb(.96,.97,.99),borderColor:rgb(.82,.85,.9),borderWidth:.5});
+  page.drawText('Supply Plan',{x:panelX+10,y:top-17,size:10,font:bold,color:blue});
+  page.drawText(`${supply.total} ${unitLabel(supply.total)} Approved`,{x:panelX+10,y:top-30,size:8,font:regular,color:muted});
+  let planY=top-43;
+  for(const row of planRows){
+   if(row.rule)page.drawLine({start:{x:panelX+10,y:planY},end:{x:panelX+panelWidth-10,y:planY},thickness:.5,color:rgb(.72,.77,.84)});
+   const baseline=planY-13;
+   row.lines.forEach((line,index)=>page.drawText(line,{x:panelX+10,y:baseline-index*10,size:8.5,font:regular,color:ink}));
+   const value=row.quantity===undefined?'—':String(row.quantity);
+   page.drawText(value,{x:510-bold.widthOfTextAtSize(value,9),y:baseline,size:9,font:bold,color:ink});
+   page.drawText(unitLabel(row.quantity),{x:522,y:baseline,size:8.5,font:regular,color:muted});
+   const noteTop=planY-Math.max(22,row.lines.length*10+10);
+   row.notes.forEach((line,index)=>page.drawText(line,{x:panelX+10,y:noteTop-index*10-3,size:8,font:regular,color:muted}));
+   planY-=row.height;
+  }
+  if(notes.length){planY-=5;for(const line of notes){page.drawText(line,{x:panelX+10,y:planY-10,size:8,font:regular,color:muted});planY-=10;}}
+  page.drawText('Monthly approved quantities',{x:54,y:top-11,size:8.5,font:regular,color:muted});
+  y=top-18;
+  if(!issuances.length){page.drawText('Monthly quantities not specified',{x:54,y:y-15,size:9,font:regular,color:muted});y-=35;}
+  let continued=false;
   for(const issuance of issuances){
-   ensure(34);
-   page.drawRectangle({x:42,y:y-30,width:528,height:29,color:rgb(.91,.94,1)});
-   page.drawText(formatIssuanceMonth(issuance.month),{x:54,y:y-20,size:11,font:bold,color:blue});
-   const quantity=`${issuance.quantity} unit(s) per month`;
-   const quantitySize=14;
-   page.drawText(quantity,{x:558-bold.widthOfTextAtSize(quantity,quantitySize),y:y-21,size:quantitySize,font:bold,color:blue});
+   if(y-35<46){page=doc.addPage([612,792]);pageHeader();continued=true;for(const line of wrap(`${fullFormulaName(authorization)} - Monthly issuance (continued)`,510,9)){page.drawText(line,{x:46,y:y-10,size:9,font:bold,color:blue});y-=12;}y-=11;}
+   page.drawRectangle({x:42,y:y-31,width:282,height:29,color:rgb(.91,.94,1)});
+   page.drawText(formatIssuanceMonth(issuance.month),{x:52,y:y-21,size:10,font:bold,color:blue});
+   const quantity=`${issuance.quantity} ${unitLabel(issuance.quantity)} per month`;
+   const quantitySize=bold.widthOfTextAtSize(quantity,14)<=190?14:11;
+   page.drawText(quantity,{x:314-bold.widthOfTextAtSize(quantity,quantitySize),y:y-21,size:quantitySize,font:bold,color:blue});
    y-=35;
   }
-  y-=18;
+  y=(continued?y:Math.min(y,top-planHeight))-12;
  }
  const shipmentRows=(request.shipments??[]).filter(s=>s.etaSentAt||s.transferEtaSentAt||s.dispatched);
  section('Shipment Details');
@@ -99,14 +107,14 @@ export async function createAuthorizationFormPdf(request:RequestRecord,agency?:A
  for(const [index,shipment] of shipmentRows.entries()){
   const source=shipment.shipmentSource==='agency'?shipment.sourceAgencyName:shipment.supplier;
   const heading=wrap(`Shipment ${index+1}: ${shipment.shipmentFormula?fullFormulaName(shipment.shipmentFormula):request.productName}`,520,10);
-  const summary=[`${shipment.casesShipped} case(s)`,shipment.looseUnitsShipped?`${shipment.looseUnitsShipped} loose unit(s)`:undefined,shipment.eta?`ETA: ${date(shipment.eta)}`:undefined,shipment.carrier?.toUpperCase(),source?`Source: ${source}`:undefined].filter(Boolean).join(' | ');
+  const summary=[`${shipment.casesShipped} case(s)`,shipment.looseUnitsShipped?`${shipment.looseUnitsShipped} loose ${unitLabel(shipment.looseUnitsShipped)}`:undefined,shipment.eta?`ETA: ${date(shipment.eta)}`:undefined,shipment.carrier?.toUpperCase(),source?`Source: ${source}`:undefined].filter(Boolean).join(' | ');
   const details=wrap(summary,520,9);
   const tracking=shipment.trackingNumbers.length?wrap(`Tracking: ${shipment.trackingNumbers.join(', ')}`,520,9):[];
-  const receipt=kind==='shipment-confirmation'?wrap(`Units Received: ${shipmentQuantities(request,shipment).receivedUnits} unit(s) | Damaged Units: ${shipmentQuantities(request,shipment).damagedUnits} unit(s)${shipment.receivedAt?` | Receipt Confirmed: ${date(shipment.receivedAt)}`:''}`,520,9):[];
+  const receipt=kind==='shipment-confirmation'?wrap(`Units Received: ${shipmentQuantities(request,shipment).receivedUnits} ${unitLabel(shipmentQuantities(request,shipment).receivedUnits)} | Damaged Units: ${shipmentQuantities(request,shipment).damagedUnits} ${unitLabel(shipmentQuantities(request,shipment).damagedUnits)}${shipment.receivedAt?` | Receipt Confirmed: ${date(shipment.receivedAt)}`:''}`,520,9):[];
   ensure(heading.length*13+(details.length+tracking.length+receipt.length)*12+10);
   for(const line of heading){page.drawText(line,{x:46,y,size:10,font:bold,color:blue});y-=13;}
   for(const line of [...details,...tracking,...receipt]){page.drawText(line,{x:46,y,size:9,font:regular,color:ink});y-=12;}
-  y-=10;
+  y-=4;
  }
  section('Next Steps');
  const nextSteps=request.nextSteps||'Follow the approved monthly issuance schedule above.';
@@ -126,7 +134,7 @@ export async function createAuthorizationFormPdf(request:RequestRecord,agency?:A
   page.drawRectangle({x:gridX,y:top-height,width:gridWidth,height,borderColor:rgb(.78,.81,.85),borderWidth:.6});
   for(const x of columnsX.slice(1,-1))page.drawLine({start:{x,y:top},end:{x,y:top-height},thickness:.6,color:rgb(.78,.81,.85)});
   labelLines.forEach((line,lineIndex)=>page.drawText(line,{x:gridX+8,y:top-13-lineIndex*10,size:8.5,font:lineIndex===0?bold:regular,color:ink}));
-  page.drawText(issuance.quantity===undefined?'—':`${issuance.quantity} unit(s)`,{x:columnsX[1]+7,y:top-height/2-4,size:11,font:regular,color:ink});
+  page.drawText(issuance.quantity===undefined?'—':`${issuance.quantity} ${unitLabel(issuance.quantity)}`,{x:columnsX[1]+7,y:top-height/2-4,size:11,font:regular,color:ink});
   const signatureLineY=top-height+14;
   page.drawLine({start:{x:columnsX[2]+9,y:signatureLineY},end:{x:columnsX[3]-9,y:signatureLineY},thickness:.6,color:ink});
   page.drawLine({start:{x:columnsX[3]+8,y:signatureLineY},end:{x:columnsX[4]-8,y:signatureLineY},thickness:.6,color:ink});
@@ -136,10 +144,10 @@ export async function createAuthorizationFormPdf(request:RequestRecord,agency?:A
   if(index<signatureRows.length-1)y-=4;
  }
  y-=12;
- section('Inventory Handling');
  const inventoryNote='Use the oldest formula first (first in, first out). Store formula as directed on its package label. Keep inventory counts and expiration dates up to date, and record every receipt, issue, and adjustment.';
- const inventoryLines=wrap(inventoryNote,500,10);ensure(inventoryLines.length*14+10);page.drawRectangle({x:42,y:y-inventoryLines.length*14-7,width:528,height:inventoryLines.length*14+12,color:rgb(.94,.96,1)});y-=14;
- for(const line of inventoryLines){page.drawText(line,{x:52,y,size:10,font:regular,color:ink});y-=14;}y-=5;
+ const inventoryLines=wrap(inventoryNote,528,8.5);ensure(14+inventoryLines.length*11);
+ page.drawText('Inventory Handling',{x:42,y:y-8,size:8.5,font:bold,color:muted});y-=19;
+ for(const line of inventoryLines){page.drawText(line,{x:42,y,size:8.5,font:regular,color:muted});y-=11;}
  const pages=doc.getPages();for(const [index,p] of pages.entries())p.drawText(`Page ${index+1} of ${pages.length}`,{x:42,y:26,size:8,font:regular,color:muted});
  return doc.save();
 }

@@ -1,3 +1,4 @@
+import {unitLabel} from '../../shared/quantityLabels';
 import {requestNotices} from './requestNotices';
 import { localDate, daysRemaining, isReviewer } from '../../shared/surplus';
 import type { SessionUser } from '../../shared/domain';
@@ -61,7 +62,7 @@ export async function listSurplusNotices(db: D1Database, user: SessionUser) {
             :kind==='transfer-confirmed'?'Agency Confirmed Stock — Provide Shipping Labels'
             :'Shipping Labels Ready — Arrange Pickup';
         return [{...t,id,kind,title,formula_label:shipmentFormulaLabel({productName:t.formula_name,productForm:t.form}),notes:kind==='transfer-confirmed'
-            ?`The sending Local Agency confirmed ${t.quantity} unit(s) of ${t.formula_name}. Provide shipping labels and send the shipping details.`
+            ?`The sending Local Agency confirmed ${t.quantity} ${unitLabel(t.quantity)} of ${t.formula_name}. Provide shipping labels and send the shipping details.`
             :kind==='transfer-stock'?'Confirm that your agency physically has the reserved formula and quantity.'
             :'Download and print the labels provided by CDPH/WIC, arrange carrier pickup, then confirm pickup after collection.',is_read:seen.has(id)?1:0}];
     });

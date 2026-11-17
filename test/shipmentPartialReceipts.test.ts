@@ -20,7 +20,7 @@ it('retains two good cases and two good cans when only two cans are damaged',()=
  const received={...request,...confirmShipmentReceipts(request,[selection(request,2,4,2)],100)};
  const quantities=shipmentQuantities(received,received.shipments![0]!);
  expect(quantities).toMatchObject({receivedUnits:16,damagedUnits:2,usableUnits:14,missingUnits:2});
- expect(formatShipmentUnits(quantities.usableUnits,6)).toBe('2 cases + 2 units');
+ expect(formatShipmentUnits(quantities.usableUnits,6)).toBe('2 cases + 2 Units');
  expect(caseBalance(received).retained).toBeCloseTo(14/6);
  const disposed={...received,...applyShipmentCaseCommand(received,{index:0,key:shipmentReceiptKey(received.shipments![0]!),expectedCases:shipmentCaseKey(received.shipments![0]!),action:'destroyed',cases:0,looseUnits:2,fromDamaged:true,notes:'Documented destruction of 2 damaged cans'},100)};
  expect(shipmentQuantities(disposed,disposed.shipments![0]!)).toMatchObject({disposedUnits:2,damagedHeldUnits:0,usableUnits:14});

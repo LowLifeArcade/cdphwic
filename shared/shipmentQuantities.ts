@@ -1,3 +1,4 @@
+import {unitLabel} from './quantityLabels';
 import type {RequestRecord} from './domain';
 import type {RequestShipment} from './requestShipments';
 export const validUnitSize=(n:unknown):n is number=>typeof n==='number' && Number.isSafeInteger(n) && n>0;
@@ -24,6 +25,6 @@ export function shipmentQuantities(request:Partial<RequestRecord>,row:RequestShi
 }
 export function formatShipmentUnits(units:number,size:number):string {
     const whole=Math.floor(units/size);const loose=units-whole*size;
-    return `${whole} ${whole===1?'case':'cases'}${loose?` + ${loose} units`:''}`;
+    return `${whole} ${whole===1?'case':'cases'}${loose?` + ${loose} ${unitLabel(loose)}`:''}`;
 }
 export function formatCaseEquivalent(value:number):string {return new Intl.NumberFormat('en-US',{maximumFractionDigits:3}).format(value);}

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import {unitLabel} from '~/../shared/quantityLabels';
 import {shipmentFeatureFlags} from '~/../shared/featureFlags';
 import {refreshReceiptEvidence} from '~/../shared/receiptEvidenceRetry';
 import type {RequestRecord} from '~/../shared/domain';
@@ -97,12 +98,12 @@ async function submit(){
             <h4 class="receipt-heading">{{hasReceipt?'Edit Shipment Receipt':'Confirm Shipment Receipt'}}</h4>
             <div v-if="receiptQuantities" class="form-grid compact-form-grid">
                 <label class="field-label">Cases Received *<input v-model="cases" type="number" min="0" step="1" required class="form-input" :aria-label="`Shipment ${index+1} cases received`" :disabled="disabled || saving || !!evidenceRetry" /></label>
-                <label class="field-label">Loose Unit(s) Received<input v-model="loose" type="number" min="0" :max="size-1" step="1" class="form-input" :aria-label="`Shipment ${index+1} loose Unit(s) received`" :disabled="disabled || saving || !!evidenceRetry || !validUnitSize(receiptShipment.unitsPerCase)" /></label>
+                <label class="field-label">Loose Units Received<input v-model="loose" type="number" min="0" :max="size-1" step="1" class="form-input" :aria-label="`Shipment ${index+1} loose ${unitLabel(index+1)} received`" :disabled="disabled || saving || !!evidenceRetry || !validUnitSize(receiptShipment.unitsPerCase)" /></label>
             </div>
             <label class="receipt-damage-toggle"><input v-model="damage" type="checkbox" :disabled="disabled || saving || !!evidenceRetry || (receiptQuantities && !validUnitSize(receiptShipment.unitsPerCase))" @change="toggleDamage" /><span>Some product arrived damaged</span></label>
             <div v-if="receiptQuantities && damage" class="form-grid compact-form-grid">
                 <label class="field-label">Damaged Cases (included above)<input v-model="damagedCases" type="number" min="0" step="1" class="form-input" :aria-label="`Shipment ${index+1} damaged cases`" :disabled="disabled || saving || !!evidenceRetry" /></label>
-                <label class="field-label">Damaged Loose Unit(s) (included above)<input v-model="damagedLoose" type="number" min="0" :max="size-1" step="1" class="form-input" :aria-label="`Shipment ${index+1} damaged loose Unit(s)`" :disabled="disabled || saving || !!evidenceRetry" /></label>
+                <label class="field-label">Damaged Loose Units (included above)<input v-model="damagedLoose" type="number" min="0" :max="size-1" step="1" class="form-input" :aria-label="`Shipment ${index+1} damaged loose Units`" :disabled="disabled || saving || !!evidenceRetry" /></label>
             </div>
             <p v-if="receiptQuantities && preview" class="receipt-quantity-summary" aria-live="polite">Received: {{formatShipmentUnits(preview.received,size)}} · Missing: {{formatShipmentUnits(preview.missing,size)}}<template v-if="preview.damaged"> · Damaged: {{formatShipmentUnits(preview.damaged,size)}}</template></p>
             <label v-if="discrepancy || shipment.issue" class="field-label">Notes<textarea v-model="notes" class="form-textarea" maxlength="4000" :aria-label="`Shipment ${index+1} receipt issue notes`" :disabled="disabled || saving || !!evidenceRetry" /></label>

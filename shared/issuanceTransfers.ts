@@ -1,3 +1,4 @@
+import {unitLabel} from './quantityLabels';
 import type {RequestRecord} from './domain';
 import type {ShipmentFormula} from './shipmentFormulas';
 import type {RequestShipment} from './requestShipments';
@@ -10,7 +11,7 @@ export function issuanceTransferLots(request:Partial<RequestRecord>,formula:Ship
 export function setIssuanceTransferUnits(rows:RequestShipment[],formula:ShipmentFormula,lot:SurplusLot,units:number,size?:number):RequestShipment[]{
  let index=rows.findIndex(row=>row.sourceLotId===lot.id&&row.shipmentSource==='agency'&&row.replacementFor===undefined&&!row.transferId);
  if(!Number.isSafeInteger(units)||units<0)throw new Error('Enter a whole, nonnegative number of units.');
- if(units>lot.onHand-lot.reserved)throw new Error(`Only ${lot.onHand-lot.reserved} units are available.`);
+ if(units>lot.onHand-lot.reserved)throw new Error(`Only ${lot.onHand-lot.reserved} ${unitLabel(lot.onHand-lot.reserved)} ${lot.onHand-lot.reserved===1?'is':'are'} available.`);
  if(units===0)return rows.filter((_,i)=>i!==index);
  if(!validUnitSize(size))throw new Error('Enter Units Per Case before selecting transfer stock.');
  if(index<0)index=rows.findIndex(row=>!row.shipmentSource&&!row.transferId&&!row.etaSentAt&&!row.shipmentFormula&&!row.sourceLotId&&!row.distributorId&&!row.supplier&&!row.casesShipped&&!row.looseUnitsShipped&&!row.eta&&!row.trackingNumbers.length&&!row.issue&&!row.receivedAt&&!row.receiptConfirmed&&row.receivedUnits===undefined&&row.receivedCases===undefined&&row.replacementFor===undefined);

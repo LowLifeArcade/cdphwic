@@ -24,5 +24,5 @@ it('explains missing stock and invalid quantities before authorization',async()=
  const lot={id:'stock',agencyId:11,formulaName:'Example Formula',form:'powder',flavor:'',expirationDate:'2099-01-01',onHand:20,reserved:0,expiredUnits:0,version:1};
  expect(transferAuthorizationError(request,row,[lot])).toContain('Select Available Surplus');
  expect(transferAuthorizationError(request,{...row,sourceLotId:'stock'},[lot])).toBe('');
- expect(transferAuthorizationError(request,{...row,sourceLotId:'stock',casesShipped:4},[lot])).toContain('20 units');
+ expect(transferAuthorizationError(request,{...row,sourceLotId:'stock',casesShipped:4},[lot])).toContain('20 Units');
 });

@@ -1,3 +1,4 @@
+import {unitLabel} from './quantityLabels';
 import type {RequestRecord} from './domain';
 import type {SurplusLot,SurplusTransfer} from './surplus';
 import {localDate,normalizeVariantText} from './surplus';
@@ -42,6 +43,6 @@ export function transferAuthorizationError(request:Partial<RequestRecord>,row:im
  if(!Number.isSafeInteger(row.unitsPerCase)||!row.unitsPerCase||row.unitsPerCase<1)return 'Enter Units per Case.';
  const quantity=transferEntryQuantity(row);
  if(quantity===undefined||quantity<1)return 'Enter a positive transfer quantity using whole cases and additional units. Additional units must be fewer than Units per Case.';
- if(quantity>lot.onHand-lot.reserved)return `Only ${lot.onHand-lot.reserved} units are available at the sending agency. Reduce the transfer quantity.`;
+ if(quantity>lot.onHand-lot.reserved)return `Only ${lot.onHand-lot.reserved} ${unitLabel(lot.onHand-lot.reserved)} ${lot.onHand-lot.reserved===1?'is':'are'} available at the sending agency. Reduce the transfer quantity.`;
  return '';
 }

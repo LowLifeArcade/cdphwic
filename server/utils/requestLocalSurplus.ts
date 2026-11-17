@@ -1,3 +1,4 @@
+import {unitLabel} from '../../shared/quantityLabels';
 import type {FormulaAuthorization} from '../../shared/formulaAuthorizations';
 import type {RequestRecord,SessionUser} from '../../shared/domain';
 import {isReviewer,localDate} from '../../shared/surplus';
@@ -71,7 +72,7 @@ export async function issueRequestLocalSurplus(db:D1Database,request:RequestReco
  let remainingForIssue=assignmentTotal;let target=0;
  const schedule=[...auth.benefitIssuances].filter(row=>row.month&&row.quantity>0).sort((a,b)=>a.month.localeCompare(b.month));
  for(const entry of schedule){const amount=Math.min(entry.quantity,remainingForIssue);remainingForIssue-=amount;if(entry.month===month)target=amount;if(entry.month<month&&amount>0){const prior=await db.prepare('SELECT 1 FROM surplus_request_issuances WHERE request_id=? AND formula_index=? AND month=?').bind(request.id,index,entry.month).first();if(!prior)conflict('Record the earlier month’s assigned Local Agency surplus issue first.');}}
- if(target!==units)conflict(`Record the planned ${target} Local Agency surplus unit(s) for this month.`,400);
+ if(target!==units)conflict(`Record the planned ${target} Local Agency surplus ${unitLabel(target)} for this month.`,400);
  const rows=(await db.prepare('SELECT a.*,l.expiration_date,l.on_hand,l.reserved,l.version,l.expired_units FROM surplus_request_allocations a JOIN surplus_lots l ON l.id=a.lot_id WHERE a.request_id=? AND a.formula_index=? AND l.agency_id=? AND l.expiration_date>=? AND l.expired_units=0 ORDER BY l.expiration_date,l.id').bind(request.id,index,request.agencyId,`${month}-01`).all<any>()).results;
  let remainder=units;const spends:Array<{row:any;units:number}>=[];
  for(const row of rows){const available=Number(row.units)-Number(row.issued_units);if(available<=0)continue;const take=Math.min(available,remainder);spends.push({row,units:take});remainder-=take;if(!remainder)break;}

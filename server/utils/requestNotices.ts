@@ -1,3 +1,4 @@
+import {unitLabel} from '../../shared/quantityLabels';
 import {formatDisplayDate} from '../../shared/requestPresentation';
 import type {SessionUser,RequestRecord} from '../../shared/domain';
 import {isReviewer,canSeeAgency} from '../../shared/surplus';
@@ -42,7 +43,7 @@ export async function requestNotices(db:D1Database,user:SessionUser){
  }
  if(reviewer){
   const pickups=await db.prepare("SELECT t.id,t.request_id,t.source_agency_id,t.formula_name,t.form,t.quantity,t.shipped_date,COALESCE(json_extract(s.request_json,'$.participantName'),'') AS participant_name,json_extract(s.request_json,'$.submissionDate') AS submission_date FROM surplus_transfers t LEFT JOIN surplus_submissions s ON json_extract(s.request_json,'$.id')=t.request_id WHERE t.request_id IS NOT NULL AND t.status IN ('shipped','received') AND t.shipped_date IS NOT NULL ORDER BY t.shipped_date DESC").all<{id:string;request_id:number;source_agency_id:number;formula_name:string;form:string;quantity:number;shipped_date:string;participant_name:string;submission_date?:string}>();
-  for(const pickup of pickups.results){const id=`transfer-pickup:${pickup.id}`;notices.push({id,kind:'transfer-pickup',title:'Transfer Picked Up',request_id:pickup.request_id,participant_name:pickup.participant_name,submission_date:pickup.submission_date,formula_label:shipmentFormulaLabel({productName:pickup.formula_name,productForm:pickup.form as import('../../shared/domain').ProductForm}),transfer_id:pickup.id,notes:`The sending agency confirmed GSO pickup on ${formatDisplayDate(pickup.shipped_date)}: ${pickup.formula_name}, ${pickup.quantity} Unit(s).`,is_read:seen.has(id)?1:0});}
+  for(const pickup of pickups.results){const id=`transfer-pickup:${pickup.id}`;notices.push({id,kind:'transfer-pickup',title:'Transfer Picked Up',request_id:pickup.request_id,participant_name:pickup.participant_name,submission_date:pickup.submission_date,formula_label:shipmentFormulaLabel({productName:pickup.formula_name,productForm:pickup.form as import('../../shared/domain').ProductForm}),transfer_id:pickup.id,notes:`The sending agency confirmed GSO pickup on ${formatDisplayDate(pickup.shipped_date)}: ${pickup.formula_name}, ${pickup.quantity} ${unitLabel(pickup.quantity)}.`,is_read:seen.has(id)?1:0});}
  }
  return notices;
 }

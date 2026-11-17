@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import {unitLabel} from '~/../shared/quantityLabels';
 import {issuanceTransferLots,setIssuanceTransferUnits} from '~/../shared/issuanceTransfers';
 import {toRaw} from 'vue';
 import {unreadOutgoingMessage,sameRequestOutsideMessages,type MoreInfoConversation} from '~/../shared/moreInfoMessages';
@@ -222,7 +223,7 @@ function formulaTransferSelections(authorization:FormulaAuthorization){return (d
 function otherAgencyLots(authorization:FormulaAuthorization){return props.request?issuanceTransferLots(props.request,authorization,transferStock.value?.lots??[],localDate()):[];}
 function selectIssuanceTransfer(authorization:FormulaAuthorization,lot:SurplusLot,units:number){
  issuanceTransferMessage.value='';
- try{draft.shipments=setIssuanceTransferUnits(draft.shipments??[],authorization,lot,units,transferCatalogUnitsPerCase(lot,props.products??[])??authorizationUnitsPerCase(authorization));}
+ try{draft.shipments=setIssuanceTransferUnits(draft.shipments??[],authorization,lot,units,transferCatalogUnitsPerCase(lot,props.products??[])??authorizationUnitsPerCase(authorization));for(const row of draft.shipments)if(row.sourceLotId===lot.id&&!row.sourceAgencyName)row.sourceAgencyName=transferAgencies.value?.agencies.find(agency=>agency.id===lot.agencyId)?.name;}
  catch(error){issuanceTransferMessage.value=(error as Error).message;}
 }
 function removeIssuanceTransfer(index:number){if(!draft.shipments?.[index]?.transferId)draft.shipments?.splice(index,1);}
@@ -245,7 +246,9 @@ const selectedProduct = computed(() => props.products?.find((product) => product
 
 function authorizationProduct(authorization:{productName:string;productForm?:string}) {return props.products?.find(product=>product.name===authorization.productName&&product.form===authorization.productForm);}
 function authorizationUnitsPerCase(authorization:{productName:string;productForm?:string;unitsPerCase?:number}){return authorization.unitsPerCase??authorizationProduct(authorization)?.unitsPerCase;}
-function localAgencySurplusLots(authorization:FormulaAuthorization,index:number){const formula=requestFormulas(props.request??{})[index];if(!formula)return [];const name=(formula.otherFormulaName||formula.productName).trim().toLowerCase();return (transferStock.value?.lots??[]).filter(lot=>lot.agencyId===props.request?.agencyId&&lot.form===formula.productForm&&lot.formulaName.trim().toLowerCase()===name&&(lot.flavor??'').trim().toLowerCase()===(formula.flavor??'').trim().toLowerCase()&&lot.expirationDate>=localDate()&&!lot.expiredUnits&&(lot.onHand>lot.reserved||(authorization.localSurplusAllocations??[]).some(row=>row.lotId===lot.id&&row.units>0)));}
+function savedLocalSurplusUnits(index:number,lotId:string){return props.request?formulaAuthorizations(props.request)[index]?.localSurplusAllocations?.find(row=>row.lotId===lotId)?.units??0:0;}
+function localSurplusAvailable(lot:SurplusLot,index:number){return Math.max(0,lot.onHand-lot.reserved+savedLocalSurplusUnits(index,lot.id));}
+function localAgencySurplusLots(authorization:FormulaAuthorization,index:number){const formula=requestFormulas(props.request??{})[index];if(!formula)return [];const name=(formula.otherFormulaName||formula.productName).trim().toLowerCase();return (transferStock.value?.lots??[]).filter(lot=>lot.agencyId===props.request?.agencyId&&lot.form===formula.productForm&&lot.formulaName.trim().toLowerCase()===name&&(lot.flavor??'').trim().toLowerCase()===(formula.flavor??'').trim().toLowerCase()&&lot.expirationDate>=localDate()&&!lot.expiredUnits&&(lot.onHand>lot.reserved||savedLocalSurplusUnits(index,lot.id)>0));}
 function assignedUnits(authorization:FormulaAuthorization){return (authorization.localSurplusAllocations??[]).reduce((sum,row)=>sum+row.units,0);}
 function setLocalSurplusAllocation(authorization:FormulaAuthorization,lotId:string,units:number){const rows=(authorization.localSurplusAllocations??[]).filter(row=>row.lotId!==lotId);if(units>0)rows.push({lotId,units});authorization.localSurplusAllocations=rows;const index=draft.formulaAuthorizations?.indexOf(authorization)??-1;if(index>=0)updateUnitsToOrder(index);}
 function updateUnitsToOrder(index:number){const authorization=draft.formulaAuthorizations?.[index];if(!authorization)return;authorization.unitsToOrder=Math.max(0,(authorization.totalUnitsIssued??0)-assignedUnits(authorization));recalculateCasesFromUnitsToOrder(index);}
@@ -983,24 +986,23 @@ async function saveAgencyUpdate() {
                     </select>
                     <div class="quantity-input">
                         <input v-model.number="issuance.quantity" class="form-input month-quantity" type="number" inputmode="numeric" min="1" placeholder="Quantity" :aria-label="`Formula ${formulaIndex+1} issuance quantity ${index+1}`" @input="recalculateAuthorizationCases(formulaIndex)" />
-                        <span>Unit(s)</span>
+                        <span>Units</span>
                     </div>
                     <button class="icon-button" type="button" aria-label="Remove benefit month" @click="removeBenefitMonth(formulaIndex,index)">×</button>
                 </div>
             </div>
             <div class="form-grid issuance-total-units">
-                <label class="field-label">Total Unit(s) Approved<input v-model.number="authorization.totalUnitsIssued" class="form-input authorization-number" type="number" inputmode="numeric" min="0" step="1" :aria-label="`Formula ${formulaIndex+1} Total Units Approved`" @input="updateUnitsToOrder(formulaIndex)" /></label>
+                <label class="field-label">Total Units Approved<input v-model.number="authorization.totalUnitsIssued" class="form-input authorization-number" type="number" inputmode="numeric" min="0" step="1" :aria-label="`Formula ${formulaIndex+1} Total Units Approved`" @input="updateUnitsToOrder(formulaIndex)" /></label>
             </div>
             <fieldset v-if="localAgencySurplusLots(authorization,formulaIndex).length || assignedUnits(authorization)>0" class="local-surplus-assignment">
-                <legend>Assign Local Agency Surplus</legend>
-                <p class="muted-copy">Assign matching stock at the requesting agency’s clinics. Assigned units are reserved now and deducted as the Local Agency records each month’s issue.</p>
+                <div class="transfer-heading"><h4>On Hand</h4></div>
+                <p class="muted-copy">Available units are shown for each lot. Enter the number to assign to this request, then save the issuance changes.</p>
                 <div v-if="localAgencySurplusLots(authorization,formulaIndex).length" class="local-surplus-lots">
-                    <label v-for="lot in localAgencySurplusLots(authorization,formulaIndex)" :key="lot.id" class="field-label local-surplus-lot">
-                        <span><strong class="local-surplus-formula">{{transferLotFormulaLabel(lot)}}</strong><strong class="local-surplus-quantity">{{lot.onHand-lot.reserved+(authorization.localSurplusAllocations?.find(row=>row.lotId===lot.id)?.units??0)}} unit(s)</strong><small>{{lot.clinicName||'Clinic not specified'}} · Exp {{formatDisplayDate(lot.expirationDate)}}</small></span>
-                        <input class="form-input authorization-number" type="number" inputmode="numeric" min="0" :max="lot.onHand-lot.reserved+(authorization.localSurplusAllocations?.find(row=>row.lotId===lot.id)?.units??0)" :value="authorization.localSurplusAllocations?.find(row=>row.lotId===lot.id)?.units??0" :aria-label="`Assigned units from ${lot.clinicName||'clinic'}, expires ${lot.expirationDate}`" @input="setLocalSurplusAllocation(authorization,lot.id,Number(($event.target as HTMLInputElement).value)||0)" />
-                    </label>
+                    <div v-for="lot in localAgencySurplusLots(authorization,formulaIndex)" :key="lot.id" class="local-surplus-lot">
+                        <div class="surplus-lot-info"><strong>{{transferLotFormulaLabel(lot)}}</strong><small>{{lot.clinicName||'Clinic not specified'}}</small><small>Exp {{formatDisplayDate(lot.expirationDate)}}</small><span>{{localSurplusAvailable(lot,formulaIndex)}} {{unitLabel(localSurplusAvailable(lot,formulaIndex))}} available</span></div>
+                        <label class="field-label local-surplus-assign-field">Assign Units<input class="form-input authorization-number" type="number" inputmode="numeric" min="0" :max="localSurplusAvailable(lot,formulaIndex)" :value="authorization.localSurplusAllocations?.find(row=>row.lotId===lot.id)?.units??0" :aria-label="`Units to assign from ${lot.clinicName||'clinic'}, expires ${lot.expirationDate}`" @input="setLocalSurplusAllocation(authorization,lot.id,Math.min(Number(($event.target as HTMLInputElement).value)||0,localSurplusAvailable(lot,formulaIndex)))" /></label>
+                    </div>
                 </div>
-                <p class="local-surplus-total">Assigned from agency surplus: <strong>{{assignedUnits(authorization)}} unit(s)</strong></p>
             </fieldset>
             <div v-if="splitOrderTypesEnabled" class="form-grid fulfillment-allocation-fields">
                 <label class="field-label">Standard Order Cases<input v-model.number="authorization.standardCases" class="form-input authorization-number" type="number" inputmode="numeric" min="0" step="1" :aria-label="`Formula ${formulaIndex+1} Standard Order Cases`" :disabled="saving" /></label>
@@ -1008,7 +1010,7 @@ async function saveAgencyUpdate() {
                 <p class="muted-copy fulfillment-allocation-help">Standard and Special Order cases must total {{authorization.approvedCases??0}} cases to order.</p>
             </div>
             <RequestTransferAllocation :lots="otherAgencyLots(authorization)" :selections="formulaTransferSelections(authorization)" :agencies="transferAgencies?.agencies??[]" :busy="saving" :loaded="!!transferStock" :load-error="!!transferStockError" :message="issuanceTransferMessage" @select="(lot,units)=>selectIssuanceTransfer(authorization,lot,units)" @reserve="reserveIssuanceTransfer" @remove="removeIssuanceTransfer" @refresh="refreshTransferStock" />
-            <RequestSupplyPlan :request="{...request,...draft}" :authorization="authorization" :units-per-case="authorizationUnitsPerCase(authorization)" />
+            <RequestSupplyPlan :published-shipments="requestShipments(request)" :request="{...request,...draft}" :authorization="authorization" :units-per-case="authorizationUnitsPerCase(authorization)" />
             </fieldset>
             <label class="field-label">
                 Next Steps
@@ -1101,12 +1103,12 @@ async function saveAgencyUpdate() {
                         </template>
                         <template v-if="shipment.shipmentSource==='agency'">
                             <div><span>Cases to Transfer</span><strong>{{shipment.casesShipped}}</strong></div><div><span>Units to Transfer</span><strong>{{shipment.looseUnitsShipped??0}}</strong></div>
-                            <div class="detail-field-wide"><span>Total Transfer Quantity</span><strong>{{shipment.transferQuantity??shipment.unitsToTransfer??0}} units</strong></div>
+                            <div class="detail-field-wide"><span>Total Transfer Quantity</span><strong>{{shipment.transferQuantity??shipment.unitsToTransfer??0}} {{unitLabel(shipment.transferQuantity??shipment.unitsToTransfer??0)}}</strong></div>
                         </template>
                         <template v-else-if="shipmentFeatures.casesShipped">
                         <label v-if="editingShipmentPlan(shipment,index)" class="field-label">Cases Shipped<input v-model.number="shipment.casesShipped" class="form-input" type="number" min="0" :aria-label="`Shipment ${index+1} Cases Shipped`" :disabled="saving" /></label>
-                        <div v-else><span>Cases Shipped</span><strong>{{shipment.casesShipped}}<template v-if="shipmentFeatures.quantityTracking && shipment.looseUnitsShipped"> + {{shipment.looseUnitsShipped}} loose units</template></strong></div>
-                        <label v-if="shipmentFeatures.quantityTracking && editingShipmentPlan(shipment,index) && shipment.replacementFor!==undefined" class="field-label">Loose Unit(s) Shipped<input v-model.number="shipment.looseUnitsShipped" class="form-input" type="number" min="0" :max="(shipment.unitsPerCase??1)-1" :disabled="saving || shipment.replacementBasis==='cases'" :aria-label="`Shipment ${index+1} Loose Unit(s) Shipped`" /></label>
+                        <div v-else><span>Cases Shipped</span><strong>{{shipment.casesShipped}}<template v-if="shipmentFeatures.quantityTracking && shipment.looseUnitsShipped"> + {{shipment.looseUnitsShipped}} loose {{unitLabel(shipment.looseUnitsShipped)}}</template></strong></div>
+                        <label v-if="shipmentFeatures.quantityTracking && editingShipmentPlan(shipment,index) && shipment.replacementFor!==undefined" class="field-label">Loose Units Shipped<input v-model.number="shipment.looseUnitsShipped" class="form-input" type="number" min="0" :max="(shipment.unitsPerCase??1)-1" :disabled="saving || shipment.replacementBasis==='cases'" :aria-label="`Shipment ${index+1} Loose Units Shipped`" /></label>
                         </template>
                         <template v-if="shipment.shipmentSource!=='agency' || shipment.transferStockConfirmedAt">
                         <label v-if="shipment.shipmentSource==='agency'" class="field-label detail-field-wide">Carrier<input value="GSO" class="form-input" readonly :aria-label="`Shipment ${index+1} Carrier`" /></label>
@@ -1166,7 +1168,7 @@ async function saveAgencyUpdate() {
                 <p v-if="surplusClinicError" role="alert">Storage clinics could not be loaded. Try again before selecting a clinic.</p>
                 <div v-for="(item, index) in draft.surplusItems" :key="index" class="surplus-entry-row">
                     <label class="field-label">Formula<input v-model="item.productName" class="form-input" /></label>
-                    <label class="field-label">Unit(s)<input v-model.number="item.units" class="form-input" type="number" min="0" /></label>
+                    <label class="field-label">Units<input v-model.number="item.units" class="form-input" type="number" min="0" /></label>
                     <label class="field-label">Storage clinic<select v-model="item.clinicId" class="form-input"><option :value="undefined">Clinic not specified</option><option v-for="c in surplusClinics?.clinics" :key="c.id" :value="c.id">{{c.clinicName}}</option></select></label>
                     <label class="field-label">Expiration<input v-model="item.expirationDate" class="form-input" type="date" /></label>
                     <button class="icon-button" type="button" aria-label="Remove surplus row" @click="requestRemoveSurplusItem(index)">×</button>
@@ -1200,9 +1202,9 @@ async function saveAgencyUpdate() {
             <p class="muted-copy">The Local Agency should verify the actual count and expiration date for anticipated surplus.</p>
             <article v-for="forecast in anticipatedSurplusRows" :key="forecast.id" class="anticipated-surplus-row">
                 <div><strong>{{forecast.formula_name}} · {{formulaFormLabel(forecast.form)}}<template v-if="forecast.flavor"> · {{forecast.flavor}}</template></strong><small>{{forecast.clinic_name||'Clinic not specified'}} · Due {{formatDisplayDate(forecast.due_date)}}</small></div>
-                <div><span>Anticipated</span><strong>{{forecast.expected_units}} unit(s)</strong></div>
+                <div><span>Anticipated</span><strong>{{forecast.expected_units}} {{unitLabel(forecast.expected_units)}}</strong></div>
                 <div><span>Status</span><strong>{{forecast.status==='awaiting-count'?'Needs Local Agency verification':forecast.status==='pending-review'?'Verified · Pending CDPH/WIC review':forecast.status==='reconciled'?'Verified':'Closed'}}</strong></div>
-                <div v-if="forecast.actual_units!==null"><span>Actual</span><strong>{{forecast.actual_units}} unit(s)</strong></div>
+                <div v-if="forecast.actual_units!==null"><span>Actual</span><strong>{{forecast.actual_units}} {{unitLabel(forecast.actual_units)}}</strong></div>
                 <NuxtLink v-if="identity==='agency' && forecast.status==='awaiting-count'" class="button button-secondary" :to="{path:'/surplus',query:{forecast:forecast.id}}">Verify Count</NuxtLink>
             </article>
         </section>
@@ -1310,14 +1312,16 @@ async function saveAgencyUpdate() {
 .matching-surplus-option > span {display:grid;gap:2px;min-width:0;overflow-wrap:anywhere;}
 .matching-surplus-option strong {font-size:.95em;}
 .matching-surplus-option small {color:var(--muted);font-size:.88em;line-height:1.35;}
-.local-surplus-assignment {display:grid;gap:10px;margin:14px 0;padding:12px;border:1px solid var(--line);border-radius:8px;}
-.local-surplus-assignment legend {padding:0 6px;font-weight:700;}
-.local-surplus-lots {display:grid;gap:8px;}
-.local-surplus-lot {display:flex;justify-content:space-between;align-items:center;gap:16px;padding:8px;border-radius:6px;background:var(--surface-raised);}
-.local-surplus-lot > span {display:grid;gap:3px;}
-.local-surplus-lot small {color:var(--muted);}
-.local-surplus-formula {font-size:var(--form-label-size);}
-.local-surplus-quantity {font-size:var(--form-label-size);color:var(--text);}
+.local-surplus-assignment {display:grid;gap:10px;margin:18px 0;padding:16px;border:1px solid var(--line);border-radius:10px;}
+.local-surplus-assignment h4 {margin:0;font-size:1rem;}
+.local-surplus-assignment > p {margin:0;font-size:.875rem;line-height:1.5;}
+.local-surplus-lots {display:grid;}
+.local-surplus-lot {display:flex;justify-content:space-between;align-items:center;gap:16px;padding:12px 0;border-top:1px solid var(--line);}
+.local-surplus-lot .surplus-lot-info {display:grid;flex:1 1 190px;gap:3px;}
+.local-surplus-lot .surplus-lot-info > strong {font-size:14px;line-height:1.4;}
+.local-surplus-lot .surplus-lot-info small {display:block;margin:0;color:var(--muted);font-size:13px;line-height:1.4;}
+.local-surplus-lot .surplus-lot-info > span {font-size:14px;line-height:1.4;font-weight:600;}
+.local-surplus-assign-field {width:110px;flex:0 0 110px;margin:0;}
 .anticipated-surplus-row {display:grid;grid-template-columns:minmax(220px,2fr) repeat(2,minmax(150px,1fr)) auto;align-items:center;gap:12px;padding:12px 0;border-top:1px solid var(--line);}
 .anticipated-surplus-row > div {display:grid;gap:3px;}
 .anticipated-surplus-row > div > span,.anticipated-surplus-row small {color:var(--muted);font-size:12px;}

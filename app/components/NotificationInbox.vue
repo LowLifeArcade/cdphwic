@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import {unitLabel} from '~/../shared/quantityLabels';
 import {formatDisplayDate,formulaFormLabel} from '~/../shared/requestPresentation';
 const identity = useState<'admin' | 'agency' | 'internal'>('demo-identity', () => 'admin');
 const open = ref(false);
@@ -106,24 +107,24 @@ async function download(kind: string) {
                     <template v-else><NuxtLink class="button button-secondary" :to="{path:'/requests',query:{request:n.request_id}}" @click="open=false">View Shipment</NuxtLink><a class="button button-secondary" :href="`/api/requests/${n.request_id}/authorization-form.pdf?version=${n.version_id}`" target="_blank" rel="noopener">Print / Download Authorization</a></template>
                 </template>
                 <template v-else-if="n.kind==='transfer-stock' || n.kind==='transfer-ready'">
-                    <p class="notice-summary">{{n.quantity}} reserved unit(s) · {{n.source_clinic_name || 'Clinic not specified'}}</p>
+                    <p class="notice-summary">{{n.quantity}} reserved {{unitLabel(n.quantity)}} · {{n.source_clinic_name || 'Clinic not specified'}}</p>
                     <NuxtLink class="button button-secondary" :to="{path:'/surplus',query:{transfer:n.transfer_id},hash:`#transfer-${n.transfer_id}`}" @click="open=false">{{n.kind==='transfer-stock'?'Confirm Product Availability':'View Labels & Arrange Pickup'}}</NuxtLink>
                 </template>
                 <p v-else-if="n.kind === 'forecast'">
                     {{n.clinic_name || 'Clinic not specified'}}<br />
-                    {{ n.expected_units }} anticipated unit(s) · confirmation due {{ formatDisplayDate(n.due_date) }}. Confirm actual usable,
-                    uncommitted unit(s) in Formula Surplus.
+                    {{ n.expected_units }} anticipated {{unitLabel(n.expected_units)}} · confirmation due {{ formatDisplayDate(n.due_date) }}. Confirm actual usable,
+                    uncommitted Units in Formula Surplus.
                 </p>
                 <p v-else>
                     Agency {{ n.agency_id }} · {{n.clinic_name || 'Clinic not specified'}}<br />{{ n.formula_name }} · {{ formulaFormLabel(n.form) }} {{ n.flavor }}<br />Expires
                     {{ formatDisplayDate(n.expiration_date) }} ·
-                    {{ n.kind === 'donation' ? n.on_hand - n.reserved : n.expired_units }} unit(s)
+                    {{ n.kind === 'donation' ? n.on_hand - n.reserved : n.expired_units }} {{unitLabel(n.kind === 'donation' ? n.on_hand - n.reserved : n.expired_units)}}
                 </p>
                 <p v-if="n.kind === 'donation' || n.kind === 'destruction'">
                     {{
                         n.kind === 'donation'
-                            ? 'At least 60 calendar days remain. Arrange donation of surplus. Coordinate with Admin/FPU before donating reserved unit(s).'
-                            : 'Keep these unit(s) quarantined. Complete the destruction form and record verified destruction.'
+                            ? 'At least 60 calendar days remain. Arrange donation of surplus. Coordinate with Admin/FPU before donating reserved Units.'
+                            : 'Keep these Units quarantined. Complete the destruction form and record verified destruction.'
                     }}
                 </p>
                 <button

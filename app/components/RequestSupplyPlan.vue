@@ -1,45 +1,43 @@
 <script setup lang="ts">
+import {unitLabel} from '~/../shared/quantityLabels';
 import type {RequestRecord} from '~/../shared/domain';
 import type {FormulaAuthorization} from '~/../shared/formulaAuthorizations';
-import {issuanceSupplyPlan} from '~/../shared/issuanceSupply';
-const props=defineProps<{request:Partial<RequestRecord>;authorization:FormulaAuthorization;unitsPerCase?:number}>();
-const plan=computed(()=>issuanceSupplyPlan(props.request,props.authorization,props.unitsPerCase));
+import {remainingSupplyOrder} from '~/../shared/issuanceSupply';
+const props=defineProps<{request:Partial<RequestRecord>;authorization:FormulaAuthorization;unitsPerCase?:number;publishedShipments?:RequestRecord['shipments']}>();
+const plan=computed(()=>remainingSupplyOrder(props.request,props.authorization,props.unitsPerCase??props.authorization.unitsPerCase,props.publishedShipments));
+const sourceRows=computed(()=>plan.value.supply.rows.filter(row=>row.kind!=='surplus'));
+const surplusRows=computed(()=>[{key:'planned-surplus',kind:'surplus' as const,label:'Expected Surplus',units:plan.value.surplus}]);
 </script>
-
 <template>
     <section class="supply-plan" aria-label="Live supply calculation">
-        <h4>Supply plan</h4>
-        <dl class="plan-equation">
-            <div><dt><span class="plan-sign" aria-hidden="true"></span>Total Unit(s) Approved</dt><dd>{{plan.total}} unit(s)</dd></div>
-            <div><dt><span class="plan-sign" aria-hidden="true">−</span>Assigned Local Agency Surplus</dt><dd>{{plan.local}} unit(s)</dd></div>
-            <div><dt><span class="plan-sign" aria-hidden="true">−</span>Allocated Transfers</dt><dd>{{plan.transferred}} unit(s)</dd></div>
-            <div class="plan-result"><dt><span class="plan-sign" aria-hidden="true">=</span>Unit(s) Still Needed from Orders</dt><dd>{{plan.needed}} unit(s)</dd></div>
-        </dl>
-        <div class="order-recommendation">
-            <span>Recommended Order</span>
-            <strong v-if="plan.orderedUnits!==undefined">{{plan.cases}} case(s)<template v-if="plan.cases"> × {{plan.unitsPerCase}} unit(s)</template> = {{plan.orderedUnits}} unit(s)</strong>
-            <strong v-else>Enter Units Per Case to calculate the order.</strong>
+        <h4>Supply Plan</h4>
+        <p class="approved-total">{{plan.supply.total}} {{unitLabel(plan.supply.total)}} Approved</p>
+        <RequestSupplySources :rows="sourceRows" />
+        <div class="order-recommendation" aria-label="Recommended order" aria-live="polite">
+            <h5>Recommended Order</h5>
+            <template v-if="plan.orderUnits!==undefined">
+                <p v-if="plan.needed">{{plan.needed}} {{unitLabel(plan.needed)}} to cover from distributor orders.</p>
+                <strong v-if="plan.cases">{{plan.cases}} {{plan.cases===1?'Case':'Cases'}} × {{plan.unitsPerCase}} {{unitLabel(plan.unitsPerCase)}} = {{plan.orderUnits}} {{unitLabel(plan.orderUnits)}}</strong>
+                <strong v-else>No additional order needed.</strong>
+            </template>
+            <p v-else>Confirm Units Per Case for this formula and its shipments to calculate the recommended order.</p>
         </div>
-        <div class="plan-surplus"><span>Expected Surplus</span><strong>{{plan.surplus===undefined?'—':`${plan.surplus} unit(s)`}}</strong></div>
-        <p v-if="plan.surplus" class="muted-copy">{{plan.total}} unit(s) are approved. The remaining {{plan.surplus}} unit(s) from the planned supply are expected surplus.</p>
-        <p v-if="plan.local+plan.transferred>plan.total" class="plan-warning" role="status">Surplus and transfer allocations exceed the approved total. Review the assigned quantities before ordering.</p>
-        <p v-if="plan.unknownTransferSize" class="plan-warning" role="status">A transfer needs Units Per Case before its quantity can be included.</p>
-        <p class="muted-copy">Updates as you edit. Use the recommendation to plan distributor shipments in Shipping.</p>
+        <p v-if="plan.supply.plannedUnits" class="draft-coverage">In distributor drafts: <strong>{{plan.supply.plannedUnits}} {{unitLabel(plan.supply.plannedUnits)}}</strong>.<template v-if="plan.stillToPlan===0"> Drafts cover the recommendation. Review and send ETA in Shipping.</template><template v-else-if="plan.stillToPlan!==undefined"> Still to plan: {{plan.stillToPlan}} {{unitLabel(plan.stillToPlan)}}.</template></p>
+        <p v-if="plan.supply.unknownPlannedUnits" class="muted-copy">A distributor draft needs Units Per Case before its planned quantity can be calculated.</p>
+        <RequestSupplySources :rows="surplusRows" />
+        <p v-if="plan.needed&&plan.surplus!==undefined" class="muted-copy">Expected surplus includes the recommended whole-case order.</p>
+        <p v-if="sourceRows.some(row=>row.kind==='transfer'&&row.pending)" class="muted-copy">Selected transfer quantities are included above. Reserve Stock in Issuance to confirm the allocations.</p>
+        <p v-if="plan.supply.local>plan.supply.total" class="plan-warning" role="status">On Hand allocations exceed the approved total. Review the assigned quantities.</p>
     </section>
 </template>
-
 <style scoped>
-.supply-plan {margin-top:18px;padding:16px;border:1px solid var(--line);border-radius:10px;background:var(--surface);}
-.supply-plan h4 {margin:0 0 12px;font-size:1rem;}
-.plan-equation {margin:0;}
-.plan-equation>div,.plan-surplus {display:flex;justify-content:space-between;gap:16px;padding:8px 0;}
-.plan-equation dt {display:flex;align-items:baseline;}
-.plan-equation dd {margin:0;font-weight:600;text-align:right;white-space:nowrap;}
-.plan-sign {flex:0 0 22px;font-weight:700;}
-.plan-equation .plan-result {border-top:2px solid var(--line);margin-top:6px;padding-top:14px;font-weight:700;color:light-dark(#002595,#75baff);}
-.order-recommendation {display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-top:12px;padding:12px;border-radius:6px;background:light-dark(#eef3ff,#172c46);}
-.plan-surplus {padding:12px;}
-.supply-plan p {margin:8px 0 0;font-size:.875rem;}
+.supply-plan {margin-top:18px;padding:16px;border:2px solid light-dark(#002595,#75baff);border-radius:10px;background:var(--surface);}
+.supply-plan h4 {margin:0 0 4px;font-size:1rem;}
+.supply-plan .approved-total {margin:0 0 10px;color:light-dark(#002595,#75baff);font-size:1.15rem;font-weight:700;line-height:1.35;}
+.order-recommendation {margin:12px 0 6px;padding:12px;border-radius:6px;background:light-dark(#eef3ff,#172c46);}
+.order-recommendation h5 {margin:0 0 6px;font-size:.95rem;}
+.order-recommendation p {margin:0 0 8px;font-size:.875rem;}
+.order-recommendation strong {display:block;color:light-dark(#002595,#75baff);}
+.supply-plan .muted-copy,.plan-warning,.draft-coverage {margin:8px 0 0;font-size:.875rem;}
 .plan-warning {color:light-dark(#8a4200,#ffc789);}
-@media(max-width:540px){.plan-equation>div{flex-direction:column;gap:4px;}.plan-equation dd{text-align:left;padding-left:22px;}}
 </style>

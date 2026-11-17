@@ -29,8 +29,8 @@ export function validateFormulaAuthorizations(rows:FormulaAuthorization[]):strin
  return rows.flatMap((row,index)=>{
   if(!row||typeof row.productName!=='string'||!Array.isArray(row.benefitIssuances))return [`Formula ${index+1}: Invalid issuance details.`];
   if(row.benefitIssuances.some(item=>!item||typeof item.month!=='string'||typeof item.quantity!=='number'))return [`Formula ${index+1}: Invalid month or quantity.`];
-  if(row.totalUnitsIssued!==undefined&&(!Number.isSafeInteger(row.totalUnitsIssued)||row.totalUnitsIssued<0))return [`Formula ${index+1}: Enter a whole, nonnegative Total Unit(s) Approved value.`];
-  if(row.unitsToOrder!==undefined&&(!Number.isSafeInteger(row.unitsToOrder)||row.unitsToOrder<0))return [`Formula ${index+1}: Enter a whole, nonnegative Unit(s) to Order/Transfer value.`];
+  if(row.totalUnitsIssued!==undefined&&(!Number.isSafeInteger(row.totalUnitsIssued)||row.totalUnitsIssued<0))return [`Formula ${index+1}: Enter a whole, nonnegative Total Units Approved value.`];
+  if(row.unitsToOrder!==undefined&&(!Number.isSafeInteger(row.unitsToOrder)||row.unitsToOrder<0))return [`Formula ${index+1}: Enter a whole, nonnegative Units to Order/Transfer value.`];
   const allocationErrors:string[]=[];
   if(row.standardCases!==undefined||row.specialOrderCases!==undefined){
    if(!Number.isSafeInteger(row.approvedCases)||row.approvedCases!<0)allocationErrors.push('Enter Approved Cases before splitting the order.');

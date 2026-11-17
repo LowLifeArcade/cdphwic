@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import {unitLabel} from '~/../shared/quantityLabels';
 import {breastfeedingOptions,type BreastfeedingStatus,validateBreastfeeding} from '~/../shared/breastfeeding';
 import { hasMedicalDocumentation, medicalDocumentationRequiredMessage } from '~/../shared/medicalDocumentation';
 import {shippingContact,blankClinicAddress,validateShipping,type RequestShipping,type ClinicRecord} from '~/../shared/shipping';
@@ -1185,7 +1186,7 @@ async function submitRequest() {
             <p v-if="storageClinicError" role="alert">Storage clinics could not be loaded. Try again before choosing a clinic.</p>
             <div v-for="(entry, index) in surplusEntries" :key="index" class="form-grid surplus-form-row">
                 <p v-if="entry.productName && entry.productForm && surplusInventory" class="surplus-stock-note">
-                    On Hand at requesting agency: {{agencySurplusStock(entry).onHand}} unit(s) · Available: {{agencySurplusStock(entry).available}} unit(s)
+                    On Hand at requesting agency: {{agencySurplusStock(entry).onHand}} {{unitLabel(agencySurplusStock(entry).onHand)}} · Available: {{agencySurplusStock(entry).available}} {{unitLabel(agencySurplusStock(entry).available)}}
                 </p>
                 <div class="form-field">
                     <label :for="`surplus-formula-${index}`">Formula Name</label>
@@ -1206,7 +1207,7 @@ async function submitRequest() {
                     <input :id="`surplus-flavor-${index}`" v-model="entry.flavor" class="form-input" />
                 </div>
                 <div class="form-field">
-                    <label :for="`surplus-units-${index}`">Surplus Quantity (in Unit(s))</label>
+                    <label :for="`surplus-units-${index}`">Surplus Quantity (in Units)</label>
                     <input :id="`surplus-units-${index}`" v-model="entry.units" class="form-input" type="number" min="1" required />
                 </div>
                 <div class="form-field">

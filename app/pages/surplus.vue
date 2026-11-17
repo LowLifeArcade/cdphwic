@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import {unitLabel} from '~/../shared/quantityLabels';
 import {formatDisplayDate,formulaFormLabel} from '~/../shared/requestPresentation';
 import { isReviewer, availableUnits, localDate, daysRemaining, variantKey } from '~/../shared/surplus';
 import {surplusShipmentDraft} from '~/../shared/requestTransfers';
@@ -62,8 +63,11 @@ const lots = computed(() =>
                 `${l.formulaName} ${l.flavor} ${l.form}`.toLowerCase().includes(search.value.toLowerCase())),
     ),
 );
+function inventoryLotIsArchived(lot:SurplusLot){return lot.onHand===0&&lot.expiredUnits===0;}
+const archivedLots=computed(()=>lots.value.filter(inventoryLotIsArchived).sort((a,b)=>b.expirationDate.localeCompare(a.expirationDate)||a.formulaName.localeCompare(b.formulaName)));
+const activeLots=computed(()=>lots.value.filter(lot=>!inventoryLotIsArchived(lot)));
 const expandedInventoryGroups=ref<Record<string,boolean>>({});
-const inventoryRows=computed(()=>groupSurplusLots(lots.value).flatMap(group=>group.lots.length===1
+const inventoryRows=computed(()=>groupSurplusLots(activeLots.value).flatMap(group=>group.lots.length===1
  ? [{kind:'lot' as const,key:`lot:${group.lots[0]!.id}`,group,lot:group.lots[0]!}]
  : [{kind:'group' as const,key:`group:${group.key}`,group},...(expandedInventoryGroups.value[group.key]?group.lots.map(lot=>({kind:'lot' as const,key:`lot:${lot.id}`,group,lot})):[])]));
 function toggleInventoryGroup(key:string){expandedInventoryGroups.value[key]=!expandedInventoryGroups.value[key];}
@@ -77,9 +81,12 @@ function moveSurplusTab(event:KeyboardEvent){
     nextTick(()=>document.getElementById(`${next}-tab`)?.focus());
 }
 const agencyName = (id: number) => agencyData.value?.agencies.find((a) => a.id === id)?.name ?? `Agency ${id}`;
+function transferFormulaDisplay(transfer:any){return [transfer.formula_name,transfer.form==='concentrate'?'Concentrate':formulaFormLabel(transfer.form),transfer.flavor].filter(Boolean).join(' ');}
 const transferRows=computed(()=>data.value?.transfers??[]);
-const sendingTransfers=computed(()=>transferRows.value.filter(t=>data.value?.user.memberType!=='agency'||t.source_agency_id===data.value?.user.agencyId));
-const receivingTransfers=computed(()=>transferRows.value.filter(t=>data.value?.user.memberType!=='agency'||t.destination_agency_id===data.value?.user.agencyId));
+const sendingTransfers=computed(()=>transferRows.value.filter(t=>!['cancelled','received'].includes(t.status)&&(data.value?.user.memberType!=='agency'||t.source_agency_id===data.value?.user.agencyId)));
+const receivingTransfers=computed(()=>transferRows.value.filter(t=>!['cancelled','received'].includes(t.status)&&(data.value?.user.memberType!=='agency'||t.destination_agency_id===data.value?.user.agencyId)));
+const archivedTransfers=computed(()=>transferRows.value.filter(t=>t.status==='cancelled'&&(data.value?.user.memberType!=='agency'||t.source_agency_id===data.value?.user.agencyId||t.destination_agency_id===data.value?.user.agencyId)));
+const completedTransfers=computed(()=>transferRows.value.filter(t=>t.status==='received'&&(data.value?.user.memberType!=='agency'||t.source_agency_id===data.value?.user.agencyId||t.destination_agency_id===data.value?.user.agencyId)));
 const operationId = ref('');
 const modal = ref('');
 const modalTitles:Record<string,string>={'edit-inventory':'Edit Inventory', 'assign-clinic':'Assign Clinic',new:'Record physical count',review:'Review reported count',forecast:'Anticipated Surplus',confirm:'Confirm actual usable, uncommitted surplus',donate:'Record formula donation',destroy:'Record verified destruction','correct-entry':'Correct inventory entry','correct-expiry':'Correct verified expiration date',reconcile:'Update physical count',deduct:'Deduct surplus','use-request':'Use in Request',cancel:'Cancel reservation',history:'Inventory History'};
@@ -364,9 +371,9 @@ async function upload(kind: string, event: Event) {
                 <header class="transfer-direction-heading"><h3 id="sending-transfers-heading">Sending</h3><span>{{sendingTransfers.length}}</span></header>
                 <p v-if="!sendingTransfers.length" class="muted-copy">No transfers to send.</p>
                 <AgencyTransferShipment v-for="t in sendingTransfers.filter(t=>t.request_id)" :key="`send:${t.id}`" :transfer="t" :source-name="agencyName(t.source_agency_id)" :destination-name="agencyName(t.destination_agency_id)" :can-ship="data?.user.memberType==='agency' && data?.user.agencyId===t.source_agency_id" @updated="refreshTransferState" />
-                <details v-for="t in sendingTransfers.filter(t=>!t.request_id)" :key="`send-legacy:${t.id}`" class="legacy-transfer">
-                    <summary class="legacy-transfer-summary-row"><strong>{{t.formula_name}} {{t.form==='concentrate'?'Concentrate':formulaFormLabel(t.form)}}</strong><span>{{agencyName(t.source_agency_id)}} → {{agencyName(t.destination_agency_id)}}</span><span class="legacy-transfer-status">{{t.status==='received'?'Confirmed Receipt':t.status==='reserved'?'Transfer Requested':t.status==='shipped'?'In Transit':t.status==='cancelled'?'Cancelled':'Blocked — expired'}}</span></summary>
-                    <div class="legacy-transfer-summary"><span><strong>{{t.quantity}}</strong> unit(s)</span><span>Expires {{formatDisplayDate(t.expiration_date)}}</span><span>ETA {{t.eta?formatDisplayDate(t.eta):'Pending'}}</span><span v-if="t.request_ref">Ref {{t.request_ref}}</span></div>
+                <details v-for="t in sendingTransfers.filter(t=>!t.request_id)" :key="`send-legacy:${t.id}`" class="legacy-transfer" :class="{'transfer-cancelled':t.status==='cancelled'}">
+                    <summary class="legacy-transfer-summary-row"><strong>{{transferFormulaDisplay(t)}}</strong><span>{{agencyName(t.source_agency_id)}} → {{agencyName(t.destination_agency_id)}}</span><span class="legacy-transfer-status">{{t.status==='received'?'Confirmed Receipt':t.status==='reserved'?'Transfer Requested':t.status==='shipped'?'In Transit':t.status==='cancelled'?'Cancelled':'Blocked — expired'}}</span></summary>
+                    <div class="legacy-transfer-summary"><span><strong>{{t.quantity}}</strong> {{unitLabel(t.quantity)}}</span><span>Expires {{formatDisplayDate(t.expiration_date)}}</span><span>ETA {{t.eta?formatDisplayDate(t.eta):'Pending'}}</span><span v-if="t.request_ref">Ref {{t.request_ref}}</span></div>
                     <p>{{t.source_clinic_name || 'Clinic not specified'}}</p><p v-if="pickupAddress(t.source_clinic_address)">Pickup: {{pickupAddress(t.source_clinic_address)}}</p><p v-if="t.tracking_reference">Tracking: {{t.tracking_reference}}</p>
                     <p>This transfer was recorded without a linked request. {{reviewer?'Cancel an unshipped reservation and reserve it again in the request’s Shipment section to use agency confirmation and shipping labels.':'Contact CDPH/WIC about this transfer.'}}</p>
                     <button v-if="reviewer && t.status==='reserved'" class="button" @click="start('cancel', data?.lots.find((l: any) => l.id === t.source_lot_id) as SurplusLot, t)">Cancel reservation</button>
@@ -376,12 +383,30 @@ async function upload(kind: string, event: Event) {
                 <header class="transfer-direction-heading"><h3 id="receiving-transfers-heading">Receiving</h3><span>{{receivingTransfers.length}}</span></header>
                 <p v-if="!receivingTransfers.length" class="muted-copy">No transfers to receive.</p>
                 <AgencyTransferShipment v-for="t in receivingTransfers.filter(t=>t.request_id)" :key="`receive:${t.id}`" :transfer="t" :source-name="agencyName(t.source_agency_id)" :destination-name="agencyName(t.destination_agency_id)" :can-ship="false" @updated="refreshTransferState" />
-                <details v-for="t in receivingTransfers.filter(t=>!t.request_id)" :key="`receive-legacy:${t.id}`" class="legacy-transfer">
-                    <summary class="legacy-transfer-summary-row"><strong>{{t.formula_name}} {{t.form==='concentrate'?'Concentrate':formulaFormLabel(t.form)}}</strong><span>{{agencyName(t.source_agency_id)}} → {{agencyName(t.destination_agency_id)}}</span><span class="legacy-transfer-status">{{t.status==='received'?'Confirmed Receipt':t.status==='reserved'?'Transfer Requested':t.status==='shipped'?'In Transit':t.status==='cancelled'?'Cancelled':'Blocked — expired'}}</span></summary>
-                    <div class="legacy-transfer-summary"><span><strong>{{t.quantity}}</strong> unit(s)</span><span>Expires {{formatDisplayDate(t.expiration_date)}}</span><span>ETA {{t.eta?formatDisplayDate(t.eta):'Pending'}}</span><span v-if="t.request_ref">Ref {{t.request_ref}}</span></div>
+                <details v-for="t in receivingTransfers.filter(t=>!t.request_id)" :key="`receive-legacy:${t.id}`" class="legacy-transfer" :class="{'transfer-cancelled':t.status==='cancelled'}">
+                    <summary class="legacy-transfer-summary-row"><strong>{{transferFormulaDisplay(t)}}</strong><span>{{agencyName(t.source_agency_id)}} → {{agencyName(t.destination_agency_id)}}</span><span class="legacy-transfer-status">{{t.status==='received'?'Confirmed Receipt':t.status==='reserved'?'Transfer Requested':t.status==='shipped'?'In Transit':t.status==='cancelled'?'Cancelled':'Blocked — expired'}}</span></summary>
+                    <div class="legacy-transfer-summary"><span><strong>{{t.quantity}}</strong> {{unitLabel(t.quantity)}}</span><span>Expires {{formatDisplayDate(t.expiration_date)}}</span><span>ETA {{t.eta?formatDisplayDate(t.eta):'Pending'}}</span><span v-if="t.request_ref">Ref {{t.request_ref}}</span></div>
                     <p>{{t.source_clinic_name || 'Clinic not specified'}}</p><p v-if="pickupAddress(t.source_clinic_address)">Pickup: {{pickupAddress(t.source_clinic_address)}}</p><p v-if="t.tracking_reference">Tracking: {{t.tracking_reference}}</p>
                 </details>
             </section>
+            <details v-if="completedTransfers.length" class="transfer-archive">
+                <summary>Completed ({{completedTransfers.length}})</summary>
+                <details v-for="t in completedTransfers" :key="`completed:${t.id}`" class="legacy-transfer completed-transfer-row">
+                    <summary class="legacy-transfer-summary-row"><strong>{{transferFormulaDisplay(t)}}</strong><span>{{agencyName(t.source_agency_id)}} → {{agencyName(t.destination_agency_id)}}</span><span class="legacy-transfer-status completed-transfer-status">Confirmed Receipt</span><span class="archived-transfer-quantity">{{t.quantity}} {{unitLabel(t.quantity)}}</span></summary>
+                    <div class="legacy-transfer-summary"><span>Exp {{formatDisplayDate(t.expiration_date)}}</span><span>ETA {{t.eta?formatDisplayDate(t.eta):'—'}}</span><span v-if="t.request_id">Request #{{t.request_id}}</span><span v-else-if="t.request_ref">Ref {{t.request_ref}}</span><span v-if="t.shipped_date">Picked up {{formatDisplayDate(t.shipped_date)}}</span></div>
+                    <p>{{t.source_clinic_name || 'Clinic not specified'}}</p><p v-if="pickupAddress(t.source_clinic_address)">Pickup: {{pickupAddress(t.source_clinic_address)}}</p><p v-if="t.tracking_reference">Tracking: {{t.tracking_reference}}</p>
+                    <NuxtLink v-if="t.request_id && reviewer" class="text-button" :to="{path:'/requests',query:{request:t.request_id},hash:`#shipments-${t.request_id}`}">Open Request Shipment</NuxtLink>
+                </details>
+            </details>
+            <details v-if="archivedTransfers.length" class="transfer-archive">
+                <summary>Archived · Cancelled ({{archivedTransfers.length}})</summary>
+                <details v-for="t in archivedTransfers" :key="`archived:${t.id}`" class="legacy-transfer transfer-cancelled archived-transfer-row">
+                    <summary class="legacy-transfer-summary-row"><strong>{{transferFormulaDisplay(t)}}</strong><span>{{agencyName(t.source_agency_id)}} → {{agencyName(t.destination_agency_id)}}</span><span class="legacy-transfer-status">Cancelled</span><span class="archived-transfer-quantity">{{t.quantity}} {{unitLabel(t.quantity)}}</span></summary>
+                    <div class="legacy-transfer-summary"><span>Exp {{formatDisplayDate(t.expiration_date)}}</span><span>ETA {{t.eta?formatDisplayDate(t.eta):'—'}}</span><span v-if="t.request_id">Request #{{t.request_id}}</span><span v-else-if="t.request_ref">Ref {{t.request_ref}}</span></div>
+                    <p>{{t.source_clinic_name || 'Clinic not specified'}}</p><p v-if="pickupAddress(t.source_clinic_address)">Pickup: {{pickupAddress(t.source_clinic_address)}}</p><p v-if="t.tracking_reference">Tracking: {{t.tracking_reference}}</p>
+                    <NuxtLink v-if="t.request_id && reviewer" class="text-button" :to="{path:'/requests',query:{request:t.request_id},hash:`#shipments-${t.request_id}`}">Open Request Shipment</NuxtLink>
+                </details>
+            </details>
         </section>
         <div v-show="view==='inventory'" id="inventory-panel" role="tabpanel" aria-labelledby="inventory-tab" tabindex="0">
         <header class="inventory-section-heading">
@@ -412,7 +437,7 @@ async function upload(kind: string, event: Event) {
             </button>
         </div>
         <p>
-            Available unit(s) exclude reservations and expired stock. Agency-attested counts become available immediately;
+            Available Units exclude reservations and expired stock. Agency-attested counts become available immediately;
             pending reports require reconciliation, and anticipated quantities become available after agency confirmation and review.
         </p>
         <div class="table-scroll inventory-table-wrap">
@@ -424,7 +449,7 @@ async function upload(kind: string, event: Event) {
                         <th>On Hand</th>
                         <th>Reserved</th>
                         <th>Available</th>
-                        <th><abbr title="Expired / Quarantined unit(s)">Expired /<br />Quarantined</abbr></th>
+                        <th><abbr title="Expired / Quarantined Units">Expired /<br />Quarantined</abbr></th>
                         <th>Total</th>
                         <th>Actions</th>
                     </tr>
@@ -452,6 +477,16 @@ async function upload(kind: string, event: Event) {
                 </tbody>
             </table>
         </div>
+        <details v-if="archivedLots.length" class="inventory-archive">
+            <summary>Archived depleted lots ({{archivedLots.length}})</summary>
+            <p class="muted-copy">These lots have no remaining physical stock. Open a lot’s history if you need to review its inventory changes.</p>
+            <article v-for="lot in archivedLots" :key="lot.id" class="inventory-archive-row">
+                <div><strong>{{lot.formulaName}} {{lot.form==='concentrate'?'Concentrate':formulaFormLabel(lot.form)}}</strong><small v-if="lot.flavor">{{lot.flavor}}</small><small>{{lot.clinicName||'Clinic not specified'}}<template v-if="reviewer"> · {{agencyName(lot.agencyId)}}</template></small></div>
+                <div><span>Exp</span><strong>{{formatDisplayDate(lot.expirationDate)}}</strong></div>
+                <div><span>Total</span><strong>{{lot.onHand+lot.expiredUnits}}</strong></div>
+                <div class="inventory-archive-actions"><button class="text-button" type="button" @click="showHistory(lot)">History</button><button class="text-button" type="button" @click="start('edit-inventory',lot)">Edit</button></div>
+            </article>
+        </details>
         <section v-if="reviewer" class="surplus-counts-section" aria-labelledby="counts-heading">
         <header class="surplus-counts-heading">
             <h2 id="counts-heading">Counts &amp; Forecasts</h2>
@@ -467,7 +502,7 @@ async function upload(kind: string, event: Event) {
                 :key="r.id"
             >
                 <strong>{{ agencyName(r.agency_id) }} · {{ r.formula_name }}</strong> · {{ formulaFormLabel(r.form) }} {{ r.flavor }} ·
-                {{ r.reported_units }} unit(s) · expires {{ formatDisplayDate(r.expiration_date) }}
+                {{ r.reported_units }} {{unitLabel(r.reported_units)}} · expires {{ formatDisplayDate(r.expiration_date) }}
                 <p>{{r.clinic_name || 'Clinic not specified'}}</p><p>Counted {{ formatDisplayDate(r.counted_at) }} by {{ r.confirmer_name }}. {{ r.reason }}</p>
                 <button
                     v-if="reviewer"
@@ -486,7 +521,7 @@ async function upload(kind: string, event: Event) {
             >
                 <strong>{{ agencyName(f.agency_id) }} · {{ f.formula_name }}</strong> · {{ formulaFormLabel(f.form) }} {{ f.flavor }}
                 <p>
-                    {{f.clinic_name || 'Clinic not specified'}} · {{ f.expected_units }} anticipated unit(s) · confirmation due {{ formatDisplayDate(f.due_date) }} · {{ f.status }}
+                    {{f.clinic_name || 'Clinic not specified'}} · {{ f.expected_units }} anticipated {{unitLabel(f.expected_units)}} · confirmation due {{ formatDisplayDate(f.due_date) }} · {{ f.status }}
                     <span v-if="f.actual_units !== null"> · actual {{ f.actual_units }}</span>
                 </p>
                 <button
@@ -550,15 +585,15 @@ async function upload(kind: string, event: Event) {
                     >
                         <header class="history-entry-heading">
                             <div><strong>{{formatDisplayDate(h.created_at)}}</strong><span>{{movementLabel(h.kind)}}</span></div>
-                            <strong class="history-quantity">{{h.effective_quantity??h.quantity}} unit(s)</strong>
+                            <strong class="history-quantity">{{h.effective_quantity??h.quantity}} {{unitLabel(h.effective_quantity??h.quantity)}}</strong>
                         </header>
                         <p class="history-balance">On Hand {{h.on_hand}} · Reserved {{h.reserved}} · Expired {{h.expired_units}}</p>
                         <p v-if="h.request_ref" class="history-reference">Request {{h.request_ref}}</p>
                         <p class="history-actor">Recorded by {{h.actor_name||'Unknown user'}}</p>
                         <p v-if="surplusMovementReason(h.reason)" class="history-reason">{{ surplusMovementReason(h.reason) }}</p>
-                        <p v-if="h.effective_quantity!==undefined && h.effective_quantity!==h.quantity" class="history-correction-note">Updated to {{ h.effective_quantity }} unit(s). Original entry remains in history.</p>
-                        <p v-if="h.corrects_movement_id && h.correction_target" class="history-correction-note">Corrects {{movementLabel(h.correction_target.kind).toLowerCase()}} from {{formatDisplayDate(h.correction_target.created_at)}} (original {{h.correction_target.quantity}} unit(s)).</p>
-                        <p v-else-if="h.corrects_movement_id" class="history-correction-note">Corrects an earlier inventory entry; updated quantity {{h.corrected_quantity}} unit(s).</p>
+                        <p v-if="h.effective_quantity!==undefined && h.effective_quantity!==h.quantity" class="history-correction-note">Updated to {{ h.effective_quantity }} {{unitLabel(h.effective_quantity)}}. Original entry remains in history.</p>
+                        <p v-if="h.corrects_movement_id && h.correction_target" class="history-correction-note">Corrects {{movementLabel(h.correction_target.kind).toLowerCase()}} from {{formatDisplayDate(h.correction_target.created_at)}} (original {{h.correction_target.quantity}} {{unitLabel(h.correction_target.quantity)}}).</p>
+                        <p v-else-if="h.corrects_movement_id" class="history-correction-note">Corrects an earlier inventory entry; updated quantity {{h.corrected_quantity}} {{unitLabel(h.corrected_quantity)}}.</p>
                         <button v-if="h.correctable" class="text-button" type="button" @click="start('correct-entry',selected,h)">Correct entry</button>
                     </article>
                     <button
@@ -605,12 +640,12 @@ async function upload(kind: string, event: Event) {
                     <article v-if="correctionTarget" class="history-entry correction-original-entry">
                         <header class="history-entry-heading">
                             <div><strong>{{formatDisplayDate(correctionTarget.created_at)}}</strong><span>{{movementLabel(correctionTarget.kind)}}</span></div>
-                            <strong class="history-quantity">{{correctionTarget.effective_quantity??correctionTarget.quantity}} unit(s)</strong>
+                            <strong class="history-quantity">{{correctionTarget.effective_quantity??correctionTarget.quantity}} {{unitLabel(correctionTarget.effective_quantity??correctionTarget.quantity)}}</strong>
                         </header>
-                        <p class="history-balance">Original entry: {{correctionTarget.quantity}} unit(s). The original record stays in history; this correction is added as a separate entry.</p>
+                        <p class="history-balance">Original entry: {{correctionTarget.quantity}} {{unitLabel(correctionTarget.quantity)}}. The original record stays in history; this correction is added as a separate entry.</p>
                     </article>
                     <div class="correction-fields">
-                        <label>Corrected unit(s)<input v-model.number="input.quantity" type="number" min="0" step="1" required /></label>
+                        <label>Corrected Units<input v-model.number="input.quantity" type="number" min="0" step="1" required /></label>
                         <label>Correction explanation<textarea v-model="input.reason" rows="2" required></textarea></label>
                         <label>Correcting staff name<input v-model="input.confirmerName" required /></label>
                         <label>Correction date<input v-model="input.date" type="date" :max="localDate()" required /></label>
@@ -656,7 +691,7 @@ async function upload(kind: string, event: Event) {
                         v-if="
                             ['new', 'reconcile', 'deduct', 'donate', 'destroy', 'confirm', 'forecast'].includes(modal)
                         "
-                        >{{ modal === 'forecast' ? 'Anticipated Unit(s)' : 'Unit(s)'
+                        >{{ modal === 'forecast' ? 'Anticipated Units' : 'Units'
                         }}<input
                             v-model.number="input.quantity"
                             type="number"
@@ -667,10 +702,10 @@ async function upload(kind: string, event: Event) {
                     <p v-if="selected && ['review', 'reconcile'].includes(modal)">
                         Current usable count {{ selected.onHand }}, reserved {{ selected.reserved }}, expired
                         {{ selected.expiredUnits }}. Inventory version {{ selected.version }}. Proposed change:
-                        {{ proposedCountChange }} unit(s).
+                        {{ proposedCountChange }} {{unitLabel(proposedCountChange)}}.
                     </p>
                     <p v-if="modal === 'review'">
-                        Reported count: {{ report.reported_units }} unit(s), expires {{ formatDisplayDate(report.expiration_date) }}. Confirm
+                        Reported count: {{ report.reported_units }} {{unitLabel(report.reported_units)}}, expires {{ formatDisplayDate(report.expiration_date) }}. Confirm
                         this replaces the current balance for this formula, form, flavor and expiration.
                     </p>
                     <label v-if="['new', 'review', 'confirm', 'correct-expiry'].includes(modal)"
@@ -728,9 +763,9 @@ async function upload(kind: string, event: Event) {
                                 :max="localDate()"
                                 required /></label></template
                     >
-                    <p v-if="modal === 'donate'">Record formula donated while it is 30–60 days from expiration. Only unreserved unit(s) can be donated.</p>
+                    <p v-if="modal === 'donate'">Record formula donated while it is 30–60 days from expiration. Only unreserved Units can be donated.</p>
                     <p v-if="modal === 'destroy'">
-                        Confirm these unit(s) have been physically destroyed and the Formula Destruction Form completed.
+                        Confirm these Units have been physically destroyed and the Formula Destruction Form completed.
                     </p>
                     <div
                         v-if="modal === 'review'"
@@ -774,6 +809,14 @@ async function upload(kind: string, event: Event) {
 </template>
 <style scoped>
 .legacy-transfer {box-sizing:border-box;display:block;width:100%;max-width:var(--surplus-content-width);border:1px solid var(--line);border-radius:8px;padding:0 12px;margin:8px 0;font-size:13px;line-height:1.4;}
+.legacy-transfer.transfer-cancelled {background:var(--surface-raised);border-color:var(--line);color:var(--muted);}
+.legacy-transfer.transfer-cancelled .legacy-transfer-status {background:var(--surface-raised);color:var(--muted);}
+.transfer-archive {max-width:var(--surplus-content-width);margin:20px 0 0;padding:12px 14px;border:1px solid var(--line);border-radius:8px;}
+.transfer-archive > summary {font-size:14px;font-weight:650;cursor:pointer;}
+.archived-transfer-row {max-width:none;margin:10px 0 0;}
+.completed-transfer-status {background:var(--success-bg);border-color:var(--success-text);color:var(--success-text);}
+.completed-transfer-row {background:var(--surface-raised);}
+.archived-transfer-quantity {font-size:12px;font-weight:650;white-space:nowrap;}
 .legacy-transfer-summary-row {display:flex;align-items:center;flex-wrap:wrap;gap:8px 16px;padding:12px 0;cursor:pointer;list-style:none;}
 .legacy-transfer-summary-row::-webkit-details-marker {display:none;}
 .legacy-transfer-summary-row > strong {font-size:14px;flex:1;}
@@ -797,7 +840,7 @@ async function upload(kind: string, event: Event) {
 .surplus-views .surplus-tab:hover {background:var(--surface-raised);color:var(--text);}
 .surplus-views .surplus-tab[aria-selected="true"] {background:var(--purple);border-color:var(--purple);color:#fff;font-weight:700;box-shadow:0 2px 0 var(--purple);}
 .surplus-views .surplus-tab:focus-visible {outline:3px solid var(--focus-ring,#1976d2);outline-offset:2px;z-index:1;}
-.surplus-filters .button {font-size:13px;line-height:1.4;padding:6px 12px;min-height:32px;}
+.surplus-filters .button {font-size:14px;line-height:1.4;padding:6px 12px;min-height:32px;}
 .surplus-page h2 {font-size:20px;line-height:1.4;margin:0 0 12px;}
 #transfers-panel {margin-top:0;}
 #transfers-panel > p {font-size:13px;line-height:1.4;margin:0 0 16px;}
@@ -834,26 +877,35 @@ async function upload(kind: string, event: Event) {
     gap: 12px;
     margin: 12px 0 8px;
 }
-.surplus-filters label {margin:0;gap:4px;font-size:13px;}
+.surplus-filters label {margin:0;gap:4px;font-size:14px;}
 .surplus-filters input {width:240px;}
-.surplus-filters :is(input,select) {padding:6px 10px;font-size:13px;line-height:1.4;min-height:32px;box-sizing:border-box;}
+.surplus-filters :is(input,select) {padding:6px 10px;font-size:14px;line-height:1.4;min-height:32px;box-sizing:border-box;}
+#inventory-panel > p {font-size:14px;line-height:1.45;}
 .inventory-table-wrap {max-width:var(--surplus-content-width);}
-.inventory-table {width:auto;min-width:880px;font-size:13px;}
+.inventory-archive {max-width:var(--surplus-content-width);margin-top:16px;padding:12px 14px;border:1px solid var(--line);border-radius:8px;}
+.inventory-archive > summary {font-size:14px;font-weight:650;cursor:pointer;}
+.inventory-archive > p {font-size:13px;line-height:1.4;margin:10px 0;}
+.inventory-archive-row {display:grid;grid-template-columns:minmax(220px,2fr) minmax(130px,1fr) minmax(80px,.5fr) auto;align-items:center;gap:14px;padding:10px 0;border-top:1px solid var(--line);font-size:14px;}
+.inventory-archive-row > div:first-child {display:grid;gap:3px;}
+.inventory-archive-row small,.inventory-archive-row > div > span {font-size:13px;color:var(--muted);}
+.inventory-archive-actions {display:flex;gap:12px;white-space:nowrap;}
+@media(max-width:650px){.inventory-archive-row{grid-template-columns:1fr 1fr;}.inventory-archive-row > div:first-child{grid-column:1/-1;}}
+.inventory-table {width:auto;min-width:880px;font-size:14px;}
 .inventory-table :is(th,td) {padding:10px 12px;vertical-align:middle;line-height:1.4;}
-.inventory-table th {font-size:12px;white-space:nowrap;line-height:1.3;}
+.inventory-table th {font-size:14px;white-space:nowrap;line-height:1.3;}
 .inventory-table th abbr {text-decoration:none;}
 .inventory-table .inventory-group-row td {background:var(--surface-raised);font-weight:600;}
 .inventory-table .inventory-lot-detail td:first-child {padding-left:28px;}
-.inventory-table .inventory-lot-label {font-size:12px;color:var(--muted);}
+.inventory-table .inventory-lot-label {font-size:13px;color:var(--muted);}
 .inventory-table :is(th,td):nth-child(n+3):nth-child(-n+7) {text-align:right;font-variant-numeric:tabular-nums;}
 .inventory-table .inventory-product {min-width:230px;max-width:310px;}
 .inventory-product strong {display:block;font-size:14px;line-height:1.4;}
-.inventory-product span {display:block;color:var(--muted);font-size:12px;line-height:1.4;margin-top:4px;}
+.inventory-product span {display:block;color:var(--muted);font-size:13px;line-height:1.4;margin-top:4px;}
 .inventory-available {font-weight:700;}
 .inventory-table .inventory-expiration {font-size:14px;font-weight:700;white-space:nowrap;}
-.inventory-table .inventory-quantity {font-size:15px;font-weight:700;font-variant-numeric:tabular-nums;}
+.inventory-table .inventory-quantity {font-size:14px;font-weight:700;font-variant-numeric:tabular-nums;}
 .inventory-table .row-actions {min-width:165px;white-space:nowrap;}
-.inventory-table .row-actions .button {margin:0 8px 0 0;padding:6px 10px;font-size:13px;line-height:1.4;min-height:32px;}
+.inventory-table .row-actions .button {margin:0 8px 0 0;padding:6px 10px;font-size:14px;line-height:1.4;min-height:32px;}
 .inventory-table .inventory-actions {display:inline-block;margin:0;position:relative;font-size:13px;line-height:1.4;}
 .inventory-table .inventory-actions > div {min-width:150px;padding:10px 0 2px;white-space:normal;}
 .inventory-edit-actions {display:grid;justify-items:start;gap:10px;}

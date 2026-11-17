@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import {unitLabel} from '~/../shared/quantityLabels';
 import {formatClinic,type ClinicAddress} from '~/../shared/shipping';
 import type {SurplusTransfer} from '~/../shared/surplus';
 import {formatEtaDate as formatDisplayDate} from '~/../shared/requestPresentation';
@@ -17,16 +18,16 @@ const pickup=computed(()=>{try{return JSON.parse(props.transfer.source_clinic_ad
 async function ship(){busy.value=true;error.value='';try{await $fetch(`/api/request-transfers/${props.transfer.id}/ship`,{method:'POST',headers:{'x-demo-user':identity.value}});emit('updated');}catch(e){error.value=(e as any).data?.statusMessage??'Pickup could not be confirmed.';}finally{busy.value=false;}}
 </script>
 <template>
- <details :id="`transfer-${transfer.id}`" class="transfer-shipment" :open="String(route.query.transfer??'')===transfer.id">
+ <details :id="`transfer-${transfer.id}`" class="transfer-shipment" :class="{'transfer-cancelled':transfer.status==='cancelled'}" :open="String(route.query.transfer??'')===transfer.id">
   <summary class="transfer-collapsed-summary">
    <span class="transfer-collapsed-title"><strong>{{formulaLabel}}<template v-if="transfer.flavor"> · {{transfer.flavor}}</template></strong><small>{{sourceName}} → {{destinationName}}</small></span>
    <span class="transfer-status" :class="{'shipment-transit-status':transfer.status==='shipped'}">{{transfer.status==='reserved'?'Transfer Requested':transfer.status==='shipped'?'In Transit':transfer.status==='received'?'Confirmed Receipt':transfer.status==='cancelled'?'Cancelled':'Blocked — expired'}}</span>
-   <span class="transfer-collapsed-quantity">{{transfer.quantity}} unit(s)</span>
+   <span class="transfer-collapsed-quantity">{{transfer.quantity}} {{unitLabel(transfer.quantity)}}</span>
   </summary>
   <div class="transfer-expanded-content">
   <p v-if="transfer.request_id" class="transfer-request-reference">Request #{{transfer.request_id}}</p>
   <div class="transfer-details">
-   <div><span class="transfer-label">Unit(s)</span><strong>{{transfer.quantity}}</strong></div>
+   <div><span class="transfer-label">Units</span><strong>{{transfer.quantity}}</strong></div>
    <div><span class="transfer-label">Expiration Date</span><span>{{formatDisplayDate(transfer.expiration_date)}}</span></div>
    <div><span class="transfer-label">ETA</span><span>{{visibleEta ? formatDisplayDate(visibleEta) : 'Pending GSO pickup'}}</span></div>
    <div v-if="transfer.stock_confirmed_at"><span class="transfer-label">Carrier</span><span>GSO</span></div>
@@ -62,6 +63,8 @@ async function ship(){busy.value=true;error.value='';try{await $fetch(`/api/requ
 <style scoped>
 .transfer-shipment:target {outline:2px solid var(--purple);outline-offset:3px;scroll-margin:24px;}
 .transfer-shipment {box-sizing:border-box;display:block;width:100%;max-width:var(--surplus-content-width,1120px);border:1px solid var(--line);padding:0 16px;border-radius:8px;margin:8px 0;font-size:13px;line-height:1.4;}
+.transfer-shipment.transfer-cancelled {background:var(--surface-raised);border-color:var(--line);color:var(--muted);}
+.transfer-shipment.transfer-cancelled .transfer-status {display:inline-flex;align-items:center;padding:2px 8px;border:1px solid var(--line);border-radius:12px;background:var(--surface-raised);color:var(--muted);font-size:12px;font-weight:600;white-space:nowrap;}
 .transfer-collapsed-summary {display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px 16px;padding:12px 0;cursor:pointer;list-style:none;}
 .transfer-collapsed-summary::-webkit-details-marker {display:none;}
 .transfer-collapsed-summary::after {content:'Details';color:var(--muted);font-size:12px;}
