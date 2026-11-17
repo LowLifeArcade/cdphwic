@@ -91,6 +91,8 @@ describe('request operations UI', () => {
         expect(drawer).toContain('Confirm Denial');
         expect(drawer).not.toContain('window.confirm');
         expect(drawer).toContain('Review Decision');
+        expect(drawer).toContain("canStaffEdit || request.status==='denied' || identity==='agency'");
+        expect(drawer).toContain('Awaiting CDPH/WIC Decision');
         expect(drawer).toContain('Reason for Denial');
         expect(drawer).toContain('Edit review decision');
         expect(drawer).not.toContain('Undo approval or denial');

@@ -16,9 +16,10 @@ import { reviewSubmittedRequest, submittedRequest, ensureSubmittedRequest, reque
 import { getSessionFromHeaders } from '../../utils/session';
 import { canSeeAgency, isReviewer } from '../../../shared/surplus';
 import { submissionFields } from '../../../shared/requestEditing';
+import {issueRequestLocalSurplus,syncRequestLocalSurplus} from '../../utils/requestLocalSurplus';
 export default defineEventHandler(async (event) => {
     const id = Number(getRouterParam(event, 'id'));
-    const updates = await readBody<Partial<RequestRecord> & {reviewDecision?:import('../../utils/submittedRequests').ReviewDecisionCommand;editMoreInfoMessage?:import('../../utils/submittedRequests').MoreInfoMessageEdit;reopenMoreInfo?:boolean;resolveMoreInfo?:boolean;moreInfoReply?:import('../../utils/submittedRequests').MoreInfoReply;moreInfoNote?:import('../../utils/submittedRequests').MoreInfoNoteCommand;requestMoreInfo?:{notes:string};confirmShipmentReceipt?:SimpleShipmentReceiptCommand;shipmentPolicy?:ShipmentPolicyCommand;reserveTransferIndex?:number;deleteShipmentIndex?:number;sendEtaShipmentIndex?:number;confirmShipmentReceipts?:ShipmentReceiptSelection[];shipmentIssue?:ShipmentIssueCommand;shipmentCases?:ShipmentCaseCommand}>(event);
+    const updates = await readBody<Partial<RequestRecord> & {recordLocalSurplusIssue?:{formulaIndex:number;month:string;units:number};reviewDecision?:import('../../utils/submittedRequests').ReviewDecisionCommand;editMoreInfoMessage?:import('../../utils/submittedRequests').MoreInfoMessageEdit;reopenMoreInfo?:boolean;resolveMoreInfo?:boolean;moreInfoReply?:import('../../utils/submittedRequests').MoreInfoReply;moreInfoNote?:import('../../utils/submittedRequests').MoreInfoNoteCommand;requestMoreInfo?:{notes:string};confirmShipmentReceipt?:SimpleShipmentReceiptCommand;shipmentPolicy?:ShipmentPolicyCommand;reserveTransferIndex?:number;deleteShipmentIndex?:number;sendEtaShipmentIndex?:number;confirmShipmentReceipts?:ShipmentReceiptSelection[];shipmentIssue?:ShipmentIssueCommand;shipmentCases?:ShipmentCaseCommand}>(event);
     const user = getSessionFromHeaders({ 'x-demo-user': getHeader(event, 'x-demo-user') });
     const env = event.context.cloudflare?.env as Partial<Env> | undefined;
     if (!env?.CDPHWIC) throw createError({ statusCode: 503, statusMessage: 'Request database unavailable.' });
@@ -27,6 +28,15 @@ export default defineEventHandler(async (event) => {
     if (!raw || !canSeeAgency(user, raw.agencyId))
         throw createError({ statusCode: 404, statusMessage: 'Request not found.' });
     const previous = saved ?? (await ensureSubmittedRequest(env.CDPHWIC, raw));
+    if(updates.recordLocalSurplusIssue){
+        if(updates.revision!==(previous.revision??0))throw createError({statusCode:409,statusMessage:'Request changed. Reload before recording the monthly issue.'});
+        if(previous.status==='denied')throw createError({statusCode:409,statusMessage:'Reopen this request before recording a surplus issue.'});
+        const command=updates.recordLocalSurplusIssue;
+        const issued=await issueRequestLocalSurplus(env.CDPHWIC,previous,command.formulaIndex,command.month,command.units,user);
+        const authorizations=(previous.formulaAuthorizations??[]).map((row,index)=>index===command.formulaIndex?{...row,localSurplusIssued:issued}:row);
+        const request=await updateSubmittedRequest(env.CDPHWIC,previous,{formulaAuthorizations:authorizations},false,undefined,user.id);
+        updateRequestRecord(id,request);return {request};
+    }
     if(updates.reviewDecision!==undefined){const request=await reviewSubmittedRequest(env.CDPHWIC,previous,user,updates.reviewDecision,updates.revision!);updateRequestRecord(id,request);return {request};}
     if(previous.status==='denied')throw createError({statusCode:409,statusMessage:'Reopen this request before making changes.'});
     if(!isReviewer(user) && (updates.approved!==undefined || (updates.status!==undefined && updates.status!=='complete')))throw createError({statusCode:403,statusMessage:'Only CDPH/WIC or Admin can make review decisions.'});
@@ -111,10 +121,12 @@ export default defineEventHandler(async (event) => {
     }
     if(updates.formulaAuthorizations!==undefined){
         if(!isReviewer(user))throw createError({statusCode:403,statusMessage:'Only CDPH/WIC or Admin can edit issuance.'});
+        if(updates.revision!==(previous.revision??0))throw createError({statusCode:409,statusMessage:'Request changed. Reload before assigning Local Agency surplus.'});
         const errors=validateFormulaAuthorizations(updates.formulaAuthorizations);if(errors.length)throw createError({statusCode:400,statusMessage:errors[0]});
         updates.status='in_progress';
         updates.specialOrder=previous.formulaOrders?.length || updates.formulaOrders?.length
             ? allFormulasSpecialOrder({...previous,...updates}) : false;
+        await syncRequestLocalSurplus(env.CDPHWIC,previous,updates.formulaAuthorizations,user);
     }
     if (!isReviewer(user) && (updates.shipmentDrafts!==undefined || updates.shipments!==undefined || updates.approvedCases!==undefined))
         throw createError({statusCode:403,statusMessage:'Only CDPH/WIC or Admin can edit shipment plans or Approved Cases.'});
@@ -128,7 +140,7 @@ export default defineEventHandler(async (event) => {
             statusCode: 409,
             statusMessage: 'Use Edit submission to update the complete form before Admin/FPU opens it.',
         });
-    const {reviewDecision:_reviewDecision,approvedByName:_approvedByName,denialReason:_denialReason,editMoreInfoMessage:_editMoreInfoMessage,reopenMoreInfo:_reopenMoreInfo,resolveMoreInfo:_resolveMoreInfo,moreInfoReply:_moreInfoReply,moreInfoNote:_moreInfoNote,moreInfoRequests:_moreInfo,authorizationVersions:_authorizationVersions,requestMoreInfo:_requestMoreInfo, confirmShipmentReceipt:_simpleReceipt, reserveTransferIndex:_reserveTransferIndex, deletedShipments:_deletedShipments, deleteShipmentIndex:_deleteShipmentIndex, prescriptionAttachment, openedAt, revision, shipmentPolicy:_policy, sendEtaShipmentIndex, confirmShipmentReceipts: _receiptSelection, shipmentIssue: _shipmentIssue, shipmentCases: _shipmentCases, originalApprovedCases: _originalApproval, ...safe } = updates;
+    const {reviewDecision:_reviewDecision,approvedByName:_approvedByName,denialReason:_denialReason,editMoreInfoMessage:_editMoreInfoMessage,reopenMoreInfo:_reopenMoreInfo,resolveMoreInfo:_resolveMoreInfo,moreInfoReply:_moreInfoReply,moreInfoNote:_moreInfoNote,moreInfoRequests:_moreInfo,authorizationVersions:_authorizationVersions,requestMoreInfo:_requestMoreInfo,recordLocalSurplusIssue:_recordLocalSurplusIssue, confirmShipmentReceipt:_simpleReceipt, reserveTransferIndex:_reserveTransferIndex, deletedShipments:_deletedShipments, deleteShipmentIndex:_deleteShipmentIndex, prescriptionAttachment, openedAt, revision, shipmentPolicy:_policy, sendEtaShipmentIndex, confirmShipmentReceipts: _receiptSelection, shipmentIssue:_shipmentIssue, shipmentCases:_shipmentCases, originalApprovedCases:_originalApproval, ...safe } = updates;
     if (!isReviewer(user) && (safe.receivedStatus==='received' || safe.status==='complete') && !requestShipments(previous).every(row=>shipmentFinished(previous,row)))
         throw createError({statusCode:409,statusMessage:'Select individual shipments to confirm receipt.'});
     if (safe.shipments) safe.shipments=safe.shipments.map(({receivedAt,receivedBy,receiptConfirmed,dispatched,receivedCases,receivedUnits,damagedUnits,dispositions,receiptCountHistory,replacedAt,replacedBy,replacementClosureNote,issue,deletedIssues,distributorPolicy,policyHistory,replacementBasis,replacementIssueId,...shipment})=>shipment);

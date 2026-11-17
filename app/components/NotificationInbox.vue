@@ -13,8 +13,13 @@ let noticeTimer:ReturnType<typeof setInterval>|undefined;
 function refreshVisibleNotices(){if(!document.hidden)void refresh();}
 onMounted(()=>{noticeTimer=setInterval(refreshVisibleNotices,15000);window.addEventListener('focus',refreshVisibleNotices);window.addEventListener('request-messages-changed',refreshVisibleNotices);});
 onBeforeUnmount(()=>{if(noticeTimer)clearInterval(noticeTimer);window.removeEventListener('focus',refreshVisibleNotices);window.removeEventListener('request-messages-changed',refreshVisibleNotices);});
+function closeOnEscape(event:KeyboardEvent){if(event.key==='Escape')open.value=false;}
+onMounted(()=>window.addEventListener('keydown',closeOnEscape));
+onBeforeUnmount(()=>window.removeEventListener('keydown',closeOnEscape));
 const unread = computed(() => data.value?.notices.filter((n) => !n.is_read).length ?? 0);
 function openMessage(requestId:number){open.value=false;window.dispatchEvent(new CustomEvent('open-request-message',{detail:requestId}));}
+function notificationTitle(n:any){const formula=String(n.formula_label??'').replaceAll(' · ',' ');return [n.participant_name,formula].filter(Boolean).join(' | ')||formula||'Formula Surplus';}
+function notificationNature(n:any){return ({'request-info':'Request More Info','request-response':'Response to Request More Info','request-eta':'Shipment Update','transfer-stock':'Transfer Request','transfer-ready':'Transfer Labels Ready','transfer-confirmed':'Stock Confirmed','transfer-pickup':'Transfer Pickup',forecast:'Anticipated Surplus',donation:'Donation Reminder',destruction:'Expired Stock'} as Record<string,string>)[n.kind]??'Inventory Update';}
 async function toggleNotices(){
  if(open.value){open.value=false;return;}
  if(noticeLoading.value)return;
@@ -47,6 +52,7 @@ async function download(kind: string) {
 }
 </script>
 <template>
+    <div v-if="open" class="notice-backdrop" aria-hidden="true" @click="open=false"></div>
     <div class="notice-wrap">
         <button
             class="icon-button notice-trigger"
@@ -60,6 +66,8 @@ async function download(kind: string) {
         <section
             v-if="open"
             class="notice-panel"
+            aria-label="Notifications"
+            @click.stop
         >
             <h3>Notifications</h3>
             <p
@@ -75,8 +83,8 @@ async function download(kind: string) {
                 :key="n.id"
                 :class="{'notice-unread':!n.is_read}"
             >
-                <span v-if="!n.is_read" class="notice-new">New</span>
-                <strong>{{
+                <strong v-if="['request-info','request-eta','request-response','transfer-pickup','transfer-confirmed','transfer-stock','transfer-ready'].includes(n.kind)" class="notice-title">{{notificationTitle(n)}}</strong>
+                <strong v-else>{{
                     n.title
                         ? n.title
                         : n.kind === 'forecast'
@@ -85,17 +93,19 @@ async function download(kind: string) {
                           ? 'Formula available for donation'
                           : 'Expired formula — destruction required'
                 }}</strong>
+                <p v-if="['request-info','request-eta','request-response','transfer-pickup','transfer-confirmed','transfer-stock','transfer-ready'].includes(n.kind)" class="notice-kind">{{notificationNature(n)}}</p>
                 <template v-if="n.kind==='request-info' || n.kind==='request-eta' || n.kind==='request-response' || n.kind==='transfer-pickup' || n.kind==='transfer-confirmed'">
-                    <p>Request #{{n.request_id}}</p><p class="request-notice-notes">{{n.notes}}</p>
+                    <p v-if="n.kind==='request-info' || n.kind==='request-response'" class="request-notice-notes">{{n.notes}}</p>
+                    <p v-else-if="n.kind==='request-eta'" class="notice-summary">Shipment details and authorization are ready.</p>
+                    <p v-else-if="n.kind==='transfer-pickup'" class="notice-summary">The sending agency confirmed GSO pickup.</p>
+                    <p v-else class="notice-summary">The sending agency confirmed the reserved stock.</p>
                     <NuxtLink v-if="n.kind==='request-info'" class="button button-secondary" :to="{path:'/requests',query:{request:n.request_id},hash:`#more-info-${n.request_id}`}" @click="openMessage(n.request_id)">View Message</NuxtLink>
                     <NuxtLink v-else-if="n.kind==='transfer-pickup' || n.kind==='transfer-confirmed'" class="button button-secondary" :to="{path:'/requests',query:{request:n.request_id},hash:`#shipments-${n.request_id}`}" @click="open=false">View Shipment</NuxtLink>
                     <NuxtLink v-else-if="n.kind==='request-response'" class="button button-secondary" :to="{path:'/requests',query:{request:n.request_id},hash:`#more-info-${n.request_id}`}" @click="openMessage(n.request_id)">View Message</NuxtLink>
                     <template v-else><NuxtLink class="button button-secondary" :to="{path:'/requests',query:{request:n.request_id}}" @click="open=false">View Shipment</NuxtLink><a class="button button-secondary" :href="`/api/requests/${n.request_id}/authorization-form.pdf?version=${n.version_id}`" target="_blank" rel="noopener">Print / Download Authorization</a></template>
                 </template>
                 <template v-else-if="n.kind==='transfer-stock' || n.kind==='transfer-ready'">
-                    <p>{{n.source_clinic_name || 'Clinic not specified'}}</p>
-                    <p>{{n.formula_name}} · {{formulaFormLabel(n.form)}}<template v-if="n.flavor"> · {{n.flavor}}</template><br />{{n.quantity}} reserved unit(s) · Request #{{n.request_id}}</p>
-                    <p>{{n.notes}}</p>
+                    <p class="notice-summary">{{n.quantity}} reserved unit(s) · {{n.source_clinic_name || 'Clinic not specified'}}</p>
                     <NuxtLink class="button button-secondary" :to="{path:'/surplus',query:{transfer:n.transfer_id},hash:`#transfer-${n.transfer_id}`}" @click="open=false">{{n.kind==='transfer-stock'?'Confirm Product Availability':'View Labels & Arrange Pickup'}}</NuxtLink>
                 </template>
                 <p v-else-if="n.kind === 'forecast'">
@@ -139,6 +149,7 @@ async function download(kind: string) {
 </template>
 <style scoped>
 .notice-trigger {position:relative;display:flex;width:100%;height:40px;gap:10px;padding:0 12px;border:1px solid var(--line);background:var(--surface);color:var(--text);}
+.notice-backdrop {position:fixed;inset:0;z-index:69;background:transparent;}
 .notice-trigger-label {font-size:14px;}
 .notice-count {position:absolute;top:-5px;right:-8px;min-width:18px;height:18px;padding:0 4px;display:grid;place-items:center;border-radius:10px;background:#002595;color:#fff;font-size:11px;font-weight:700;border:2px solid var(--surface);}
 .notice-new {display:inline-block;margin-right:8px;padding:2px 6px;border-radius:4px;background:#002595;color:#fff;font-size:11px;font-weight:600;}
@@ -165,15 +176,18 @@ async function download(kind: string) {
     box-shadow: 0 8px 32px #0003;
 }
 .notice-panel article {
-    padding: 16px 0;
+    padding: 12px 0;
     border-top: 1px solid var(--border, #6a7073);
 }
 .notice-panel p {
-    font-size: 14px;
+    margin:6px 0;
+    font-size: 13px;
 }
+.notice-panel .notice-context {font-weight:650;}
+.notice-panel .notice-summary {color:var(--muted);}
 .notice-panel .button {
     margin: 4px;
 }
 </style>
 
-<style scoped>.request-notice-notes{white-space:pre-wrap;overflow-wrap:anywhere;}</style>
+<style scoped>.request-notice-notes{white-space:pre-wrap;overflow-wrap:anywhere;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;}</style>

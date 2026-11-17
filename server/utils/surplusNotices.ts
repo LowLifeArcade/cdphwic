@@ -2,6 +2,7 @@ import {requestNotices} from './requestNotices';
 import { localDate, daysRemaining, isReviewer } from '../../shared/surplus';
 import type { SessionUser } from '../../shared/domain';
 import { expireSurplusLots } from './surplusStore';
+import {shipmentFormulaLabel} from '../../shared/shipmentFormulas';
 export async function refreshSurplusNotices(db: D1Database, today = localDate()) {
     await expireSurplusLots(db, today);
     const lots = await db.prepare('SELECT * FROM surplus_lots WHERE on_hand>0 OR expired_units>0').all<any>();
@@ -42,9 +43,9 @@ export async function listSurplusNotices(db: D1Database, user: SessionUser) {
         .bind(user.id, isReviewer(user) ? 1 : 0, user.agencyId ?? -1)
         .all<any>();
     // Each handoff has its own read identity; reservation notices are immediate.
-    const transfers=await db.prepare(`SELECT t.*,t.id AS transfer_id,t.source_agency_id AS agency_id,
-        CASE WHEN EXISTS(SELECT 1 FROM transfer_shipping_labels s WHERE s.transfer_id=t.id) THEN 1 ELSE 0 END AS has_labels
-        FROM surplus_transfers t JOIN surplus_lots l ON l.id=t.source_lot_id
+    const transfers=await db.prepare(`SELECT t.*,t.id AS transfer_id,t.source_agency_id AS agency_id,COALESCE(json_extract(sub.request_json,'$.participantName'),'') AS participant_name,
+        CASE WHEN EXISTS(SELECT 1 FROM transfer_shipping_labels labels WHERE labels.transfer_id=t.id) THEN 1 ELSE 0 END AS has_labels
+        FROM surplus_transfers t JOIN surplus_lots l ON l.id=t.source_lot_id LEFT JOIN surplus_submissions sub ON json_extract(sub.request_json,'$.id')=t.request_id
         WHERE t.request_id IS NOT NULL AND t.status='reserved' AND (?=1 OR t.source_agency_id=?)
         AND l.expiration_date>=? AND l.expired_units=0 ORDER BY t.rowid DESC`)
         .bind(isReviewer(user)?1:0,user.agencyId??-1,today).all<any>();
@@ -59,7 +60,7 @@ export async function listSurplusNotices(db: D1Database, user: SessionUser) {
         const title=kind==='transfer-stock'?'Reserved Formula — Confirm Product Availability'
             :kind==='transfer-confirmed'?'Agency Confirmed Stock — Provide Shipping Labels'
             :'Shipping Labels Ready — Arrange Pickup';
-        return [{...t,id,kind,title,notes:kind==='transfer-confirmed'
+        return [{...t,id,kind,title,formula_label:shipmentFormulaLabel({productName:t.formula_name,productForm:t.form}),notes:kind==='transfer-confirmed'
             ?`The sending Local Agency confirmed ${t.quantity} unit(s) of ${t.formula_name}. Provide shipping labels and send the shipping details.`
             :kind==='transfer-stock'?'Confirm that your agency physically has the reserved formula and quantity.'
             :'Download and print the labels provided by CDPH/WIC, arrange carrier pickup, then confirm pickup after collection.',is_read:seen.has(id)?1:0}];

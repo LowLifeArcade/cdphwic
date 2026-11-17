@@ -89,4 +89,12 @@ describe('new request doctor fields', () => {
         expect(requestForm).not.toContain('doctorSignature:');
         expect(requestForm).not.toContain('v-model="form.doctorSignature"');
     });
+
+    it('shows the requesting agency on-hand and available surplus for each requested formula', () => {
+        expect(requestForm).toContain("useFetch('/api/surplus'");
+        expect(requestForm).toContain('lot.agencyId===requestAgencyId.value');
+        expect(requestForm).toContain('On Hand at requesting agency:');
+        expect(requestForm).toContain('agencySurplusStock(entry).onHand');
+        expect(requestForm).toContain('agencySurplusStock(entry).available');
+    });
 });

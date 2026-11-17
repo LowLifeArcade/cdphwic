@@ -112,6 +112,7 @@ export interface SurplusTransfer {
     source_clinic_address?:string;
     stock_confirmed_at?:string;
     stock_confirmed_by?:number;
+    requested_label_count?:number;
     shipped_date?:string;
     received_date?:string;
     request_id?:number;

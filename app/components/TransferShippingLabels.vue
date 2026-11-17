@@ -4,8 +4,9 @@ const props=defineProps<{transferId:string;canUpload:boolean;allowUpload?:boolea
 const emit=defineEmits<{ready:[boolean]}>();
 const identity=useState<'admin'|'agency'|'internal'>('demo-identity',()=> 'admin');
 const endpoint=computed(()=>`/api/request-transfers/${props.transferId}/labels`);
-const {data,refresh,error:loadError}=await useFetch<{labels:TransferShippingLabel[]}>(endpoint,{headers:computed(()=>({'x-demo-user':identity.value})),server:false});
-watch(()=>data.value?.labels,labels=>emit('ready',!!labels?.length),{immediate:true});
+const {data,refresh,error:loadError}=await useFetch<{labels:TransferShippingLabel[];requestedLabelCount:number}>(endpoint,{headers:computed(()=>({'x-demo-user':identity.value})),server:false});
+const labelsComplete=computed(()=>!!data.value?.requestedLabelCount&&data.value.labels.length===data.value.requestedLabelCount);
+watch(labelsComplete,ready=>emit('ready',ready),{immediate:true});
 const busy=ref(false);const error=ref('');const message=ref('');
 let timer:ReturnType<typeof setInterval>|undefined;
 function refreshVisible(){if(!document.hidden)void refresh();}
@@ -13,6 +14,7 @@ onMounted(()=>{timer=setInterval(refreshVisible,60000);window.addEventListener('
 onBeforeUnmount(()=>{if(timer)clearInterval(timer);window.removeEventListener('focus',refreshVisible);});
 async function upload(event:Event){
  const input=event.target as HTMLInputElement;const files=Array.from(input.files??[]);if(!files.length)return;
+ const remaining=(data.value?.requestedLabelCount??0)-(data.value?.labels.length??0);if(files.length>remaining){error.value=`Select no more than ${remaining} remaining label(s).`;input.value='';return;}
  busy.value=true;error.value='';message.value='';let uploaded=0;
  try{for(const file of files){const body=new FormData();body.append('file',file);await $fetch(endpoint.value,{method:'POST',headers:{'x-demo-user':identity.value},body});uploaded++;}}
  catch(e){error.value=(e as {data?:{statusMessage?:string}}).data?.statusMessage??'Shipping labels could not all be uploaded.';}
@@ -31,7 +33,8 @@ async function openLabel(label:TransferShippingLabel,print:boolean){
 <template>
  <section class="transfer-labels" aria-label="Shipping Labels">
   <h4>Shipping Labels</h4>
-  <label v-if="canUpload && allowUpload!==false" class="field-label">Upload Shipping Labels<input type="file" multiple accept="application/pdf,image/png,image/jpeg" :disabled="busy || (data?.labels.length??0)>=10" @change="upload" /><small>PDF, PNG, or JPEG · Up to 10 files, 10 MB each</small></label>
+  <p v-if="data?.requestedLabelCount" class="muted-copy">{{data.labels.length}} of {{data.requestedLabelCount}} requested label(s) uploaded.</p>
+  <label v-if="canUpload && allowUpload!==false" class="field-label">Upload Shipping Labels<input type="file" multiple accept="application/pdf,image/png,image/jpeg" :disabled="busy || !data?.requestedLabelCount || labelsComplete" @change="upload" /><small>Upload {{data?.requestedLabelCount??'the requested number of'}} label(s) · PDF, PNG, or JPEG · 10 MB each</small></label>
   <ul v-if="data?.labels.length"><li v-for="label in data.labels" :key="label.id"><span>{{label.fileName}}</span><div class="label-actions"><button class="text-button" type="button" @click="openLabel(label,false)">Download</button><button class="text-button" type="button" @click="openLabel(label,true)">Open / Print</button></div></li></ul>
   <p v-else-if="!loadError" class="muted-copy">Shipping labels have not been uploaded.</p>
   <p v-if="loadError || error" class="form-error" role="alert">{{error || 'Shipping labels could not be loaded. Please refresh.'}}</p>

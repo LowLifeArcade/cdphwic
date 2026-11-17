@@ -120,6 +120,7 @@ export interface RequestRecord {
         unitsToTransfer?:number;
         transferEtaSentAt?:string;
         transferStockConfirmedAt?:string;
+        transferLabelCount?:number;
         transferQuantity?:number;
         transferFormulaName?:string;
         transferForm?:string;

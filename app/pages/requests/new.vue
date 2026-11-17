@@ -10,6 +10,7 @@ import { blankFormula, formulaEntryName, getFormulaFieldErrors, validateOtherFor
 import { diagnosisCatalog, findDiagnosis, validateDiagnoses } from '~/../shared/diagnosisCatalog';
 import { addDiagnosis, validateAgencyFields, providerSignatureMessage } from '~/../shared/newRequestFields';
 import { formatPhoneNumber, normalizePhoneNumber } from '~/../shared/phone';
+import {availableUnits,normalizeVariantText} from '~/../shared/surplus';
 
 const router = useRouter();
 const route = useRoute();
@@ -130,6 +131,7 @@ const products = computed(() => productData.value?.products ?? []);
 const {data:agencyOptions}=await useFetch('/api/agencies');
 const {data:shippingProfile}=await useFetch('/api/profile',{headers:computed(()=>({'x-demo-user':identity.value}))});
 const requestAgencyId=ref(shippingProfile.value?.user?.agencyId??10);
+const {data:surplusInventory,error:surplusInventoryError,status:surplusInventoryStatus}=await useFetch('/api/surplus',{headers:computed(()=>({'x-demo-user':identity.value})),server:false});
 const {data:storageClinics,error:storageClinicError,status:storageClinicStatus}=await useFetch<{clinics:ClinicRecord[]}>(()=>`/api/agencies/${requestAgencyId.value}/clinics`,{headers:computed(()=>({'x-demo-user':identity.value})),server:false});
 const enteredShipping=ref<RequestShipping>({...blankClinicAddress()});
 const selectedAgencyMemberId=ref<number|''>(shippingProfile.value?.user?.agencyMemberId??agencyOptions.value?.members.find(m=>m.agencyId===requestAgencyId.value)?.id??'');
@@ -201,6 +203,18 @@ function initializeSurplus(entry: typeof surplusEntries.value[number]) {
     const match = [form, ...additionalFormulas.value].find((formula) => formulaEntryName(formula) === entry.productName);
     entry.productForm = match?.productForm || defaultFormulaForm(entry.productName);
     entry.flavor = findFormula(entry.productName)?.hasFlavor ? match?.formulaFlavor ?? '' : '';
+}
+function agencySurplusStock(entry:typeof surplusEntries.value[number]){
+    const lots=(surplusInventory.value?.lots??[]).filter((lot:any)=>
+        lot.agencyId===requestAgencyId.value&&
+        normalizeVariantText(lot.formulaName)===normalizeVariantText(entry.productName)&&
+        lot.form===entry.productForm&&
+        normalizeVariantText(lot.flavor??'')===normalizeVariantText(entry.flavor??''),
+    );
+    return {
+        onHand:lots.reduce((total:number,lot:any)=>total+Number(lot.onHand??0),0),
+        available:lots.reduce((total:number,lot:any)=>total+availableUnits(lot),0),
+    };
 }
 function addSurplus() {
     const entry: typeof surplusEntries.value[number] = { productName: requestedFormulaNames.value[0] ?? '', productForm: '', flavor: '', units: '', expirationDate: '', clinicId: shipping.value.clinicId };
@@ -1166,8 +1180,13 @@ async function submitRequest() {
         <section class="form-section">
             <div class="panel-heading"><h2>Surplus Formula</h2></div>
             <p>Enter any surplus the local agency has of the formula(s) requested.</p>
+            <p v-if="surplusInventoryStatus==='pending'" class="surplus-stock-note" role="status">Checking current inventory for the requesting local agency…</p>
+            <p v-else-if="surplusInventoryError" class="surplus-stock-note" role="status">Current inventory could not be loaded. You can still enter the local agency’s surplus below.</p>
             <p v-if="storageClinicError" role="alert">Storage clinics could not be loaded. Try again before choosing a clinic.</p>
             <div v-for="(entry, index) in surplusEntries" :key="index" class="form-grid surplus-form-row">
+                <p v-if="entry.productName && entry.productForm && surplusInventory" class="surplus-stock-note">
+                    On Hand at requesting agency: {{agencySurplusStock(entry).onHand}} unit(s) · Available: {{agencySurplusStock(entry).available}} unit(s)
+                </p>
                 <div class="form-field">
                     <label :for="`surplus-formula-${index}`">Formula Name</label>
                     <select :id="`surplus-formula-${index}`" v-model="entry.productName" class="form-input" required @change="initializeSurplus(entry)">

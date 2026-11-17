@@ -21,13 +21,22 @@ it('records physical stock confirmation only from the sending agency without ded
  await expect(confirmRequestTransferStock(f.db,id,f.admin)).rejects.toMatchObject({statusCode:403});
  await expect(confirmRequestTransferStock(f.db,id,getDemoUser('agency'))).rejects.toMatchObject({statusCode:404});
  const sender={...getDemoUser('agency'),agencyId:11};
- const result=await confirmRequestTransferStock(f.db,id,sender);
+ await expect(confirmRequestTransferStock(f.db,id,sender,0)).rejects.toMatchObject({statusCode:400});
+ const result=await confirmRequestTransferStock(f.db,id,sender,1);
  expect(result.transfer.stock_confirmed_at).toBeTruthy();expect(result.request.shipments![0]!.transferStockConfirmedAt).toBeTruthy();
- const repeated=await confirmRequestTransferStock(f.db,id,sender);expect(repeated.transfer.stock_confirmed_at).toBe(result.transfer.stock_confirmed_at);
+ expect(result.request.authorizationVersions).toBeUndefined();
+ const repeated=await confirmRequestTransferStock(f.db,id,sender,1);expect(repeated.transfer.stock_confirmed_at).toBe(result.transfer.stock_confirmed_at);
  expect(f.sqlite.prepare('SELECT on_hand,reserved FROM surplus_lots WHERE id=?').get(f.lot.id)).toMatchObject({on_hand:48,reserved:12});
  const {listSurplusNotices}=await import('../server/utils/surplusNotices');
  expect((await listSurplusNotices(f.db,sender)).some(n=>n.kind==='transfer-stock')).toBe(false);
- expect((await listSurplusNotices(f.db,f.admin)).filter(n=>n.kind==='transfer-confirmed')).toHaveLength(1);
+ expect((await listSurplusNotices(f.db,f.admin)).filter(n=>n.kind==='transfer-confirmed')).toMatchObject([{participant_name:'Private participant'}]);
+});
+it('records the number of shipping labels requested by the sending agency',async()=>{
+ const f=await fixture();const reserved=await authorizeRequestTransfer(f.db,f.request,[f.row],0,f.admin);const id=reserved.shipments![0]!.transferId!;
+ const sender={...getDemoUser('agency'),agencyId:11};
+ const result=await confirmRequestTransferStock(f.db,id,sender,4);
+ expect(result.transfer.requested_label_count).toBe(4);
+ expect(result.request.shipments![0]!.transferLabelCount).toBe(4);
 });
 it('gives shipping readiness a new unread notice after the stock notice is read',async()=>{
  const {listSurplusNotices}=await import('../server/utils/surplusNotices');const f=await fixture();
@@ -49,17 +58,17 @@ it('requires confirmed stock and labels before CDPH/WIC publishes transfer shipp
  const reserved=await authorizeRequestTransfer(f.db,f.request,[f.row],0,f.admin);const id=reserved.shipments![0]!.transferId!;
  const input={eta:'2026-11-10',carrier:'gso' as const,trackingNumbers:['READY']};
  await expect(saveRequestTransferEta(f.db,id,f.admin,input,reserved.revision!)).rejects.toThrow('confirm');
- const result=await confirmRequestTransferStock(f.db,id,{...getDemoUser('agency'),agencyId:11});
+ const result=await confirmRequestTransferStock(f.db,id,{...getDemoUser('agency'),agencyId:11},1);
  await expect(saveRequestTransferEta(f.db,id,f.admin,input,result.request.revision!)).rejects.toThrow('label');
 });
 it('rejects stock confirmation for expired or cancelled transfers',async()=>{
  const {confirmRequestTransferStock}=await import('../server/utils/requestTransfers');const f=await fixture();
  const reserved=await authorizeRequestTransfer(f.db,f.request,[f.row],0,f.admin);const id=reserved.shipments![0]!.transferId!;
  f.sqlite.prepare("UPDATE surplus_lots SET expiration_date='2000-01-01' WHERE id=?").run(f.lot.id);
- await expect(confirmRequestTransferStock(f.db,id,{...getDemoUser('agency'),agencyId:11})).rejects.toMatchObject({statusCode:409});
+ await expect(confirmRequestTransferStock(f.db,id,{...getDemoUser('agency'),agencyId:11},1)).rejects.toMatchObject({statusCode:409});
  f.sqlite.prepare("UPDATE surplus_lots SET expiration_date='2027-06-01' WHERE id=?").run(f.lot.id);
  const {deleteSubmittedShipment}=await import('../server/utils/submittedRequests');await deleteSubmittedShipment(f.db,reserved,0,f.admin.id);
- await expect(confirmRequestTransferStock(f.db,id,{...getDemoUser('agency'),agencyId:11})).rejects.toMatchObject({statusCode:409});
+ await expect(confirmRequestTransferStock(f.db,id,{...getDemoUser('agency'),agencyId:11},1)).rejects.toMatchObject({statusCode:409});
 });
 async function fixture(){
  const {db,sqlite}=surplusDb();const admin=getDemoUser('admin');
@@ -70,7 +79,7 @@ async function fixture(){
  return {db,sqlite,admin,lot,request,row};
 }
 async function prepareTransfer(db:D1Database,id:string,sender:ReturnType<typeof getDemoUser>){
- const confirmed=await confirmRequestTransferStock(db,id,sender);
+ const confirmed=await confirmRequestTransferStock(db,id,sender,1);
  const {storeTransferLabel}=await import('../server/utils/transferShippingLabels');
  const bucket={put:async()=>({}),delete:async()=>{}} as unknown as R2Bucket;
  if(!await db.prepare('SELECT id FROM transfer_shipping_labels WHERE transfer_id=?').bind(id).first())await storeTransferLabel(db,bucket,'test',getDemoUser('admin'),id,{filename:'label.pdf',type:'application/pdf',data:new TextEncoder().encode('%PDF-1.7 synthetic')});
@@ -89,6 +98,9 @@ it('reserves, ships and confirms against one request without creating destinatio
  const sender={...getDemoUser('agency'),agencyId:11};
  const shipped=await dispatchTransfer(f.db,id,sender,{eta:'2026-11-10',carrier:'ups',trackingNumbers:['TRANSFER-A']});
  expect(shipped.request.shipments![0]!.etaSentAt).toBeTruthy();
+ expect(shipped.request.authorizationVersions).toHaveLength(1);
+ const requestNotices=await (await import('../server/utils/requestNotices')).requestNotices(f.db,{...getDemoUser('agency'),agencyId:10});
+ expect(requestNotices.find(notice=>notice.kind==='request-eta')).toMatchObject({participant_name:'Private participant'});
  expect(f.sqlite.prepare('SELECT reserved,on_hand FROM surplus_lots WHERE id=?').get(f.lot.id)).toMatchObject({reserved:0,on_hand:36});
  const row=shipped.request.shipments![0]!;
  const received=await updateSubmittedShipmentReceipt(f.db,shipped.request,[{index:0,key:shipmentReceiptKey(row),expectedReceipt:receiptQuantityKey(row),receivedCases:1,expectedIssue:'null',issueNotes:'One case missing'}],100);

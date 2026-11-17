@@ -8,6 +8,10 @@ import type {RequestShipment} from './requestShipments';
 export interface RequestAgencyTransfer extends SurplusTransfer {
  request_id:number;units_per_case:number;eta?:string;carrier?:string;destination_shipping?:string;received_units?:number;damaged_units?:number;
 }
+export function transferLotFormulaLabel(lot:{formulaName:string;form:string}){
+ const form=lot.form==='ready-to-feed'?'RTF':lot.form==='powder'?'PWD':lot.form==='concentrate'?'CONC':lot.form;
+ return `${lot.formulaName} ${form}`.trim();
+}
 const formKey=(value:string)=>normalizeVariantText(value).replace(/[^a-z]/g,'').replace('liquidconcentrate','concentrate');
 export function surplusShipmentDraft(request:Partial<RequestRecord>,lot:SurplusLot,products:ProductRecord[]):RequestShipment|undefined {
  if(request.status==='incomplete'||request.status==='denied'||!matchingTransferLot(request,lot)||lot.expirationDate<localDate()||lot.expiredUnits>0||lot.onHand<=lot.reserved)return;

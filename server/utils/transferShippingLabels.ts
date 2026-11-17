@@ -15,15 +15,18 @@ export async function storeTransferLabel(db:D1Database,bucket:R2Bucket,environme
  if(!isReviewer(user))throw transferError('Only CDPH/WIC or Admin can upload shipping labels.',403);
  const transfer=await access(db,user,id);if(transfer.status!=='reserved')throw transferError('Shipping labels can only be added before pickup.');
  if(!transfer.stock_confirmed_at)throw transferError('The sending Local Agency must confirm product availability before labels are provided.');
+ if(!transfer.requested_label_count)throw transferError('The sending Local Agency must enter how many shipping labels are needed.');
+ const uploadedCount=await db.prepare('SELECT COUNT(*) AS count FROM transfer_shipping_labels WHERE transfer_id=?').bind(id).first<number>('count')??0;
+ if(uploadedCount>=transfer.requested_label_count)throw transferError(`The sending Local Agency requested ${transfer.requested_label_count} label(s); no more labels can be uploaded.`,409);
  const contentType=validateShippingLabel(file.data,file.type);const labelId=crypto.randomUUID();const key=`${environment}/transfer-labels/${id}/${labelId}`;
  const label={id:labelId,fileName:file.filename.replace(/[\r\n]/g,'').slice(0,180)||'shipping-label',contentType,size:file.data.length,uploadedAt:new Date().toISOString()};
  await bucket.put(key,file.data,{httpMetadata:{contentType}});
  try{await db.batch([
-  db.prepare("INSERT INTO surplus_guard(ok) SELECT CASE WHEN EXISTS(SELECT 1 FROM surplus_transfers WHERE id=? AND status='reserved' AND stock_confirmed_at IS NOT NULL) AND (SELECT COUNT(*) FROM transfer_shipping_labels WHERE transfer_id=?)<10 THEN 1 ELSE 0 END").bind(id,id),
+  db.prepare("INSERT INTO surplus_guard(ok) SELECT CASE WHEN EXISTS(SELECT 1 FROM surplus_transfers WHERE id=? AND status='reserved' AND stock_confirmed_at IS NOT NULL AND requested_label_count IS NOT NULL) AND (SELECT COUNT(*) FROM transfer_shipping_labels WHERE transfer_id=?)<? THEN 1 ELSE 0 END").bind(id,id,transfer.requested_label_count),
   db.prepare('INSERT INTO transfer_shipping_labels(id,transfer_id,file_name,content_type,storage_key,file_size,uploaded_at,uploaded_by) VALUES(?,?,?,?,?,?,?,?)').bind(label.id,id,label.fileName,label.contentType,key,label.size,label.uploadedAt,user.id),
   db.prepare('DELETE FROM surplus_notice_reads WHERE notice_id=?').bind(`transfer-ready:${id}`),
   db.prepare('DELETE FROM surplus_guard')
- ]);}catch{await bucket.delete(key);throw transferError('Transfer changed or the 10-label limit was reached. Refresh before uploading.');}
+ ]);}catch{await bucket.delete(key);throw transferError('Transfer changed or the requested number of labels was reached. Refresh before uploading.');}
  return label;
 }
 export async function readTransferLabel(db:D1Database,bucket:R2Bucket,user:SessionUser,id:string,labelId:string){

@@ -13,4 +13,4 @@ export function resolveShipmentFormula(request:Partial<RequestRecord>,row:Select
 export function requireShipmentFormula(request:Partial<RequestRecord>,row:Selection):ShipmentFormula {
  const selected=resolveShipmentFormula(request,row);if(!selected){const message='Select the formula for this shipment.';throw Object.assign(new Error(message),{statusCode:400,statusMessage:message});}return {...selected};
 }
-export function shipmentFormulaLabel(formula?:ShipmentFormula):string {return formula?[formula.productName,formulaFormLabel(formula.productForm),formula.flavor].filter(Boolean).join(' · '):'Formula not recorded';}
+export function shipmentFormulaLabel(formula?:ShipmentFormula):string {return formula?[formula.productName,formulaFormLabel(formula.productForm),formula.flavor].filter(Boolean).join(' '):'Formula not recorded';}

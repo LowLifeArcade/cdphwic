@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import {toRaw} from 'vue';
 import {unreadOutgoingMessage,sameRequestOutsideMessages,type MoreInfoConversation} from '~/../shared/moreInfoMessages';
 import {shipmentFormulaOptions,shipmentFormulaKey,resolveShipmentFormula,shipmentFormulaLabel,requireShipmentFormula} from '~/../shared/shipmentFormulas';
 import type {Directive} from 'vue';
@@ -6,9 +7,9 @@ import {formatClinic,type ClinicRecord,blankClinicAddress,validateShipping} from
 const vTrackingSize:Directive<HTMLTextAreaElement>={mounted:fitTrackingNumbers,updated:fitTrackingNumbers};
 function fitTrackingNumbers(input:HTMLTextAreaElement){input.style.height='auto';input.style.height=`${input.scrollHeight+input.offsetHeight-input.clientHeight}px`;}
 import {formulaOrders,allFormulasSpecialOrder} from '~/../shared/formulaOrders';
-import {formulaAuthorizations,formatIssuanceMonth,validateFormulaAuthorizations} from '~/../shared/formulaAuthorizations';
-import {transferAuthorizationError,transferEntryQuantity,transferCatalogUnitsPerCase,matchingTransferLot,surplusShipmentDraft} from '~/../shared/requestTransfers';
-import type {SurplusLot} from '~/../shared/surplus';
+import {formulaAuthorizations,formatIssuanceMonth,validateFormulaAuthorizations,type FormulaAuthorization} from '~/../shared/formulaAuthorizations';
+import {transferAuthorizationError,transferEntryQuantity,transferCatalogUnitsPerCase,matchingTransferLot,surplusShipmentDraft,transferLotFormulaLabel} from '~/../shared/requestTransfers';
+import {localDate,type SurplusLot} from '~/../shared/surplus';
 import {canDeleteShipment,storedShipmentRows} from '~/../shared/shipmentDeletion';
 import {shipmentFeatureFlags} from '~/../shared/featureFlags';
 import {compactShipmentSummary} from '~/../shared/shipmentSummary';
@@ -17,7 +18,6 @@ import {formatCaseEquivalent} from '~/../shared/shipmentQuantities';
 import {caseBalance} from '~/../shared/shipmentCaseTracking';
 import {breastfeedingOptions,validateBreastfeeding} from '~/../shared/breastfeeding';
 import {participantAgeAlerts} from '~/../shared/participantAgeAlerts';
-import {localDate} from '~/../shared/surplus';
 import {validateRequestedMonths} from '~/../shared/requestMonthSelection';
 import {editableRequestFormulas,requestFormulaUpdates} from '~/../shared/requestFormulaEditing';
 import {blankFormula,formulaEntryName,validateFormulaEntry,validateFormulaSelection,type FormulaEntry} from '~/../shared/formulaEntries';
@@ -162,19 +162,42 @@ const {data:distributorData}=await useFetch<{distributors:import('~/../shared/di
 function selectDistributor(shipment:import('~/../shared/requestShipments').RequestShipment,id:string){shipment.distributorId=id||undefined;const found=distributorData.value?.distributors.find(d=>d.id===id);shipment.supplier=found?.name??'';}
 const {data:transferAgencies}=await useFetch('/api/agencies');
 const {data:transferStock,refresh:refreshTransferStock,error:transferStockError}=await useFetch<{lots:SurplusLot[]}>('/api/surplus',{headers:computed(()=>({'x-demo-user':identity.value})),server:false,watch:[identity]});
-const shipmentClinicFilters=reactive<Record<string,string>>({});
-function clinicFilter(row:RequestShipment){return shipmentClinicFilters[String(draft.shipments?.indexOf(row))]??'';}
-function setClinicFilter(row:RequestShipment,value:string){shipmentClinicFilters[String(draft.shipments?.indexOf(row))]=value;row.sourceLotId=undefined;}
-function transferClinicChoices(row:RequestShipment){return Array.from(new Map((transferStock.value?.lots??[]).filter(l=>l.agencyId===row.sourceAgencyId&&l.clinicId).map(l=>[l.clinicId!,l.clinicName||'Clinic'])).entries());}
+const {data:anticipatedSurplusData,refresh:refreshAnticipatedSurplus}=await useFetch<{forecasts:Array<{id:string;agency_id:number;request_ref:string;formula_name:string;form:string;flavor:string;expected_units:number;actual_units:number|null;due_date:string;status:string;clinic_name?:string|null}>}>('/api/surplus',{headers:computed(()=>({'x-demo-user':identity.value})),server:false,watch:[identity]});
+const anticipatedSurplusRows=computed(()=>{
+ const request=props.request;if(!request)return [];
+ const refs=new Set([String(request.id),request.submissionId].filter((value):value is string=>!!value));
+ return (anticipatedSurplusData.value?.forecasts??[]).filter(item=>item.agency_id===request.agencyId&&refs.has(String(item.request_ref)));
+});
 const {data:surplusClinics,error:surplusClinicError}=await useFetch<{clinics:ClinicRecord[]}>(()=>`/api/agencies/${props.request?.agencyId??0}/clinics`,{headers:computed(()=>({'x-demo-user':identity.value})),server:false});
 const shipmentFormulaChoices=computed(()=>props.request?shipmentFormulaOptions(props.request):[]);
 function shipmentFormula(row:RequestShipment){return row.shipmentFormula??(props.request?resolveShipmentFormula(props.request,row):undefined);}
 function shipmentRequest(row:RequestShipment):Partial<RequestRecord>{const formula=props.request?resolveShipmentFormula(props.request,row):undefined;return formula?{...props.request,requestedFormulas:[{...formula,productForm:formula.productForm!,ouncesPrescribed:0}]}:props.request??{};}
 function shipmentCatalogSize(row:RequestShipment){const formula=shipmentFormula(row);return formula?transferCatalogUnitsPerCase({formulaName:formula.productName,form:formula.productForm??'',flavor:formula.flavor},props.products??[])??((props.request?.requestedFormulas?.length??1)<=1?selectedProduct.value?.unitsPerCase:undefined):undefined;}
+function hasTransferLabelRequest(row:RequestShipment){return row.shipmentSource!=='agency'||!!row.transferStockConfirmedAt&&Number.isSafeInteger(row.transferLabelCount)&&Number(row.transferLabelCount)>0;}
 function selectShipmentFormula(row:RequestShipment,key:string){const formula=shipmentFormulaChoices.value.find(f=>shipmentFormulaKey(f)===key);row.shipmentFormula=formula?{...formula}:undefined;row.sourceLotId=undefined;row.unitsPerCase=shipmentCatalogSize(row);syncTransferQuantity(row);}
-function transferLots(row:RequestShipment){return (transferStock.value?.lots??[]).filter(lot=>props.request&&lot.agencyId===row.sourceAgencyId&&(!clinicFilter(row)||(clinicFilter(row)==='unspecified'?!lot.clinicId:lot.clinicId===clinicFilter(row)))&&matchingTransferLot(shipmentRequest(row),lot)&&lot.expirationDate>=localDate()&&!lot.expiredUnits&&lot.onHand>lot.reserved);}
-function changeShipmentSource(row:RequestShipment,value:string){row.shipmentSource=value==='agency'?'agency':'distributor';row.sourceAgencyId=undefined;setClinicFilter(row,'');row.sourceClinicId=undefined;row.sourceClinicName=undefined;row.sourceClinicAddress=undefined;row.sourceLotId=undefined;row.distributorId=undefined;row.supplier=undefined;row.unitsToTransfer=undefined;row.casesShipped=0;row.looseUnitsShipped=0;if(value==='agency')row.carrier='gso';}
+function transferLots(row:RequestShipment){return (transferStock.value?.lots??[]).filter(lot=>props.request&&lot.agencyId===row.sourceAgencyId&&matchingTransferLot(shipmentRequest(row),lot)&&lot.expirationDate>=localDate()&&!lot.expiredUnits&&lot.onHand>lot.reserved);}
+function changeShipmentSource(row:RequestShipment,value:string){row.shipmentSource=value==='agency'?'agency':'distributor';row.sourceAgencyId=undefined;row.sourceClinicId=undefined;row.sourceClinicName=undefined;row.sourceClinicAddress=undefined;row.sourceLotId=undefined;row.distributorId=undefined;row.supplier=undefined;row.unitsToTransfer=undefined;row.casesShipped=0;row.looseUnitsShipped=0;if(value==='agency')row.carrier='gso';}
 function selectTransferLot(row:RequestShipment){const lot=transferLots(row).find(l=>l.id===row.sourceLotId);if(lot){row.sourceClinicId=lot.clinicId;row.sourceClinicName=lot.clinicName;row.sourceClinicAddress=lot.clinicAddress;}if(lot&&props.request)row.shipmentFormula=requireShipmentFormula(props.request,{transferFormulaName:lot.formulaName,transferForm:lot.form,transferFlavor:lot.flavor});row.unitsPerCase=lot?transferCatalogUnitsPerCase(lot,props.products??[]):undefined;syncTransferQuantity(row);}
+let transferSelectionGroupSequence=0;
+const transferSelectionGroups=new WeakMap<RequestShipment,string>();
+function transferSelectionGroup(row:RequestShipment){const key=toRaw(row);let group=transferSelectionGroups.get(key);if(!group){group=`selection-${++transferSelectionGroupSequence}`;transferSelectionGroups.set(key,group);}return group;}
+function sameTransferSelection(row:RequestShipment,candidate:RequestShipment){return transferSelectionGroup(row)===transferSelectionGroup(candidate);}
+function selectedTransferLotIds(row:RequestShipment){return (draft.shipments??[]).filter(candidate=>sameTransferSelection(row,candidate)).flatMap(candidate=>candidate.sourceLotId?[candidate.sourceLotId]:[]);}
+function toggleTransferLot(row:RequestShipment,lotId:string,checked:boolean){const selected=new Set(selectedTransferLotIds(row));if(checked)selected.add(lotId);else selected.delete(lotId);selectTransferLots(row,[...selected]);}
+function selectTransferLots(row:RequestShipment,lotIds:string[]){
+ const selected=transferLots(row).filter(lot=>lotIds.includes(lot.id));
+ if(!selected.length){const rows=draft.shipments??[];const group=rows.filter(candidate=>sameTransferSelection(row,candidate));const indexes=group.map(candidate=>rows.indexOf(candidate));const index=indexes.length?Math.min(...indexes):rows.indexOf(row);for(let i=indexes.length-1;i>=0;i--)rows.splice(indexes[i]!,1);const blank={...row,sourceLotId:undefined,sourceClinicId:undefined,sourceClinicName:undefined,sourceClinicAddress:undefined,casesShipped:0,looseUnitsShipped:0,unitsToTransfer:undefined,transferId:undefined};transferSelectionGroups.set(toRaw(blank),transferSelectionGroup(row));if(index>=0)rows.splice(index,0,blank);draft.shipments=rows;return;}
+ const rows=draft.shipments??[];const groupRows=rows.filter(candidate=>sameTransferSelection(row,candidate));const indexes=groupRows.map(candidate=>rows.indexOf(candidate));const index=indexes.length?Math.min(...indexes):rows.indexOf(row);if(index<0)return;
+ const next=selected.map(lot=>{
+  const nextRow=groupRows.find(candidate=>candidate.sourceLotId===lot.id)??{...row,trackingNumbers:[...row.trackingNumbers],casesShipped:0,looseUnitsShipped:0,unitsToTransfer:undefined,transferId:undefined};
+  transferSelectionGroups.set(toRaw(nextRow),transferSelectionGroup(row));
+  nextRow.sourceLotId=lot.id;nextRow.sourceClinicId=lot.clinicId;nextRow.sourceClinicName=lot.clinicName;nextRow.sourceClinicAddress=lot.clinicAddress;
+  if(props.request)nextRow.shipmentFormula=requireShipmentFormula(props.request,{transferFormulaName:lot.formulaName,transferForm:lot.form,transferFlavor:lot.flavor});
+  nextRow.unitsPerCase=transferCatalogUnitsPerCase(lot,props.products??[]);syncTransferQuantity(nextRow);return nextRow;
+ });
+ for(let i=indexes.length-1;i>=0;i--)rows.splice(indexes[i]!,1);
+ rows.splice(index,0,...next);draft.shipments=rows;
+}
 function syncTransferQuantity(row:RequestShipment){if(row.shipmentSource==='agency')row.unitsToTransfer=transferEntryQuantity(row);}
 function transferDraftFields(row:RequestShipment,size?:number){
  if(row.shipmentSource!=='agency'||row.transferId||!Number.isSafeInteger(size)||!size)return {};
@@ -197,6 +220,14 @@ const canRepEdit = computed(() => identity.value === 'admin' || identity.value =
 const selectedProduct = computed(() => props.products?.find((product) => product.id === props.request?.productId));
 
 function authorizationProduct(authorization:{productName:string;productForm?:string}) {return props.products?.find(product=>product.name===authorization.productName&&product.form===authorization.productForm);}
+function authorizationUnitsPerCase(authorization:{productName:string;productForm?:string;unitsPerCase?:number}){return authorization.unitsPerCase??authorizationProduct(authorization)?.unitsPerCase;}
+function localAgencySurplusLots(authorization:FormulaAuthorization,index:number){const formula=requestFormulas(props.request??{})[index];if(!formula)return [];const name=(formula.otherFormulaName||formula.productName).trim().toLowerCase();return (transferStock.value?.lots??[]).filter(lot=>lot.agencyId===props.request?.agencyId&&lot.form===formula.productForm&&lot.formulaName.trim().toLowerCase()===name&&(lot.flavor??'').trim().toLowerCase()===(formula.flavor??'').trim().toLowerCase()&&lot.expirationDate>=localDate()&&!lot.expiredUnits&&(lot.onHand>lot.reserved||(authorization.localSurplusAllocations??[]).some(row=>row.lotId===lot.id&&row.units>0)));}
+function assignedUnits(authorization:FormulaAuthorization){return (authorization.localSurplusAllocations??[]).reduce((sum,row)=>sum+row.units,0);}
+function setLocalSurplusAllocation(authorization:FormulaAuthorization,lotId:string,units:number){const rows=(authorization.localSurplusAllocations??[]).filter(row=>row.lotId!==lotId);if(units>0)rows.push({lotId,units});authorization.localSurplusAllocations=rows;const index=draft.formulaAuthorizations?.indexOf(authorization)??-1;if(index>=0)updateUnitsToOrder(index);}
+function updateUnitsToOrder(index:number){const authorization=draft.formulaAuthorizations?.[index];if(!authorization)return;authorization.unitsToOrder=Math.max(0,(authorization.totalUnitsIssued??0)-assignedUnits(authorization));recalculateCasesFromUnitsToOrder(index);}
+function recalculateCasesFromUnitsToOrder(index:number){const authorization=draft.formulaAuthorizations?.[index];if(!authorization)return;const size=authorizationUnitsPerCase(authorization);if(size&&size>0)authorization.approvedCases=Math.ceil(Math.max(0,authorization.unitsToOrder??0)/size);adjustFulfillmentAllocation(index);}
+function recalculateAuthorizationCases(index:number){const authorization=draft.formulaAuthorizations?.[index];if(!authorization)return;authorization.totalUnitsIssued=authorization.benefitIssuances.reduce((sum,row)=>sum+(Number.isFinite(row.quantity)?Math.max(0,row.quantity):0),0);authorization.approvedMonths=authorization.benefitIssuances.filter(row=>row.month&&row.quantity>0).length;updateUnitsToOrder(index);}
+function updateTotalUnitsFromIssuances(index:number){recalculateAuthorizationCases(index);}
 
 function copyRequest(request: RequestRecord): Partial<RequestRecord> {
     const requestedMonths = normalizeRequestedMonths(request.benefitMonthsRequested);
@@ -227,6 +258,15 @@ const benefitMonths = computed(() => {
         const month = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + index, 1));
         const value = `${month.getUTCFullYear()}-${String(month.getUTCMonth() + 1).padStart(2, '0')}`;
         return { value, label: formatIssuanceMonth(value) };
+    });
+});
+const issuanceMonthWindow=computed(()=>{
+    const date=new Date(`${localDate().slice(0,7)}-01T00:00:00Z`);
+    date.setUTCMonth(date.getUTCMonth()-1);
+    return Array.from({length:7},(_,index)=>{
+        const month=new Date(Date.UTC(date.getUTCFullYear(),date.getUTCMonth()+index,1));
+        const value=`${month.getUTCFullYear()}-${String(month.getUTCMonth()+1).padStart(2,'0')}`;
+        return {value,label:formatIssuanceMonth(value)};
     });
 });
 
@@ -262,7 +302,6 @@ watch(
         shipmentDeleteNotice.value='';
         shippingSaveStatus.value = 'idle';
         reportingSurplus.value = false;
-        Object.keys(shipmentClinicFilters).forEach(key=>delete shipmentClinicFilters[key]);
     },
     { immediate: true },
 );
@@ -275,7 +314,6 @@ watch([()=>props.request?.id,()=>transferRoute.query.surplusLot,()=>transferStoc
  const row=lot?surplusShipmentDraft(request,lot,props.products):undefined;
  shortcutApplied.value=key;
  if(!row){shortcutNotice.value='This stock is no longer available for this request. Select another available surplus lot.';return;}
- Object.keys(shipmentClinicFilters).forEach(key=>delete shipmentClinicFilters[key]);
  const rows=draft.shipments??[];
  const existing=rows.findIndex(r=>r.sourceLotId===lotId&&!r.transferId&&!r.etaSentAt);
  if(existing<0){const blank=rows.findIndex((r,i)=>canDeleteShipment({...request,shipmentDrafts:rows},i)&&!r.shipmentSource&&!r.supplier&&!r.shipmentFormula&&!r.transferId&&!r.etaSentAt&&!r.sourceLotId&&!r.distributorId&&!r.casesShipped&&!r.trackingNumbers.length&&!r.eta&&!r.issue&&!r.receiptConfirmed&&r.receivedCases===undefined&&r.receivedUnits===undefined);if(blank>=0)rows[blank]=row;else rows.push(row);draft.shipments=rows;}
@@ -285,7 +323,7 @@ watch([()=>props.request?.id,()=>transferRoute.query.surplusLot,()=>transferStoc
 watch([()=>props.request?.id,()=>transferRoute.hash],async()=>{if(props.request&&transferRoute.hash===`#shipments-${props.request.id}`){await nextTick();document.getElementById(`shipments-${props.request.id}`)?.scrollIntoView({block:'start'});}},{immediate:true,flush:'post'});
 onMounted(async()=>{if(props.request&&transferRoute.hash===`#shipments-${props.request.id}`){await nextTick();shippingSection.value?.scrollIntoView({block:'start',behavior:'instant'});}});
 
-async function save(updates: Partial<RequestRecord> & {reserveTransferIndex?:number;deleteShipmentIndex?:number;sendEtaShipmentIndex?:number;confirmShipmentReceipts?:ShipmentReceiptSelection[]} = draft) {
+async function save(updates: Partial<RequestRecord> & {reserveTransferIndex?:number;deleteShipmentIndex?:number;sendEtaShipmentIndex?:number;confirmShipmentReceipts?:ShipmentReceiptSelection[];recordLocalSurplusIssue?:{formulaIndex:number;month:string;units:number}} = draft) {
     if (!props.request) {
         return;
     }
@@ -307,12 +345,13 @@ async function save(updates: Partial<RequestRecord> & {reserveTransferIndex?:num
         saving.value = false;
     }
 }
+async function recordLocalSurplusIssue(command:{formulaIndex:number;month:string;units:number}){if(!props.request)return;await save({recordLocalSurplusIssue:command});if(!error.value)await refreshTransferStock();}
 
 function addBenefitMonth(formulaIndex:number) {
     const authorization=draft.formulaAuthorizations![formulaIndex]!;
     const issuances = authorization.benefitIssuances;
     const month = getNextBenefitMonth(issuances);
-    if(issuances.length && !month)return;
+    if(!issuances.length||!issuances.at(-1)?.month||!issuanceMonthWindow.value.some(option=>option.value===month))return;
     if (issuances.some((issuance) => issuance.month === month)) {
         return;
     }
@@ -322,13 +361,16 @@ function addBenefitMonth(formulaIndex:number) {
 function updateFollowingIssuanceMonths(formulaIndex:number,index:number){
     const authorization=draft.formulaAuthorizations![formulaIndex]!;
     authorization.benefitIssuances=subsequentIssuanceMonths(authorization.benefitIssuances,index);
+    recalculateAuthorizationCases(formulaIndex);
 }
 function issuanceMonthOptions(authorization:{benefitIssuances:Array<{month:string}>}){
-    return [...new Set([...benefitMonths.value.map(month=>month.value),...authorization.benefitIssuances.map(row=>row.month).filter(Boolean)])].sort().map(value=>({value,label:formatIssuanceMonth(value)}));
+    return [...new Set([...issuanceMonthWindow.value.map(month=>month.value),...authorization.benefitIssuances.map(row=>row.month).filter(Boolean)])].sort().map(value=>({value,label:formatIssuanceMonth(value)}));
 }
+function canAddIssuanceMonth(authorization:{benefitIssuances:Array<{month:string}>}){const next=getNextBenefitMonth(authorization.benefitIssuances);return !!authorization.benefitIssuances.at(-1)?.month&&issuanceMonthWindow.value.some(option=>option.value===next);}
 
 function removeBenefitMonth(formulaIndex:number,index: number) {
     draft.formulaAuthorizations?.[formulaIndex]?.benefitIssuances.splice(index, 1);
+    recalculateAuthorizationCases(formulaIndex);
 }
 
 function addRequestedMonth() {
@@ -487,13 +529,10 @@ async function saveStaffFields() {
         benefitIssuances: issuances,
         approvedCases: Number(first?.approvedCases??0),
         approvedMonths: Number(first?.approvedMonths??0),
-        expectedSurplus: Number(first?.expectedSurplus??0),
-        expectedSurplusUnit: first?.expectedSurplusUnit ?? 'units',
-        agencyUnitsOnHand: Number(first?.agencyUnitsOnHand??0),
-        agencyUnitsOnHandUnit: first?.agencyUnitsOnHandUnit ?? 'units',
         staffNotes: draft.staffNotes,
         nextSteps: draft.nextSteps,
     });
+    if(!error.value)await refreshTransferStock();
     staffSaveStatus.value = error.value ? 'failed' : 'saved';
 }
 
@@ -580,7 +619,9 @@ async function saveShipments(index?: number) {
     shippingSaveStatus.value = 'saving';
     sendingEtaIndex.value = index ?? null;
     const rows = draft.shipments ?? [];
-    const validation = validateShipments(rows.map(row=>({...row,etaSentAt:undefined}))) || (index === undefined ? '' : validateShipments([rows[index]!],true));
+    const validation = index === undefined
+        ? validateShipments(rows.map(row=>({...row,etaSentAt:undefined})))
+        : validateShipments([rows[index]!],true);
     if (validation) {
         error.value = index === undefined ? validation : `Shipment ${index + 1}: ${validation.replace(/^Shipment 1: /,'')}`;
         shippingSaveStatus.value = 'failed';
@@ -852,12 +893,13 @@ async function saveAgencyUpdate() {
             </div>
         </section>
         </div>
-        <section v-if="canStaffEdit || request.status==='denied'" ref="reviewDecisionSection" class="detail-section review-decision-section" tabindex="-1">
+        <section v-if="canStaffEdit || request.status==='denied' || identity==='agency'" ref="reviewDecisionSection" class="detail-section review-decision-section" tabindex="-1">
             <div class="section-heading"><h3>Review Decision</h3><button v-if="canStaffEdit && hasSavedReviewDecision && !editingReviewDecision" type="button" class="text-button review-decision-edit" aria-label="Edit review decision" :disabled="saving" @click="editingReviewDecision=true">Edit</button><button v-else-if="canStaffEdit && editingReviewDecision" type="button" class="text-button review-decision-edit" :disabled="saving" @click="cancelReviewDecisionEdit">Cancel</button></div>
             <p v-if="canCollapseReviewDetails && request.status!=='denied'" class="review-approved"><strong>{{request.status==='needs_info'?'Request More Info':'Approved'}}</strong></p>
+            <p v-else-if="identity==='agency' && request.status!=='denied'" class="review-approved"><strong>{{request.status==='needs_info'?'Request More Info':'Awaiting CDPH/WIC Decision'}}</strong></p>
             <template v-if="request.status==='denied'">
                 <p class="review-denied"><strong>Denied</strong></p>
-                <div class="detail-grid"><div class="detail-field-wide"><span>Reason for Denial</span><strong class="preserve-lines">{{request.denialReason || request.staffNotes || '—'}}</strong></div></div>
+                <div class="detail-grid"><div class="detail-field-wide"><strong class="preserve-lines">{{request.denialReason || request.staffNotes || '—'}}</strong></div></div>
             </template>
             <div v-if="canStaffEdit && (!hasSavedReviewDecision || editingReviewDecision)" class="review-decision-buttons">
                 <button class="button button-secondary" :class="{'review-decision-selected':selectedReviewDecision==='request-info'}" :aria-pressed="selectedReviewDecision==='request-info'" type="button" :disabled="saving" @click="openMoreInfo">Request More Info</button>
@@ -899,51 +941,16 @@ async function saveAgencyUpdate() {
                 </select>
             </label>
             <div class="detail-grid cdph-product-details">
-                <div><span>Formula Name</span><strong>{{authorization.productName}}<template v-if="authorization.flavor"> · {{authorization.flavor}}</template><br />{{formulaFormLabel(authorization.productForm)}}</strong></div>
-                <div><span>Product Number</span><strong>{{authorizationProduct(authorization)?.productCode ?? '—'}}</strong></div>
-                <div><span>Units Per Case</span><strong>{{authorizationProduct(authorization)?.unitsPerCase ?? '—'}}</strong></div>
-                <div><span>Yield</span><strong>{{authorizationProduct(authorization)?.yield !== undefined ? `${authorizationProduct(authorization)!.yield} fl oz` : '—'}}</strong></div>
-            </div>
-            <div class="form-grid compact-form-grid">
-                <label class="field-label approval-quantity-field">
-                    Approved Cases for Approved Months
-                    <div class="case-month-input">
-                    <input v-model.number="authorization.approvedCases" class="form-input authorization-number" type="number" inputmode="numeric" min="0" :aria-label="`Formula ${formulaIndex+1} Approved Cases`" @input="adjustFulfillmentAllocation(formulaIndex)" />
-                        <span>cases for</span>
-                        <input v-model.number="authorization.approvedMonths" class="form-input authorization-number" type="number" inputmode="numeric" min="0" :aria-label="`Formula ${formulaIndex+1} Approved Months`" />
-                        <span>months</span>
-                    </div>
-                </label>
-                <label class="field-label">
-                    Agency Unit(s) On Hand
-                    <div class="surplus-input">
-                        <input v-model.number="authorization.agencyUnitsOnHand" class="form-input authorization-number" type="number" inputmode="numeric" min="0" />
-                        <select v-model="authorization.agencyUnitsOnHandUnit" class="form-input" aria-label="Agency Unit(s) On Hand Unit">
-                            <option value="units">Unit(s)</option>
-                            <option value="cases">Cases</option>
-                        </select>
-                    </div>
-                </label>
-                <label class="field-label">
-                    Expected Surplus
-                    <div class="surplus-input">
-                        <input v-model.number="authorization.expectedSurplus" class="form-input authorization-number" type="number" inputmode="numeric" min="0" />
-                        <select v-model="authorization.expectedSurplusUnit" class="form-input" aria-label="Expected Surplus Unit">
-                            <option value="units">Unit(s)</option>
-                            <option value="cases">Cases</option>
-                        </select>
-                    </div>
-                </label>
-            </div>
-            <div v-if="splitOrderTypesEnabled" class="form-grid fulfillment-allocation-fields">
-                <label class="field-label">Standard Order Cases<input v-model.number="authorization.standardCases" class="form-input authorization-number" type="number" inputmode="numeric" min="0" step="1" :aria-label="`Formula ${formulaIndex+1} Standard Order Cases`" :disabled="saving" /></label>
-                <label class="field-label">Special Order Cases<input v-model.number="authorization.specialOrderCases" class="form-input authorization-number" type="number" inputmode="numeric" min="0" step="1" :aria-label="`Formula ${formulaIndex+1} Special Order Cases`" :disabled="saving" /></label>
-                <p class="muted-copy fulfillment-allocation-help">Standard and Special Order cases must total {{authorization.approvedCases??0}} approved cases.</p>
+                <label class="field-label">Formula Name<input v-model="authorization.formulaName" class="form-input" :placeholder="authorization.productName" /></label>
+                <div><span>Form</span><strong>{{formulaFormLabel(authorization.productForm)}}</strong></div>
+                <label class="field-label">Product Number<input v-model="authorization.productCode" class="form-input" :placeholder="authorizationProduct(authorization)?.productCode ?? 'Enter product number'" /></label>
+                <label class="field-label">Units Per Case<input v-model.number="authorization.unitsPerCase" class="form-input" type="number" min="1" step="1" :placeholder="String(authorizationProduct(authorization)?.unitsPerCase ?? '')" @input="recalculateCasesFromUnitsToOrder(formulaIndex)" /></label>
+                <label class="field-label">Yield (fl oz)<input v-model.number="authorization.yield" class="form-input" type="number" min="0" step="any" :placeholder="String(authorizationProduct(authorization)?.yield ?? '')" /></label>
             </div>
             <div class="benefit-allocation-editor">
                 <div class="issuance-row-heading">
                     <h4>Select Month and Quantity</h4>
-                    <button class="text-button" type="button" :disabled="authorization.benefitIssuances.some(row=>!row.month)" @click="addBenefitMonth(formulaIndex)">+ Add issuance month</button>
+                    <button class="text-button" type="button" :disabled="authorization.benefitIssuances.some(row=>!row.month) || !canAddIssuanceMonth(authorization)" @click="addBenefitMonth(formulaIndex)">+ Add issuance month</button>
                 </div>
                 <div v-for="(issuance, index) in authorization.benefitIssuances" :key="`${issuance.month}-${index}`" class="month-row">
                     <select v-model="issuance.month" class="form-input month-select" :aria-label="`Formula ${formulaIndex+1} issuance month ${index+1}`" @change="updateFollowingIssuanceMonths(formulaIndex,index)">
@@ -951,11 +958,34 @@ async function saveAgencyUpdate() {
                         <option v-for="month in issuanceMonthOptions(authorization)" :key="month.value" :value="month.value" :disabled="index>0 && (!authorization.benefitIssuances[index-1]?.month || month.value<=authorization.benefitIssuances[index-1]!.month)">{{ month.label }}</option>
                     </select>
                     <div class="quantity-input">
-                        <input v-model.number="issuance.quantity" class="form-input month-quantity" type="number" inputmode="numeric" min="1" placeholder="Quantity" :aria-label="`Formula ${formulaIndex+1} issuance quantity ${index+1}`" />
+                        <input v-model.number="issuance.quantity" class="form-input month-quantity" type="number" inputmode="numeric" min="1" placeholder="Quantity" :aria-label="`Formula ${formulaIndex+1} issuance quantity ${index+1}`" @input="recalculateAuthorizationCases(formulaIndex)" />
                         <span>Unit(s)</span>
                     </div>
                     <button class="icon-button" type="button" aria-label="Remove benefit month" @click="removeBenefitMonth(formulaIndex,index)">×</button>
                 </div>
+            </div>
+            <div class="form-grid issuance-total-units">
+                <label class="field-label">Total Unit(s) Issued<input v-model.number="authorization.totalUnitsIssued" class="form-input authorization-number" type="number" inputmode="numeric" min="0" step="1" :aria-label="`Formula ${formulaIndex+1} Total Units Issued`" @input="updateUnitsToOrder(formulaIndex)" /></label>
+            </div>
+            <fieldset v-if="localAgencySurplusLots(authorization,formulaIndex).length || assignedUnits(authorization)>0" class="local-surplus-assignment">
+                <legend>Assign Local Agency Surplus</legend>
+                <p class="muted-copy">Assign matching stock at the requesting agency’s clinics. Assigned units are reserved now and deducted as the Local Agency records each month’s issue.</p>
+                <div v-if="localAgencySurplusLots(authorization,formulaIndex).length" class="local-surplus-lots">
+                    <label v-for="lot in localAgencySurplusLots(authorization,formulaIndex)" :key="lot.id" class="field-label local-surplus-lot">
+                        <span><strong class="local-surplus-formula">{{transferLotFormulaLabel(lot)}}</strong><strong class="local-surplus-quantity">{{lot.onHand-lot.reserved+(authorization.localSurplusAllocations?.find(row=>row.lotId===lot.id)?.units??0)}} unit(s)</strong><small>{{lot.clinicName||'Clinic not specified'}} · Exp {{formatDisplayDate(lot.expirationDate)}}</small></span>
+                        <input class="form-input authorization-number" type="number" inputmode="numeric" min="0" :max="lot.onHand-lot.reserved+(authorization.localSurplusAllocations?.find(row=>row.lotId===lot.id)?.units??0)" :value="authorization.localSurplusAllocations?.find(row=>row.lotId===lot.id)?.units??0" :aria-label="`Assigned units from ${lot.clinicName||'clinic'}, expires ${lot.expirationDate}`" @input="setLocalSurplusAllocation(authorization,lot.id,Number(($event.target as HTMLInputElement).value)||0)" />
+                    </label>
+                </div>
+                <p class="local-surplus-total">Assigned from agency surplus: <strong>{{assignedUnits(authorization)}} unit(s)</strong></p>
+            </fieldset>
+            <div class="form-grid compact-form-grid">
+                <label class="field-label">Unit(s) to Order/Transfer<input v-model.number="authorization.unitsToOrder" class="form-input authorization-number" type="number" inputmode="numeric" min="0" step="1" :aria-label="`Formula ${formulaIndex+1} Units to Order or Transfer`" @input="recalculateCasesFromUnitsToOrder(formulaIndex)" /></label>
+                <label class="field-label">Case(s) to Order/Transfer<input v-model.number="authorization.approvedCases" class="form-input authorization-number" type="number" inputmode="numeric" min="0" :aria-label="`Formula ${formulaIndex+1} Cases to Order or Transfer`" @input="adjustFulfillmentAllocation(formulaIndex)" /></label>
+            </div>
+            <div v-if="splitOrderTypesEnabled" class="form-grid fulfillment-allocation-fields">
+                <label class="field-label">Standard Order Cases<input v-model.number="authorization.standardCases" class="form-input authorization-number" type="number" inputmode="numeric" min="0" step="1" :aria-label="`Formula ${formulaIndex+1} Standard Order Cases`" :disabled="saving" /></label>
+                <label class="field-label">Special Order Cases<input v-model.number="authorization.specialOrderCases" class="form-input authorization-number" type="number" inputmode="numeric" min="0" step="1" :aria-label="`Formula ${formulaIndex+1} Special Order Cases`" :disabled="saving" /></label>
+                <p class="muted-copy fulfillment-allocation-help">Standard and Special Order cases must total {{authorization.approvedCases??0}} cases to order.</p>
             </div>
             </fieldset>
             <label class="field-label">
@@ -983,7 +1013,7 @@ async function saveAgencyUpdate() {
             </fieldset>
         </section>
 
-        <RequestIssuanceSummary v-if="identity==='agency'" :request="request" :products="products" />
+        <RequestIssuanceSummary v-if="identity==='agency'" :request="request" :products="products" @record-issue="recordLocalSurplusIssue" />
 
         <section ref="shippingSection" :id="`shipments-${request.id}`" class="detail-section" tabindex="-1">
             <div class="section-heading"><h3>Shipping</h3><button v-if="canStaffEdit && request.status!=='denied' && editingSection!=='shipping'" class="text-button" type="button" @click="startEditing('shipping')">Edit</button></div>
@@ -1035,23 +1065,21 @@ async function saveAgencyUpdate() {
                         <div v-else-if="splitOrderTypesEnabled"><span>Fulfillment Type</span><strong>{{shipmentFulfillmentType(request,shipment)==='special'?'Special Order':'Standard'}}</strong></div>
                         <label v-if="editingShipmentPlan(shipment,index)" class="field-label detail-field-wide">Shipment Source<select :value="shipment.shipmentSource??''" class="form-input" :aria-label="`Shipment ${index+1} Source`" :disabled="saving || !!requestShipments(request)[index]?.etaSentAt" @change="changeShipmentSource(shipment,($event.target as HTMLSelectElement).value)"><option disabled value="">Select source</option><option value="distributor">Distributor</option><option value="agency">Local Agency Transfer</option></select></label>
                         <template v-if="shipment.shipmentSource==='agency'">
-                            <label v-if="editingShipmentPlan(shipment,index)" class="field-label">Sending Local Agency<select :value="shipment.sourceAgencyId??''" class="form-input" :aria-label="`Shipment ${index+1} Sending Local Agency`" :disabled="saving" @change="shipment.sourceAgencyId=Number(($event.target as HTMLSelectElement).value);setClinicFilter(shipment,'');shipment.sourceClinicId=undefined;shipment.sourceClinicName=undefined;shipment.sourceClinicAddress=undefined"><option value="">Select Local Agency</option><option v-for="item in transferAgencies?.agencies.filter(a=>a.id!==request.agencyId)" :key="item.id" :value="item.id">{{item.name}}</option></select></label>
+                            <label v-if="editingShipmentPlan(shipment,index)" class="field-label">Sending Local Agency<select :value="shipment.sourceAgencyId??''" class="form-input" :aria-label="`Shipment ${index+1} Sending Local Agency`" :disabled="saving" @change="shipment.sourceAgencyId=Number(($event.target as HTMLSelectElement).value);shipment.sourceClinicId=undefined;shipment.sourceClinicName=undefined;shipment.sourceClinicAddress=undefined"><option value="">Select Local Agency</option><option v-for="item in transferAgencies?.agencies.filter(a=>a.id!==request.agencyId)" :key="item.id" :value="item.id">{{item.name}}</option></select></label>
                             <div v-else><span>From</span><strong>{{shipment.sourceAgencyName}}<br />{{shipment.sourceClinicName || 'Clinic not specified'}}</strong><small v-if="shipment.sourceClinicAddress">Pickup: {{formatClinic(shipment.sourceClinicAddress)}}</small></div>
                             <div><span>To</span><strong>{{agency?.name}}</strong></div>
-                            <p v-if="editingShipmentPlan(shipment,index) &amp;&amp; transferStockError" class="form-error" role="alert">Surplus clinics and inventory could not be loaded. Try again before choosing stock.</p><label v-if="editingShipmentPlan(shipment,index)" class="field-label">Source clinic<select :value="clinicFilter(shipment)" class="form-input" :disabled="saving || !shipment.sourceAgencyId" @change="setClinicFilter(shipment,($event.target as HTMLSelectElement).value)"><option value="">All clinics</option><option value="unspecified">Clinic not specified</option><option v-for="[id,name] in transferClinicChoices(shipment)" :key="id" :value="id">{{name}}</option></select></label>
-                            <label v-if="editingShipmentPlan(shipment,index)" class="field-label detail-field-wide">Available Surplus<select v-model="shipment.sourceLotId" class="form-input" @change="selectTransferLot(shipment)" :aria-label="`Shipment ${index+1} Available Surplus`" :disabled="saving || !shipment.sourceAgencyId"><option :value="undefined">Select matching surplus</option><option v-for="lot in transferLots(shipment)" :key="lot.id" :value="lot.id">{{lot.clinicName || 'Clinic not specified'}} · {{lot.formulaName}} · {{lot.form}}<template v-if="lot.flavor"> · {{lot.flavor}}</template> · {{lot.onHand-lot.reserved}} unit(s) · Expires {{formatDisplayDate(lot.expirationDate)}}</option></select><small v-if="shipment.sourceAgencyId && !transferLots(shipment).length">No matching, available surplus at this agency.</small></label>
-                            <div v-else class="detail-field-wide"><span>Transferred Formula</span><strong>{{shipment.transferFormulaName}} · {{formulaFormLabel(shipment.transferForm)}}<template v-if="shipment.transferFlavor"> · {{shipment.transferFlavor}}</template> · Expires {{formatDisplayDate(shipment.transferExpiration)}}</strong></div>
+                            <p v-if="editingShipmentPlan(shipment,index) &amp;&amp; transferStockError" class="form-error" role="alert">Surplus clinics and inventory could not be loaded. Try again before choosing stock.</p>
+                            <div v-if="editingShipmentPlan(shipment,index)" class="field-label detail-field-wide matching-surplus-picker"><span>Available Surplus</span><div v-if="transferLots(shipment).length" class="matching-surplus-options"><label v-for="lot in transferLots(shipment)" :key="lot.id" class="matching-surplus-option"><input type="checkbox" :checked="selectedTransferLotIds(shipment).includes(lot.id)" :disabled="saving" @change="toggleTransferLot(shipment,lot.id,($event.target as HTMLInputElement).checked)" /><span><strong>{{transferLotFormulaLabel(lot)}}</strong><small>{{lot.clinicName || 'Clinic not specified'}} · {{lot.onHand-lot.reserved}} unit(s) · Exp {{formatDisplayDate(lot.expirationDate)}}</small></span></label></div><small v-if="shipment.sourceAgencyId">Select one or more lots. Each lot creates its own shipment line.</small><small v-if="shipment.sourceAgencyId && !transferLots(shipment).length">No matching, available surplus at this agency.</small></div>
+                            <div v-else class="detail-field-wide"><span>Transferred Formula</span><strong>{{shipment.transferFormulaName}} {{formulaFormLabel(shipment.transferForm)}}<template v-if="shipment.transferFlavor"> {{shipment.transferFlavor}}</template> · Exp {{formatDisplayDate(shipment.transferExpiration)}}</strong></div>
                         </template>
                         <template v-else>
                         <label v-if="editingShipmentPlan(shipment,index)" class="field-label">Distributor<select :value="shipment.distributorId ?? ''" class="form-input" :aria-label="`Shipment ${index+1} Distributor`" :disabled="saving" @change="selectDistributor(shipment,($event.target as HTMLSelectElement).value)"><option value="">{{!shipment.distributorId && shipment.supplier?`${shipment.supplier} (legacy supplier)`:'Select Distributor'}}</option><option v-for="item in distributorData?.distributors" :key="item.id" :value="item.id">{{item.name}}</option></select></label>
                         <div v-else><span>Distributor</span><strong>{{shipment.supplier || '—'}}</strong></div>
                         </template>
-                        <template v-if="shipmentFeatures.quantityTracking || shipmentFeatures.receiptQuantities || shipment.shipmentSource==='agency'">
-                        <label v-if="editingShipmentPlan(shipment,index)" class="field-label">Unit(s) per Case<input v-model.number="shipment.unitsPerCase" class="form-input" type="number" min="1" step="1" @input="syncTransferQuantity(shipment)" :aria-label="`Shipment ${index+1} Unit(s) per Case`" :disabled="saving || shipment.receivedUnits!==undefined || shipment.dispositions?.some(item=>item.units!==undefined) || (!!requestShipments(request)[index]?.unitsPerCase && (shipment.receivedCases!==undefined || !!shipment.receivedAt || !!shipment.receiptConfirmed))" /></label>
-                        <div v-else><span>Units per Case</span><strong>{{shipment.unitsPerCase ?? 'Not confirmed'}}</strong></div>
-                        </template>
+                        <template v-if="hasTransferLabelRequest(shipment)">
                         <label v-if="editingShipmentLogistics(shipment,index)" class="field-label">ETA<input v-model="shipment.eta" class="form-input" type="date" :aria-label="`Shipment ${index+1} ETA`" :disabled="saving" /></label>
-                        <div v-else><span>ETA</span><strong>{{formatDisplayDate(shipment.eta)}}</strong></div>
+                        <div v-else><span>ETA</span><strong>{{shipment.shipmentSource==='agency' && shipment.transferStatus==='reserved' && identity==='agency' ? 'Pending GSO pickup' : formatDisplayDate(shipment.eta)}}</strong></div>
+                        </template>
                         <template v-if="shipment.shipmentSource==='agency'">
                             <template v-if="editingShipmentPlan(shipment,index)">
                                 <label class="field-label">Cases to Transfer<input v-model.number="shipment.casesShipped" class="form-input" type="number" inputmode="numeric" min="0" step="1" :aria-label="`Shipment ${index+1} Cases to Transfer`" :disabled="saving" @input="syncTransferQuantity(shipment)" /></label>
@@ -1065,11 +1093,13 @@ async function saveAgencyUpdate() {
                         <div v-else><span>Cases Shipped</span><strong>{{shipment.casesShipped}}<template v-if="shipmentFeatures.quantityTracking && shipment.looseUnitsShipped"> + {{shipment.looseUnitsShipped}} loose units</template></strong></div>
                         <label v-if="shipmentFeatures.quantityTracking && editingShipmentPlan(shipment,index) && shipment.replacementFor!==undefined" class="field-label">Loose Unit(s) Shipped<input v-model.number="shipment.looseUnitsShipped" class="form-input" type="number" min="0" :max="(shipment.unitsPerCase??1)-1" :disabled="saving || shipment.replacementBasis==='cases'" :aria-label="`Shipment ${index+1} Loose Unit(s) Shipped`" /></label>
                         </template>
+                        <template v-if="shipment.shipmentSource!=='agency' || shipment.transferStockConfirmedAt">
                         <label v-if="shipment.shipmentSource==='agency'" class="field-label detail-field-wide">Carrier<input value="GSO" class="form-input" readonly :aria-label="`Shipment ${index+1} Carrier`" /></label>
                         <label v-else-if="editingShipmentLogistics(shipment,index)" class="field-label detail-field-wide">Carrier<select v-model="shipment.carrier" class="form-input" :aria-label="`Shipment ${index+1} Carrier`" :disabled="saving"><option value="fedex">FedEx</option><option value="dhl">DHL</option><option value="ups">UPS</option></select></label>
                         <div v-else><span>Carrier</span><strong>{{shipment.carrier==='agency'?'Agency Delivery':shipment.carrier.toUpperCase()}}</strong></div>
                         <label v-if="editingShipmentLogistics(shipment,index)" class="field-label detail-field-wide">Tracking Numbers<textarea v-tracking-size :value="shipment.trackingNumbers.join('\n')" class="form-textarea shipment-tracking-input" placeholder="Enter one tracking number per line." :aria-label="`Shipment ${index+1} Tracking Numbers`" :disabled="saving" @input="setShipmentTracking(shipment,($event.target as HTMLTextAreaElement).value)" /></label>
                         <div v-else class="detail-field-wide"><span>{{shipment.shipmentSource==='agency'?'Tracking / Delivery Reference':'Tracking Numbers'}}</span><strong>{{shipment.trackingNumbers.join(', ') || 'N/A'}}</strong></div>
+                        </template>
                     </div>
                     <p v-if="canStaffEdit && shipment.transferId && shipment.transferStatus==='reserved'" role="status">{{shipment.transferStockConfirmedAt?'✓ Sending agency confirmed product availability. Provide the shipping labels and send shipping details.':'Awaiting confirmation that the sending Local Agency physically has the reserved product.'}}</p>
                     <TransferShippingLabels v-if="shipment.transferId" :transfer-id="shipment.transferId" :can-upload="canStaffEdit" :allow-upload="shipment.transferStatus==='reserved' && !!shipment.transferStockConfirmedAt" @ready="transferLabelsReady[shipment.transferId!]= $event" />
@@ -1079,7 +1109,7 @@ async function saveAgencyUpdate() {
                     <div v-if="shipment.shipmentSource==='agency'" class="shipping-save-action">
                         <button v-if="canStaffEdit && !shipment.transferId" class="button button-secondary" type="button" :disabled="saving" @click="reserveShipmentTransfer(index)">{{saving && transferAuthorizationIndex===index?'Reserving…':'Reserve Stock'}}</button>
                         <template v-if="canStaffEdit && shipment.transferId && shipment.transferStatus==='reserved'">
-                            <button class="button button-secondary" type="button" :disabled="saving || !shipment.transferStockConfirmedAt || !transferLabelsReady[shipment.transferId!]" @click="editOrSendTransferEta(index)">{{sendingEtaIndex===index?'Sending…':shipment.transferEtaSentAt?(editingShipmentLogistics(shipment,index)?'Send Shipping Update':'Edit Shipping Details'):'Send Labels & Shipping Details'}}</button>
+                            <button v-if="hasTransferLabelRequest(shipment)" class="button button-secondary" type="button" :disabled="saving || !shipment.transferStockConfirmedAt || !transferLabelsReady[shipment.transferId!]" @click="editOrSendTransferEta(index)">{{sendingEtaIndex===index?'Sending…':shipment.transferEtaSentAt?(editingShipmentLogistics(shipment,index)?'Send Shipping Update':'Edit Shipping Details'):'Send Labels & Shipping Details'}}</button>
                             <button v-if="shipment.transferEtaSentAt && editingShipmentLogistics(shipment,index)" class="button button-ghost" type="button" :disabled="saving" @click="cancelEtaEdit(index)">Cancel</button>
                             <span v-if="shipment.transferEtaSentAt && !editingShipmentLogistics(shipment,index)" class="shipment-sent-status" role="status">✓ ETA Sent</span>
                         </template>
@@ -1150,6 +1180,17 @@ async function saveAgencyUpdate() {
         </section>
             <div v-if="canGenerateAuthorizationForm(request)" class="authorization-downloads"><a class="button button-secondary" :href="`/api/requests/${request.id}/authorization-form.pdf`" target="_blank" rel="noopener">Print / Download Authorization</a><details v-if="(request.authorizationVersions?.length??0)>1"><summary>Earlier authorization versions</summary><p v-for="version in request.authorizationVersions" :key="version.id"><a :href="`/api/requests/${request.id}/authorization-form.pdf?version=${version.id}`" target="_blank" rel="noopener">{{formatDisplayDate(submissionDateOnly(version.sentAt))}} · Shipment {{version.shipmentIndex+1}}</a></p></details></div>
         </section>
+        <section v-if="anticipatedSurplusRows.length" class="detail-section anticipated-surplus-section" aria-labelledby="anticipated-surplus-heading">
+            <div class="section-heading"><h3 id="anticipated-surplus-heading">Anticipated Surplus</h3></div>
+            <p class="muted-copy">The Local Agency should verify the actual count and expiration date for anticipated surplus.</p>
+            <article v-for="forecast in anticipatedSurplusRows" :key="forecast.id" class="anticipated-surplus-row">
+                <div><strong>{{forecast.formula_name}} · {{formulaFormLabel(forecast.form)}}<template v-if="forecast.flavor"> · {{forecast.flavor}}</template></strong><small>{{forecast.clinic_name||'Clinic not specified'}} · Due {{formatDisplayDate(forecast.due_date)}}</small></div>
+                <div><span>Anticipated</span><strong>{{forecast.expected_units}} unit(s)</strong></div>
+                <div><span>Status</span><strong>{{forecast.status==='awaiting-count'?'Needs Local Agency verification':forecast.status==='pending-review'?'Verified · Pending CDPH/WIC review':forecast.status==='reconciled'?'Verified':'Closed'}}</strong></div>
+                <div v-if="forecast.actual_units!==null"><span>Actual</span><strong>{{forecast.actual_units}} unit(s)</strong></div>
+                <NuxtLink v-if="identity==='agency' && forecast.status==='awaiting-count'" class="button button-secondary" :to="{path:'/surplus',query:{forecast:forecast.id}}">Verify Count</NuxtLink>
+            </article>
+        </section>
         <div v-if="canStaffEdit && allShipmentsConfirmed(request)" class="authorization-downloads detail-section"><a class="button button-secondary" :href="`/api/requests/${request.id}/shipment-confirmation.pdf`" target="_blank" rel="noopener">Download Shipment Confirmation</a></div>
         <hr v-if="canCollapseReviewDetails && request.status!=='denied'" class="cdph-section-divider" />
 
@@ -1177,7 +1218,6 @@ async function saveAgencyUpdate() {
             </div>
         </div>
 
-        <RequestSurplusPanel v-if="request" :request="request" :key="request.id" />
         <div v-if="surplusRemovalIndex !== null" class="confirmation-backdrop" @click.self="surplusRemovalIndex = null">
             <div class="confirmation-modal" role="dialog" aria-modal="true" aria-labelledby="remove-surplus-title">
                 <h3 id="remove-surplus-title">Remove surplus row?</h3>
@@ -1247,4 +1287,25 @@ async function saveAgencyUpdate() {
 .shipment-compact-status {text-align:right;color:var(--muted);font-size:.9em;}
 .shipment-compact-row[open] > .shipment-compact-summary {border-bottom:1px solid var(--border);}
 .shipment-compact-row .shipment-card {margin:0;border:0;}
+.shipment-compact-row[open] .shipment-card {padding:16px 14px 14px;}
+.matching-surplus-picker {display:grid;gap:8px;min-width:0;}
+.matching-surplus-options {display:grid;gap:6px;max-height:240px;overflow:auto;padding:8px;border:1px solid var(--border);border-radius:8px;background:var(--surface-raised);}
+.matching-surplus-option {display:flex;align-items:flex-start;gap:10px;min-width:0;padding:7px 8px;border-radius:6px;background:var(--surface);cursor:pointer;}
+.matching-surplus-option input {flex:0 0 auto;margin-top:3px;}
+.matching-surplus-option > span {display:grid;gap:2px;min-width:0;overflow-wrap:anywhere;}
+.matching-surplus-option strong {font-size:.95em;}
+.matching-surplus-option small {color:var(--muted);font-size:.88em;line-height:1.35;}
+.local-surplus-assignment {display:grid;gap:10px;margin:14px 0;padding:12px;border:1px solid var(--line);border-radius:8px;}
+.local-surplus-assignment legend {padding:0 6px;font-weight:700;}
+.local-surplus-lots {display:grid;gap:8px;}
+.local-surplus-lot {display:flex;justify-content:space-between;align-items:center;gap:16px;padding:8px;border-radius:6px;background:var(--surface-raised);}
+.local-surplus-lot > span {display:grid;gap:3px;}
+.local-surplus-lot small {color:var(--muted);}
+.local-surplus-formula {font-size:var(--form-label-size);}
+.local-surplus-quantity {font-size:var(--form-label-size);color:var(--text);}
+.anticipated-surplus-row {display:grid;grid-template-columns:minmax(220px,2fr) repeat(2,minmax(150px,1fr)) auto;align-items:center;gap:12px;padding:12px 0;border-top:1px solid var(--line);}
+.anticipated-surplus-row > div {display:grid;gap:3px;}
+.anticipated-surplus-row > div > span,.anticipated-surplus-row small {color:var(--muted);font-size:12px;}
+@media(max-width:760px){.anticipated-surplus-row{grid-template-columns:1fr 1fr;}.anticipated-surplus-row > div:first-child{grid-column:1/-1;}}
+.local-surplus-total {margin:0;text-align:right;}
 </style>

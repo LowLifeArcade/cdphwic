@@ -9,7 +9,7 @@ import type {RequestRecord} from '~/../shared/domain';
 import type { SurplusLot } from '~/../shared/surplus';
 function pickupAddress(json?:string|null){try{const value=JSON.parse(json??'null') as ClinicAddress|null;return value?formatClinic(value):'';}catch{return '';}}
 function dayAfter(date:string){return new Date(Date.parse(`${date}T00:00:00Z`)+86400000).toISOString().slice(0,10);}
-function movementLabel(kind:string){return ({reconcile:'Physical count','correct-entry':'Correction',deduct:'Stock adjustment',reserve:'Reservation',ship:'Shipment',receive:'Receipt',cancel:'Cancellation',expire:'Expiration'} as Record<string,string>)[kind]??kind;}
+function movementLabel(kind:string){return ({reconcile:'Physical count','correct-entry':'Correction',deduct:'Stock adjustment',reserve:'Reservation',release:'Reservation released','request-issue':'Participant issue',ship:'Shipment',receive:'Receipt',cancel:'Cancellation',expire:'Expiration'} as Record<string,string>)[kind]??kind;}
 const route = useRoute();
 const view=ref<'inventory'|'transfers'>(route.query.transfer?'transfers':'inventory');
 watch(()=>route.query.transfer,id=>{if(id)view.value='transfers';});
@@ -18,7 +18,8 @@ const requestsLoading=ref(false);
 const requestChoiceError=ref('');
 const destinationRequest=ref('');
 const requestSearch=ref('');
-const matchingRequests=computed(()=>selected.value?requestChoices.value.filter(r=>surplusShipmentDraft(r,selected.value!,[])&&(!requestSearch.value||`${r.id} ${r.submissionId??''} ${r.participantName} ${agencyName(r.agencyId)}`.toLowerCase().includes(requestSearch.value.toLowerCase()))):[]);
+const searchableRequests=computed(()=>{const query=requestSearch.value.trim().toLowerCase();return requestChoices.value.filter(r=>!query||`${r.id} ${r.submissionId??''} ${r.participantName} ${agencyName(r.agencyId)}`.toLowerCase().includes(query));});
+const matchingRequests=computed(()=>selected.value?searchableRequests.value.filter(r=>surplusShipmentDraft(r,selected.value!,[])):[]);
 async function useInRequest(lot:SurplusLot){
  start('use-request',lot);destinationRequest.value='';requestSearch.value='';requestChoiceError.value='';requestsLoading.value=true;
  try{const result=await $fetch<{requests:RequestRecord[]}>('/api/requests',{headers:headers.value});requestChoices.value=result.requests;}
@@ -76,6 +77,9 @@ function moveSurplusTab(event:KeyboardEvent){
     nextTick(()=>document.getElementById(`${next}-tab`)?.focus());
 }
 const agencyName = (id: number) => agencyData.value?.agencies.find((a) => a.id === id)?.name ?? `Agency ${id}`;
+const transferRows=computed(()=>data.value?.transfers??[]);
+const sendingTransfers=computed(()=>transferRows.value.filter(t=>data.value?.user.memberType!=='agency'||t.source_agency_id===data.value?.user.agencyId));
+const receivingTransfers=computed(()=>transferRows.value.filter(t=>data.value?.user.memberType!=='agency'||t.destination_agency_id===data.value?.user.agencyId));
 const operationId = ref('');
 const modal = ref('');
 const modalTitles:Record<string,string>={'edit-inventory':'Edit Inventory', 'assign-clinic':'Assign Clinic',new:'Record physical count',review:'Review reported count',forecast:'Anticipated Surplus',confirm:'Confirm actual usable, uncommitted surplus',donate:'Record formula donation',destroy:'Record verified destruction','correct-entry':'Correct inventory entry','correct-expiry':'Correct verified expiration date',reconcile:'Update physical count',deduct:'Deduct surplus','use-request':'Use in Request',cancel:'Cancel reservation',history:'Inventory History'};
@@ -153,6 +157,16 @@ function start(kind: string, lot?: SurplusLot, item?: any) {
     }
     if (kind === 'cancel') transfer.value = item;
 }
+const openedForecastId=ref('');
+watch([()=>route.query.forecast,()=>data.value?.forecasts],async([queryId,forecasts])=>{
+    const id=typeof queryId==='string'?queryId:'';
+    if(!id||openedForecastId.value===id||!forecasts)return;
+    const item=(forecasts as any[]).find(f=>f.id===id);
+    if(!item)return;
+    openedForecastId.value=id;
+    view.value='inventory';
+    start('confirm',undefined,item);
+},{immediate:true,flush:'post'});
 const proposedCountChange = computed(
     () =>
         input.quantity -
@@ -345,22 +359,29 @@ async function upload(kind: string, event: Event) {
         <section v-show="view==='transfers'" id="transfers-panel" role="tabpanel" aria-labelledby="transfers-tab" tabindex="0">
             <h2>Transfers</h2>
             <p>{{reviewer?'Reserve stock, provide labels, and send shipping details in the request’s Shipment section.':'Confirm reserved product availability here. When CDPH/WIC provides shipping labels, arrange and confirm pickup.'}}</p>
-            <p v-if="!data?.transfers?.length">No transfers yet.</p>
-            <AgencyTransferShipment v-for="t in data?.transfers?.filter(t=>t.request_id)" :key="t.id" :transfer="t" :source-name="agencyName(t.source_agency_id)" :destination-name="agencyName(t.destination_agency_id)" :can-ship="data?.user.memberType==='agency' && data?.user.agencyId===t.source_agency_id" @updated="refreshTransferState" />
-            <article
-                v-for="t in data?.transfers?.filter(t=>!t.request_id)"
-                :key="t.id"
-                class="legacy-transfer"
-            >
-                <header class="legacy-transfer-heading"><div><strong>{{t.formula_name}} {{t.form==='concentrate'?'Concentrate':formulaFormLabel(t.form)}}</strong>
-                <span class="legacy-transfer-route"><b>{{agencyName(t.source_agency_id)}}</b> → <b>{{agencyName(t.destination_agency_id)}}</b></span></div><span class="legacy-transfer-status">{{t.status==='received'?'Confirmed Receipt':t.status==='reserved'?'Transfer Requested':t.status==='shipped'?'In Transit':t.status==='cancelled'?'Cancelled':'Blocked — expired'}}</span></header>
-                <div class="legacy-transfer-summary"><span><strong>{{t.quantity}}</strong> unit(s)</span><span>Expires {{formatDisplayDate(t.expiration_date)}}</span><span>ETA {{t.eta?formatDisplayDate(t.eta):'Pending'}}</span><span v-if="t.request_ref">Ref {{t.request_ref}}</span></div>
-                <p>{{t.source_clinic_name || 'Clinic not specified'}}</p><details><summary>Transfer details</summary><p v-if="pickupAddress(t.source_clinic_address)">Pickup: {{pickupAddress(t.source_clinic_address)}}</p>
-                    <p v-if="t.tracking_reference">Tracking: {{t.tracking_reference}}</p>
+            <p v-if="!transferRows.length">No transfers yet.</p>
+            <section class="transfer-direction" aria-labelledby="sending-transfers-heading">
+                <header class="transfer-direction-heading"><h3 id="sending-transfers-heading">Sending</h3><span>{{sendingTransfers.length}}</span></header>
+                <p v-if="!sendingTransfers.length" class="muted-copy">No transfers to send.</p>
+                <AgencyTransferShipment v-for="t in sendingTransfers.filter(t=>t.request_id)" :key="`send:${t.id}`" :transfer="t" :source-name="agencyName(t.source_agency_id)" :destination-name="agencyName(t.destination_agency_id)" :can-ship="data?.user.memberType==='agency' && data?.user.agencyId===t.source_agency_id" @updated="refreshTransferState" />
+                <details v-for="t in sendingTransfers.filter(t=>!t.request_id)" :key="`send-legacy:${t.id}`" class="legacy-transfer">
+                    <summary class="legacy-transfer-summary-row"><strong>{{t.formula_name}} {{t.form==='concentrate'?'Concentrate':formulaFormLabel(t.form)}}</strong><span>{{agencyName(t.source_agency_id)}} → {{agencyName(t.destination_agency_id)}}</span><span class="legacy-transfer-status">{{t.status==='received'?'Confirmed Receipt':t.status==='reserved'?'Transfer Requested':t.status==='shipped'?'In Transit':t.status==='cancelled'?'Cancelled':'Blocked — expired'}}</span></summary>
+                    <div class="legacy-transfer-summary"><span><strong>{{t.quantity}}</strong> unit(s)</span><span>Expires {{formatDisplayDate(t.expiration_date)}}</span><span>ETA {{t.eta?formatDisplayDate(t.eta):'Pending'}}</span><span v-if="t.request_ref">Ref {{t.request_ref}}</span></div>
+                    <p>{{t.source_clinic_name || 'Clinic not specified'}}</p><p v-if="pickupAddress(t.source_clinic_address)">Pickup: {{pickupAddress(t.source_clinic_address)}}</p><p v-if="t.tracking_reference">Tracking: {{t.tracking_reference}}</p>
                     <p>This transfer was recorded without a linked request. {{reviewer?'Cancel an unshipped reservation and reserve it again in the request’s Shipment section to use agency confirmation and shipping labels.':'Contact CDPH/WIC about this transfer.'}}</p>
                     <button v-if="reviewer && t.status==='reserved'" class="button" @click="start('cancel', data?.lots.find((l: any) => l.id === t.source_lot_id) as SurplusLot, t)">Cancel reservation</button>
                 </details>
-            </article>
+            </section>
+            <section class="transfer-direction" aria-labelledby="receiving-transfers-heading">
+                <header class="transfer-direction-heading"><h3 id="receiving-transfers-heading">Receiving</h3><span>{{receivingTransfers.length}}</span></header>
+                <p v-if="!receivingTransfers.length" class="muted-copy">No transfers to receive.</p>
+                <AgencyTransferShipment v-for="t in receivingTransfers.filter(t=>t.request_id)" :key="`receive:${t.id}`" :transfer="t" :source-name="agencyName(t.source_agency_id)" :destination-name="agencyName(t.destination_agency_id)" :can-ship="false" @updated="refreshTransferState" />
+                <details v-for="t in receivingTransfers.filter(t=>!t.request_id)" :key="`receive-legacy:${t.id}`" class="legacy-transfer">
+                    <summary class="legacy-transfer-summary-row"><strong>{{t.formula_name}} {{t.form==='concentrate'?'Concentrate':formulaFormLabel(t.form)}}</strong><span>{{agencyName(t.source_agency_id)}} → {{agencyName(t.destination_agency_id)}}</span><span class="legacy-transfer-status">{{t.status==='received'?'Confirmed Receipt':t.status==='reserved'?'Transfer Requested':t.status==='shipped'?'In Transit':t.status==='cancelled'?'Cancelled':'Blocked — expired'}}</span></summary>
+                    <div class="legacy-transfer-summary"><span><strong>{{t.quantity}}</strong> unit(s)</span><span>Expires {{formatDisplayDate(t.expiration_date)}}</span><span>ETA {{t.eta?formatDisplayDate(t.eta):'Pending'}}</span><span v-if="t.request_ref">Ref {{t.request_ref}}</span></div>
+                    <p>{{t.source_clinic_name || 'Clinic not specified'}}</p><p v-if="pickupAddress(t.source_clinic_address)">Pickup: {{pickupAddress(t.source_clinic_address)}}</p><p v-if="t.tracking_reference">Tracking: {{t.tracking_reference}}</p>
+                </details>
+            </section>
         </section>
         <div v-show="view==='inventory'" id="inventory-panel" role="tabpanel" aria-labelledby="inventory-tab" tabindex="0">
         <header class="inventory-section-heading">
@@ -570,8 +591,8 @@ async function upload(kind: string, event: Event) {
                     <p v-if="requestsLoading" role="status">Loading matching requests…</p>
                     <p v-else-if="requestChoiceError" role="alert">{{requestChoiceError}}</p>
                     <template v-else>
-                        <label>Find Request<input v-model="requestSearch" type="search" placeholder="Request number, participant, or receiving agency" /></label>
-                        <label>Destination Request<select v-model="destinationRequest" required><option disabled value="">Select a Request</option><option v-for="r in matchingRequests" :key="r.id" :value="String(r.id)">#{{r.id}} · {{r.participantName}} · {{agencyName(r.agencyId)}}</option></select></label>
+                        <label>Find Request<input v-model="requestSearch" type="search" placeholder="Participant or receiving agency" /></label>
+                        <label>Destination Request<select v-model="destinationRequest" required><option disabled value="">Select a Request</option><option v-for="r in searchableRequests" :key="r.id" :value="String(r.id)" :disabled="!surplusShipmentDraft(r,selected!,[])">#{{r.id}} · {{r.participantName}} · {{agencyName(r.agencyId)}}<template v-if="!surplusShipmentDraft(r,selected!,[])"> · formula not requested</template></option></select></label>
                         <p v-if="!matchingRequests.length">No matching requests. The request must include this formula and belong to a different agency.</p>
                     </template>
                     <div class="dialog-actions"><button class="button" type="button" @click="modal=''">Cancel</button><button class="button button-secondary" :disabled="requestsLoading || !matchingRequests.some(r=>String(r.id)===destinationRequest)" type="submit">Continue to Shipment</button></div>
@@ -752,9 +773,16 @@ async function upload(kind: string, event: Event) {
     </div>
 </template>
 <style scoped>
-.legacy-transfer {box-sizing:border-box;display:grid;gap:8px;width:100%;max-width:var(--surplus-content-width);border:1px solid var(--line);border-radius:8px;padding:12px 16px;margin:8px 0;font-size:13px;line-height:1.4;}
-.legacy-transfer-heading {display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:8px 16px;}
-.legacy-transfer-heading > div > strong {display:block;font-size:14px;line-height:1.4;}
+.legacy-transfer {box-sizing:border-box;display:block;width:100%;max-width:var(--surplus-content-width);border:1px solid var(--line);border-radius:8px;padding:0 12px;margin:8px 0;font-size:13px;line-height:1.4;}
+.legacy-transfer-summary-row {display:flex;align-items:center;flex-wrap:wrap;gap:8px 16px;padding:12px 0;cursor:pointer;list-style:none;}
+.legacy-transfer-summary-row::-webkit-details-marker {display:none;}
+.legacy-transfer-summary-row > strong {font-size:14px;flex:1;}
+.legacy-transfer-summary-row > span:nth-child(2) {color:var(--muted);font-size:12px;}
+.legacy-transfer[open] > .legacy-transfer-summary-row {padding-bottom:8px;}
+.transfer-direction {max-width:var(--surplus-content-width);padding:12px 0;border-top:1px solid var(--line);}
+.transfer-direction-heading {display:flex;align-items:center;gap:10px;margin:8px 0;}
+.transfer-direction-heading h3 {margin:0;font-size:1rem;}
+.transfer-direction-heading > span {display:inline-grid;place-items:center;min-width:22px;height:22px;padding:0 6px;border-radius:12px;background:var(--surface-raised);font-size:12px;font-weight:650;}
 .legacy-transfer-status {font-size:12px;line-height:1.4;font-weight:600;border:1px solid var(--line);border-radius:12px;padding:2px 8px;white-space:nowrap;}
 .legacy-transfer-route {display:block;color:var(--muted);font-size:13px;line-height:1.4;margin-top:4px;}
 .legacy-transfer-route b {font-weight:600;}
