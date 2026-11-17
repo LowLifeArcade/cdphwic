@@ -43,7 +43,7 @@ export async function listSurplusNotices(db: D1Database, user: SessionUser) {
         .bind(user.id, isReviewer(user) ? 1 : 0, user.agencyId ?? -1)
         .all<any>();
     // Each handoff has its own read identity; reservation notices are immediate.
-    const transfers=await db.prepare(`SELECT t.*,t.id AS transfer_id,t.source_agency_id AS agency_id,COALESCE(json_extract(sub.request_json,'$.participantName'),'') AS participant_name,
+    const transfers=await db.prepare(`SELECT t.*,t.id AS transfer_id,t.source_agency_id AS agency_id,COALESCE(json_extract(sub.request_json,'$.participantName'),'') AS participant_name,json_extract(sub.request_json,'$.submissionDate') AS submission_date,
         CASE WHEN EXISTS(SELECT 1 FROM transfer_shipping_labels labels WHERE labels.transfer_id=t.id) THEN 1 ELSE 0 END AS has_labels
         FROM surplus_transfers t JOIN surplus_lots l ON l.id=t.source_lot_id LEFT JOIN surplus_submissions sub ON json_extract(sub.request_json,'$.id')=t.request_id
         WHERE t.request_id IS NOT NULL AND t.status='reserved' AND (?=1 OR t.source_agency_id=?)

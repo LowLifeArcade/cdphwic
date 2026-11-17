@@ -93,6 +93,7 @@ async function download(kind: string) {
                           ? 'Formula available for donation'
                           : 'Expired formula — destruction required'
                 }}</strong>
+                <p v-if="n.request_id" class="notice-submitted">Submitted {{ formatDisplayDate(n.submission_date) }}</p>
                 <p v-if="['request-info','request-eta','request-response','transfer-pickup','transfer-confirmed','transfer-stock','transfer-ready'].includes(n.kind)" class="notice-kind">{{notificationNature(n)}}</p>
                 <template v-if="n.kind==='request-info' || n.kind==='request-eta' || n.kind==='request-response' || n.kind==='transfer-pickup' || n.kind==='transfer-confirmed'">
                     <p v-if="n.kind==='request-info' || n.kind==='request-response'" class="request-notice-notes">{{n.notes}}</p>

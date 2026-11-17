@@ -13,11 +13,11 @@ it('sends required reviewer notes with revision protection and preserves Pending
 });
 it('publishes immutable authorization versions and scopes notices to the request agency',async()=>{
  const {requestNotices}=await import('../server/utils/requestNotices');
- const {db}=surplusDb();const previous=await ensureSubmittedRequest(db,{id:9934,submissionId:'publish',agencyId:10,agencyMemberId:100,participantName:'Synthetic',productName:'Fortini',productForm:'ready-to-feed',status:'in_progress',nextSteps:'Published instruction'});
+ const {db}=surplusDb();const previous=await ensureSubmittedRequest(db,{id:9934,submissionId:'publish',submissionDate:'2026-10-12',agencyId:10,agencyMemberId:100,participantName:'Synthetic',productName:'Fortini',productForm:'ready-to-feed',status:'in_progress',nextSteps:'Published instruction'});
  const sent=await updateSubmittedRequest(db,previous,{shipmentDrafts:[{eta:'2026-11-10',carrier:'ups',casesShipped:2,trackingNumbers:['ONE']}]},false,0,3,undefined,false);
  expect(sent.authorizationVersions).toHaveLength(1);expect(sent.authorizationVersions![0]!.record.shipmentDrafts).toBeUndefined();
  const changed=await updateSubmittedRequest(db,sent,{nextSteps:'Unsent revision'});expect(changed.authorizationVersions![0]!.record.nextSteps).toBe('Published instruction');
- const notices=await requestNotices(db,getDemoUser('agency'));expect(notices).toHaveLength(1);expect(notices[0]?.version_id).toBe(sent.authorizationVersions![0]!.id);expect(notices[0]?.participant_name).toBe('Synthetic');
+ const notices=await requestNotices(db,getDemoUser('agency'));expect(notices).toHaveLength(1);expect(notices[0]?.version_id).toBe(sent.authorizationVersions![0]!.id);expect(notices[0]?.participant_name).toBe('Synthetic');expect(notices[0]?.submission_date).toBe('2026-10-12');
  expect(await requestNotices(db,{...getDemoUser('agency'),agencyId:11})).toHaveLength(0);
  const pending=await requestMoreInfo(db,changed,getDemoUser('internal'),'Please correct date',changed.revision!);
  expect((await requestNotices(db,getDemoUser('agency'))).some(n=>n.kind==='request-info'&&n.notes==='Please correct date')).toBe(true);
