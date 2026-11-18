@@ -5,12 +5,12 @@ const request={status:'in_progress' as const,requestedFormulas:[{productName:'Nu
 
 it('summarizes an unshipped shipment with its formula and quantity',()=>{
  const result=compactShipmentSummary(request,{shipmentFormula:{productName:'Nutramigen',productForm:'RTF'},casesShipped:3,unitsPerCase:6,eta:'',carrier:'fedex',trackingNumbers:[]});
- expect(result).toEqual({formula:'Nutramigen · RTF',quantity:'3 cases',status:'Awaiting shipment'});
+ expect(result).toEqual({formula:'Nutramigen RTF',quantity:'3 cases',status:'Awaiting shipment'});
 });
 
 it('shows dispatched shipment ETA and received quantities',()=>{
  const result=compactShipmentSummary(request,{shipmentFormula:{productName:'Nutramigen',productForm:'RTF'},casesShipped:3,unitsPerCase:6,receivedCases:1,eta:'2026-11-20',etaSentAt:'2026-11-13',carrier:'fedex',trackingNumbers:['abc']});
- expect(result).toEqual({formula:'Nutramigen · RTF',quantity:'3 cases',status:'Partially received · 1 case of 3 cases'});
+ expect(result).toEqual({formula:'Nutramigen RTF',quantity:'3 cases',status:'Partially received · 1 case of 3 cases'});
 });
 
 it('marks completed shipments as received and unresolved discrepancies as issues',()=>{

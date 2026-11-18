@@ -10,7 +10,9 @@ it('closes notifications from the backdrop and Escape key',()=>{
 });
 
 it('uses participant names and concise summaries in request notifications',()=>{
- expect(inbox).toContain('{{n.participant_name ||');
+ expect(inbox).toContain('function notificationTitle(n:any)');
+ expect(inbox).toContain("join(' | ')");
+ expect(inbox).toContain('n.participant_name');
  expect(inbox).not.toContain('Request #{{n.request_id}}');
  expect(inbox).toContain('Shipment details and authorization are ready.');
  expect(inbox).toContain('notificationTitle(n)');

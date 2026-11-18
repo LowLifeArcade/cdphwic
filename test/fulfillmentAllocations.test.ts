@@ -13,7 +13,7 @@ it('requires an order type and prevents shipments exceeding their allocated form
 
 it('keeps unsent special-order cases visible after the standard portion ships',()=>{
  const progress=fulfillmentProgress({...request,shipments:[{...shipment(2,'standard'),etaSentAt:'2026-11-10',eta:'2026-11-12'}]});
- expect(progress).toEqual([{formula:'Nutramigen · RTF',standard:{allocated:2,shipped:2,received:0,pending:0},special:{allocated:3,shipped:0,received:0,pending:3}}]);
+ expect(progress).toEqual([{formula:'Nutramigen RTF',standard:{allocated:2,shipped:2,received:0,pending:0},special:{allocated:3,shipped:0,received:0,pending:3}}]);
 });
 
 it('enforces allocations and per-portion shipment limits on the server',async()=>{

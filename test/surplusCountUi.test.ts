@@ -15,7 +15,7 @@ describe('Formula Surplus agency count and lot groups',()=>{
  });
 
  it('summarizes multi-expiration inventory groups and retains individual lot actions',()=>{
-  expect(page).toContain('groupSurplusLots(lots.value)');
+  expect(page).toContain('groupSurplusLots(activeLots.value)');
   expect(page).toContain("row.kind==='group'");
   expect(page).toContain('row.group.earliestExpiration');
   expect(page).toMatch(/\{\{expandedInventoryGroups\[row\.group\.key\]\?'Hide':'View'\}\}\s*\{\{row\.group\.lots\.length\}\} expiration lots/);
