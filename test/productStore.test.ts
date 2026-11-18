@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createProduct, updateProduct, updateProducts, validateProductInput } from '../server/utils/productStore';
+import { createProduct, updateProduct, updateProducts, validateProductInput } from './helpers/productStore';
 
 describe('product store', () => {
     it('validates required product fields and numeric values', () => {
@@ -81,7 +81,7 @@ describe('product store', () => {
 });
 
 it('does not partially import a batch containing invalid or missing identifiers', async () => {
-    const { createProducts, listProducts } = await import('../server/utils/productStore');
+    const { createProducts, listProducts } = await import('./helpers/productStore');
     const before = listProducts().length;
     expect(() => createProducts([{ name: 'Valid batch', productId: 'BATCH-VALID', productCode: 'BATCH-VALID', form: 'powder', category: 'standard', unitsPerCase: 6 }, { name: 'Invalid batch' } as never])).toThrow('Row 3');
     expect(listProducts()).toHaveLength(before);
@@ -100,4 +100,35 @@ it('still clears editable prices when a legacy form omits empty price values', (
     expect(edited.unitPrice).toBeUndefined();
     expect(edited.poPrice).toBeUndefined();
     expect(edited.packaging).toBe('can');
+});
+
+it('keeps inactive products out of the catalog while retaining historical lookup data', async () => {
+    const { listProducts, getProduct } = await import('./helpers/productStore');
+    const archived = createProduct({ name: 'Archived fixture', productId: 'ARCHIVED-FIXTURE', productCode: 'ARCHIVED-FIXTURE', form: 'powder', category: 'standard', unitsPerCase: 6, active: false });
+    expect(listProducts().some(product => product.id === archived.id)).toBe(false);
+    expect(listProducts({ includeInactive: true }).some(product => product.id === archived.id)).toBe(true);
+    expect(getProduct(archived.id).unitsPerCase).toBe(6);
+});
+
+it('deletes a product from active selection while preserving historical data and allowing its number to be reused', async () => {
+    const { deleteProduct, listProducts, getProduct } = await import('./helpers/productStore');
+    const input = { name: 'Delete fixture', productId: 'DELETE-FIXTURE', productCode: 'DELETE-FIXTURE', form: 'powder' as const, category: 'standard' as const, unitsPerCase: 6 };
+    const product = createProduct(input);
+    expect(deleteProduct(product.id)).toMatchObject({ id: product.id, active: false });
+    expect(listProducts().some(row => row.id === product.id)).toBe(false);
+    expect(getProduct(product.id)).toMatchObject({ productCode: 'DELETE-FIXTURE', unitsPerCase: 6 });
+    expect(createProduct(input).id).not.toBe(product.id);
+    expect(() => deleteProduct(-1)).toThrow('No product found');
+});
+
+it('edits spreadsheet metadata and explicitly clears optional prices, yield, and coverage status', () => {
+    const original = createProduct({ name: 'Edit spreadsheet fixture', productId: 'EDIT-SHEET', productCode: 'EDIT-SHEET', form: 'powder', category: 'standard', unitsPerCase: 6, yield: 8, formulaDescription: 'Original description', flavor: 'Vanilla', packaging: 'Can', manufacturer: 'Maker', mcKessonPo: 'PO-001', mcKessonPrice: 25, coveredByMediCal: true, fdaClass: 'Original FDA', wicClass: 'Original WIC', st: 'S', infantToddler: 'Infant' });
+    const edited = updateProduct(original.id, { ...original, formulaDescription: 'Updated description', flavor: 'Chocolate', packaging: 'Carton', manufacturer: 'New maker', mcKessonPo: 'PO-002', mcKessonPrice: 30, coveredByMediCal: false, fdaClass: 'Updated FDA', wicClass: 'Updated WIC', st: 'T', infantToddler: 'Toddler' });
+    expect(edited).toMatchObject({ formulaDescription: 'Updated description', flavor: 'Chocolate', packaging: 'Carton', manufacturer: 'New maker', mcKessonPo: 'PO-002', mcKessonPrice: 30, coveredByMediCal: false, fdaClass: 'Updated FDA', wicClass: 'Updated WIC', st: 'T', infantToddler: 'Toddler' });
+    const cleared = updateProduct(original.id, { ...edited, formulaDescription: '', packaging: '', yield: null, mcKessonPrice: null, coveredByMediCal: null });
+    expect(cleared.formulaDescription).toBeUndefined();
+    expect(cleared.packaging).toBeUndefined();
+    expect(cleared.yield).toBeUndefined();
+    expect(cleared.mcKessonPrice).toBeUndefined();
+    expect(cleared.coveredByMediCal).toBeUndefined();
 });

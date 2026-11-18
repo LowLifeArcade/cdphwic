@@ -7,15 +7,16 @@ const normalize = (value?: string) => (value ?? '').trim().replace(/\s+/g, ' ').
 export function matchingProducts(products: ProductRecord[], selection: ProductSelection): ProductRecord[] {
     if (!normalize(selection.name)) return [];
     return products.filter(product => normalize(product.name) === normalize(selection.name)
-        && (!selection.form || normalize(product.form) === normalize(selection.form))
+        && (!selection.form || !product.form || product.form === 'other' || normalize(product.form) === normalize(selection.form))
         && (!selection.flavor || normalize(product.flavor ?? product.genericFields?.flavor) === normalize(selection.flavor))
         && (!selection.packaging || normalize(product.packaging) === normalize(selection.packaging)));
 }
 
 export function resolveProduct(products: ProductRecord[], selection: ProductSelection, productCode?: string): ProductRecord | undefined {
     const candidates = matchingProducts(products, selection);
-    if (productCode !== undefined) return candidates.find(product => product.productCode === productCode.trim());
-    return candidates.length === 1 ? candidates[0] : undefined;
+    if (productCode !== undefined) return productCode.trim() ? candidates.find(product => product.productCode === productCode.trim()) : undefined;
+    const product = candidates.length === 1 ? candidates[0] : undefined;
+    return product?.productCode.trim() && product.form && product.form !== 'other' ? product : undefined;
 }
 
 export function selectAuthorizationProduct(authorization: FormulaAuthorization, products: ProductRecord[], productCode: string): FormulaAuthorization {
@@ -34,6 +35,6 @@ export function enterAuthorizationProductNumber(authorization: FormulaAuthorizat
     if (!code) return selectAuthorizationProduct(authorization, products, '');
     if (authorizationCatalogProduct(products, { ...authorization, productCode: code })) return selectAuthorizationProduct(authorization, products, code);
     const candidates = matchingProducts(products, { name: authorization.productName, form: authorization.productForm, flavor: authorization.flavor });
-    if (!candidates.length) return { ...authorization, productCode: code };
+    if (!candidates.some(product => product.productCode.trim())) return { ...authorization, productCode: code };
     return { ...selectAuthorizationProduct(authorization, products, ''), productCode: code };
 }

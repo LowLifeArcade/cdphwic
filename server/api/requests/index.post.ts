@@ -1,4 +1,5 @@
-import { listProducts } from '../../utils/productStore';
+import { listProducts } from '../../utils/productRepository';
+import { productDatabase } from '../../utils/productDatabase';
 import { hasMedicalDocumentation, medicalDocumentationRequiredMessage } from '../../../shared/medicalDocumentation';
 import {shippingContact} from '../../../shared/shipping';
 import {requestAgency,requestContact} from '../../utils/requestAgency';
@@ -30,7 +31,7 @@ export default defineEventHandler(async (event) => {
     const user = getSessionFromHeaders({ 'x-demo-user': getHeader(event, 'x-demo-user') });
     const membership=requestAgency(user,requestBody.agencyId,requestBody.agencyMemberId);
     if(requestBody.shipping)requestBody.shipping={...requestBody.shipping,...shippingContact(requestBody.shipping,requestContact(user,membership.agencyId,membership.agencyMemberId))};
-    const validationError = validateRequestSubmission(requestBody, listProducts());
+    const validationError = validateRequestSubmission(requestBody, await listProducts(productDatabase(event)));
     if (validationError) throw createError({ statusCode: 400, statusMessage: validationError });
     const environment = event.context.cloudflare?.env as Partial<Env> | undefined;
     const submissionId = body.submissionId ?? crypto.randomUUID();

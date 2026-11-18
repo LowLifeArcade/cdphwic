@@ -20,6 +20,7 @@ const categoryFilter = ref('');
 const formFilter = ref('');
 const coverageFilter = ref('');
 const openMenuId = ref<number | null>(null);
+const menuPosition = ref({ top: '0px', left: '0px' });
 const products = computed<ProductRecord[]>(() => data.value?.products ?? []);
 const forms = computed(() => [...new Set(products.value.map((product) => product.form))].sort());
 const filteredProducts = computed(() =>
@@ -38,7 +39,12 @@ const filteredProducts = computed(() =>
     }),
 );
 
-function toggleProductMenu(id: number) {
+function toggleProductMenu(id: number, event: MouseEvent) {
+    const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
+    menuPosition.value = {
+        top: `${Math.max(8, Math.min(rect.bottom + 5, window.innerHeight - 64))}px`,
+        left: `${Math.max(8, Math.min(rect.right - 150, window.innerWidth - 158))}px`,
+    };
     openMenuId.value = openMenuId.value === id ? null : id;
 }
 
@@ -46,8 +52,16 @@ function closeProductMenu() {
     openMenuId.value = null;
 }
 
-onMounted(() => document.addEventListener('click', closeProductMenu));
-onBeforeUnmount(() => document.removeEventListener('click', closeProductMenu));
+onMounted(() => {
+    document.addEventListener('click', closeProductMenu);
+    window.addEventListener('scroll', closeProductMenu, true);
+    window.addEventListener('resize', closeProductMenu);
+});
+onBeforeUnmount(() => {
+    document.removeEventListener('click', closeProductMenu);
+    window.removeEventListener('scroll', closeProductMenu, true);
+    window.removeEventListener('resize', closeProductMenu);
+});
 </script>
 <template>
     <div class="page-heading">
@@ -112,7 +126,7 @@ onBeforeUnmount(() => document.removeEventListener('click', closeProductMenu));
         >
             <option value="">All coverage</option>
             <option value="wic">WIC</option>
-            <option value="medical">Medical</option>
+            <option value="medical">Medi-Cal</option>
         </select>
         <div
             class="product-view-toggle"
@@ -181,7 +195,7 @@ onBeforeUnmount(() => document.removeEventListener('click', closeProductMenu));
                             :key="coverage"
                             class="coverage-tag"
                         >
-                            {{ coverage }}
+                            {{ coverage === 'medical' ? 'Medi-Cal' : 'WIC' }}
                         </span>
                     </div>
                 </div>
@@ -194,16 +208,15 @@ onBeforeUnmount(() => document.removeEventListener('click', closeProductMenu));
                         type="button"
                         aria-label="Product actions"
                         :aria-expanded="openMenuId === product.id"
-                        @click="toggleProductMenu(product.id)"
+                        @click="toggleProductMenu(product.id, $event)" @keydown.esc="closeProductMenu"
                     >
                         ⋯
                     </button>
-                    <div
-                        v-if="openMenuId === product.id"
-                        class="product-menu"
-                    >
-                        <NuxtLink :to="`/products/${product.id}`">Edit product</NuxtLink>
-                    </div>
+                    <Teleport to="body">
+                        <div v-if="openMenuId === product.id" class="product-menu" :style="menuPosition" @keydown.esc="closeProductMenu">
+                            <NuxtLink :to="`/products/${product.id}`">Edit product</NuxtLink>
+                        </div>
+                    </Teleport>
                 </div>
             </div>
             <div class="data-list">
@@ -214,7 +227,7 @@ onBeforeUnmount(() => document.removeEventListener('click', closeProductMenu));
                     <span>Form</span><strong>{{ formulaFormLabel(product.form) }}</strong>
                 </div>
                 <div>
-                    <span>Units / case</span><strong>{{ product.unitsPerCase }}</strong>
+                    <span>Units / case</span><strong>{{ product.unitsPerCase ?? '—' }}</strong>
                 </div>
                 <div>
                     <span>Unit price</span
@@ -283,16 +296,15 @@ onBeforeUnmount(() => document.removeEventListener('click', closeProductMenu));
                         type="button"
                         aria-label="Product actions"
                         :aria-expanded="openMenuId === product.id"
-                        @click="toggleProductMenu(product.id)"
+                        @click="toggleProductMenu(product.id, $event)" @keydown.esc="closeProductMenu"
                     >
                         ⋯
                     </button>
-                    <div
-                        v-if="openMenuId === product.id"
-                        class="product-menu"
-                    >
-                        <NuxtLink :to="`/products/${product.id}`">Edit product</NuxtLink>
-                    </div>
+                    <Teleport to="body">
+                        <div v-if="openMenuId === product.id" class="product-menu" :style="menuPosition" @keydown.esc="closeProductMenu">
+                            <NuxtLink :to="`/products/${product.id}`">Edit product</NuxtLink>
+                        </div>
+                    </Teleport>
                 </div>
             </div>
             <span>{{ product.productId }}</span>
@@ -305,7 +317,7 @@ onBeforeUnmount(() => document.removeEventListener('click', closeProductMenu));
                     :key="coverage"
                     class="coverage-tag"
                 >
-                    {{ coverage }}
+                    {{ coverage === 'medical' ? 'Medi-Cal' : 'WIC' }}
                 </span>
             </div>
             <span>{{ product.casesApproved ?? 0 }}</span>

@@ -1,10 +1,13 @@
 <script setup lang="ts">
+import { productUploadFailure, type ProductUploadIssue } from '~/../shared/productUploadErrors';
 const router = useRouter();
 const fileInput = ref<HTMLInputElement>();
 const error = ref('');
+const issues = ref<ProductUploadIssue[]>([]);
 const uploading = ref(false);
 
 async function updateProducts() {
+    issues.value = [];
     const file = fileInput.value?.files?.[0];
     if (!file) {
         error.value = 'Choose a CSV or Excel file first.';
@@ -22,7 +25,9 @@ async function updateProducts() {
         });
         await router.push('/products');
     } catch (requestError) {
-        error.value = (requestError as { statusMessage?: string }).statusMessage ?? 'Products could not be updated.';
+        const failure = productUploadFailure(requestError);
+        error.value = failure.message;
+        issues.value = failure.issues;
     } finally {
         uploading.value = false;
     }
@@ -33,8 +38,8 @@ async function updateProducts() {
     <div class="page-heading">
         <div>
             <p class="eyebrow">Catalog</p>
-            <h1>Bulk update quantities</h1>
-            <p>Replace approved and used case quantities for existing products.</p>
+            <h1>Bulk update products</h1>
+            <p>Update product details and quantities for existing catalog products.</p>
         </div>
         <NuxtLink
             class="button button-ghost"
@@ -46,19 +51,23 @@ async function updateProducts() {
     <section class="panel form-panel">
         <div class="panel-heading">
             <div>
-                <h2>Upload quantity update</h2>
+                <h2>Upload product updates</h2>
                 <span>CSV, XLS, or XLSX</span>
             </div>
         </div>
         <p class="muted-copy">
-            Required columns: <code>productId</code>, <code>casesApproved</code>, and <code>casesUsed</code>. Values
-            replace the current quantities. Remaining cases and dollar totals are calculated automatically from the PO
-            price.
+            Include <code>Product Number</code> to identify each existing product (legacy <code>productId</code> is also accepted).
+            Add only the columns you want to update. Omitted columns remain unchanged; included blank cells clear their values.
+            Supported columns include <code>Formula Name</code>, <code>Formula Form</code>, <code>Flavor</code>, <code>Units Per Case</code>, <code>Yield</code>,
+            <code>Formula Description</code>, <code>Manufacturer</code>, <code>McKesson PO</code>, <code>McKesson Price</code>, <code>Covered by Medi-Cal</code>,
+            <code>FDA Class</code>, <code>WIC Class</code>, <code>S/T</code>, <code>Infant/Toddler</code>, and <code>Packaging</code>.
+            Cases Approved, Cases Used, Unit Price, PO Price, Supplier Reference, Category, and Coverage are also supported.
+            Product Numbers must already exist. No updates are saved if any row is invalid.
         </p>
         <div class="upload-example">
             <strong>Example headers</strong>
-            <code>productId,casesApproved,casesUsed</code>
-            <code>PROD-301,200,9</code>
+            <code>Product Number,Manufacturer,McKesson Price,Packaging</code>
+            <code>166802,Example Manufacturer,42.50,6 cans per case</code>
         </div>
         <div class="upload-drop">
             <input
@@ -66,14 +75,9 @@ async function updateProducts() {
                 type="file"
                 accept=".csv,.xls,.xlsx"
             />
-            <span>Product IDs must already exist in the catalog.</span>
+            <span>Use one update row per product. Format Product Number as text to preserve leading zeroes.</span>
         </div>
-        <p
-            v-if="error"
-            class="form-error"
-        >
-            {{ error }}
-        </p>
+        <ProductUploadErrors :message="error" :issues="issues" />
         <div class="form-actions">
             <NuxtLink
                 class="button button-ghost"
@@ -86,7 +90,7 @@ async function updateProducts() {
                 :disabled="uploading"
                 @click="updateProducts"
             >
-                {{ uploading ? 'Updating…' : 'Update quantities' }}
+                {{ uploading ? 'Updating…' : 'Update products' }}
             </button>
         </div>
     </section>

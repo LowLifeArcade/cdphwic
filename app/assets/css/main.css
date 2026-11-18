@@ -1577,10 +1577,9 @@ label {
     flex: 0 0 auto;
 }
 .product-menu {
-    position: absolute;
-    top: calc(100% + 5px);
-    right: 0;
-    z-index: 5;
+    position: fixed;
+    z-index: 100;
+    width: 150px;
     display: grid;
     min-width: 130px;
     padding: 5px;

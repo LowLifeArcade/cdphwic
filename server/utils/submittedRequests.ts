@@ -11,7 +11,7 @@ import {shipmentPlan} from '../../shared/shipmentPublishing';
 import {getDistributor} from './distributors';
 import {snapshotDistributor} from '../../shared/distributors';
 import {applyShipmentPolicy,type ShipmentPolicyCommand} from '../../shared/shipmentPolicy';
-import {getProduct,listProducts} from './productStore';
+import {getProduct,listProducts} from './productRepository';
 import {transferCatalogUnitsPerCase} from '../../shared/requestTransfers';
 import {validUnitSize} from '../../shared/shipmentQuantities';
 import {confirmShipmentReceipts,shipmentReceiptKey,type ShipmentReceiptSelection} from '../../shared/shipmentReceipts';
@@ -178,7 +178,7 @@ export async function updateSubmittedRequest(
     if (updates.requestedFormulas !== undefined) {
         if (!Array.isArray(updates.requestedFormulas) || !updates.requestedFormulas.length)
             throw Object.assign(new Error('Add at least one formula.'), {statusCode:400});
-        const formulaError = validateFormulaSelection(updates.requestedFormulas.map(formula => ({name:formula.otherFormulaName || formula.productName,form:formula.productForm,flavor:formula.flavor})), listProducts());
+        const formulaError = validateFormulaSelection(updates.requestedFormulas.map(formula => ({name:formula.otherFormulaName || formula.productName,form:formula.productForm,flavor:formula.flavor})), await listProducts(db));
         if (formulaError) throw Object.assign(new Error(formulaError), {statusCode:400,statusMessage:formulaError});
     }
     if (updates.shipments) {
@@ -202,7 +202,7 @@ export async function updateSubmittedRequest(
             throw Object.assign(new Error('Select a valid shipment.'), {statusCode:400});
         rows[sendEtaShipmentIndex]={...rows[sendEtaShipmentIndex]!,shipmentFormula:previous.shipments?.[sendEtaShipmentIndex]?.etaSentAt && previous.shipments[sendEtaShipmentIndex]?.shipmentFormula ? previous.shipments[sendEtaShipmentIndex]!.shipmentFormula : requireShipmentFormula(previous,rows[sendEtaShipmentIndex]!)};
         let size=rows[sendEtaShipmentIndex]!.unitsPerCase;
-        if (!validUnitSize(size)) size=shipmentCatalogPackaging(previous,rows[sendEtaShipmentIndex]!);
+        if (!validUnitSize(size)) size=await shipmentCatalogPackaging(db,previous,rows[sendEtaShipmentIndex]!);
         if (quantityTracking && !validUnitSize(size)) throw Object.assign(new Error('Enter Units per Case before sending ETA.'),{statusCode:400,statusMessage:'Enter Units per Case before sending ETA.'});
         rows[sendEtaShipmentIndex]={...rows[sendEtaShipmentIndex]!,unitsPerCase:size};
         const message = validateShipments([rows[sendEtaShipmentIndex]!], true);
@@ -256,7 +256,7 @@ export async function deleteSubmittedShipment(db:D1Database,previous:RequestReco
     return writeRecord(db,previous,nextRecord(previous,applyShipmentDeletion(previous,index,actorId)),false,steps);
 }
 export async function updateSubmittedShipmentReceipt(db:D1Database,previous:RequestRecord,selections:ShipmentReceiptSelection[],actorId:number) {
-    const prepared=prepareCatalogReceiptPackaging(previous,selections);
+    const prepared=await prepareCatalogReceiptPackaging(db,previous,selections);
     let updates={...confirmShipmentReceipts(prepared.request,prepared.selections,actorId),...(originalCaseApproval(previous)!==undefined?{originalApprovedCases:originalCaseApproval(previous)}:{})};
     updates=keepSplitFulfillmentOpen(previous,updates);
     return writeRecord(db,previous,nextRecord(previous,updates),false,await transferReceiptSteps(db,previous,updates));
@@ -264,7 +264,7 @@ export async function updateSubmittedShipmentReceipt(db:D1Database,previous:Requ
 export async function updateSubmittedShipmentIssue(db:D1Database,previous:RequestRecord,command:ShipmentIssueCommand,actorId:number,senderType?:'agency'|'reviewer') {
     const original=previous;
     if(command.action==='resolve-received' && command.catalogUnitsPerCase!==undefined){
-        const prepared=prepareCatalogReceiptPackaging(previous,[command]);previous=prepared.request;command={...command,key:prepared.selections[0]!.key};
+        const prepared=await prepareCatalogReceiptPackaging(db,previous,[command]);previous=prepared.request;command={...command,key:prepared.selections[0]!.key};
     }
     const updates={...applyShipmentIssue(previous,command,actorId,undefined,senderType),...(originalCaseApproval(previous)!==undefined?{originalApprovedCases:originalCaseApproval(previous)}:{})};
     return writeRecord(db,original,nextRecord(original,updates),false,await transferReceiptSteps(db,original,updates));
@@ -298,7 +298,7 @@ export async function editSubmittedRequest(
     if(request.shipping)request.shipping={...request.shipping,...shippingContact(request.shipping,requestContact(user,previous.agencyId,previous.agencyMemberId))};
     if (options.attachment !== undefined) request.prescriptionAttachment = options.attachment ?? undefined;
     if(!options.saveOnly || request.shipping?.clinicId)request.shipping = await resolveShipping(db,user,previous.agencyId,request.shipping,previous.shipping);
-    const validation = options.saveOnly ? '' : validateRequestSubmission(request, listProducts());
+    const validation = options.saveOnly ? '' : validateRequestSubmission(request, await listProducts(db));
     if (validation) throw Object.assign(new Error(validation), { statusCode: 400, statusMessage: validation });
     const rows = (r: RequestRecord) =>
         JSON.stringify(
@@ -369,23 +369,23 @@ export async function persistShipmentEvidence(db:D1Database,previous:RequestReco
  return writeRecord(db,previous,nextRecord(previous,{shipments:rows}),false);
 }
 
-function shipmentCatalogPackaging(request:RequestRecord,row:NonNullable<RequestRecord['shipments']>[number]){
+async function shipmentCatalogPackaging(db:D1Database,request:RequestRecord,row:NonNullable<RequestRecord['shipments']>[number]){
  const formula=row.shipmentFormula??resolveShipmentFormula(request,row);
- const matched=formula?transferCatalogUnitsPerCase({formulaName:formula.productName,form:formula.productForm??'',flavor:formula.flavor},listProducts()):undefined;
+ const matched=formula?transferCatalogUnitsPerCase({formulaName:formula.productName,form:formula.productForm??'',flavor:formula.flavor},await listProducts(db,{includeInactive:true})):undefined;
  if(validUnitSize(matched))return matched;
- if((request.requestedFormulas?.length??1)<=1&&request.productId){try{return getProduct(request.productId).unitsPerCase;}catch{}}
+ if((request.requestedFormulas?.length??1)<=1&&request.productId){try{return (await getProduct(db,request.productId)).unitsPerCase;}catch{}}
  return undefined;
 }
-function prepareCatalogReceiptPackaging(previous:RequestRecord,selections:ShipmentReceiptSelection[]){
+async function prepareCatalogReceiptPackaging(db:D1Database,previous:RequestRecord,selections:ShipmentReceiptSelection[]){
  const rows=requestShipments(previous);let changed=false;
  const fail=():never=>{throw Object.assign(new Error('Shipment packaging changed or cannot be matched to one catalog product. Refresh the request; CDPH/WIC must confirm Units per Case if it is still missing.'),{statusCode:409,statusMessage:'Shipment packaging changed or cannot be matched to one catalog product. Refresh the request; CDPH/WIC must confirm Units per Case if it is still missing.'});};
- const normalized=selections.map(selection=>{
+ const normalized=await Promise.all(selections.map(async selection=>{
   if(selection.catalogUnitsPerCase===undefined)return selection;
   const row=rows[selection.index];if(!row||shipmentReceiptKey(row)!==selection.key||validUnitSize(row.unitsPerCase))fail();
-  const size=shipmentCatalogPackaging(previous,row!);
+  const size=await shipmentCatalogPackaging(db,previous,row!);
   if(!validUnitSize(size)||size!==selection.catalogUnitsPerCase)fail();
   rows[selection.index]={...row!,unitsPerCase:size};changed=true;return {...selection,key:shipmentReceiptKey(rows[selection.index]!)};
- });
+ }));
  return {request:changed?{...previous,shipments:rows}:previous,selections:normalized};
 }
 

@@ -1,11 +1,14 @@
 <script setup lang="ts">
+import { productUploadFailure, type ProductUploadIssue } from '~/../shared/productUploadErrors';
 const router = useRouter();
 const fileInput = ref<HTMLInputElement>();
 const error = ref('');
+const issues = ref<ProductUploadIssue[]>([]);
 const message = ref('');
 const uploading = ref(false);
 
 async function uploadProducts() {
+    issues.value = [];
     const file = fileInput.value?.files?.[0];
     if (!file) {
         error.value = 'Choose a CSV or Excel file first.';
@@ -28,7 +31,9 @@ async function uploadProducts() {
         }
         await router.push('/products');
     } catch (requestError) {
-        error.value = (requestError as { statusMessage?: string }).statusMessage ?? 'Products could not be uploaded.';
+        const failure = productUploadFailure(requestError);
+        error.value = failure.message;
+        issues.value = failure.issues;
     } finally {
         uploading.value = false;
     }
@@ -59,8 +64,9 @@ async function uploadProducts() {
         <p class="muted-copy">
             Use one row per product. Required headers are <code>Formula Name</code>, <code>Formula Form</code>,
             <code>Flavor</code>, <code>Product Number</code>, <code>Units Per Case</code>, and <code>Yield</code>.
-            Flavor may be blank for unflavored products. Product Number must be unique; Formula Name may repeat.
-            Use Powder, Liquid Concentrate, or Ready-to-Feed for Formula Form. Yield is in fluid ounces.
+            Cell values may be blank in every column. Completely empty rows are ignored.
+            Nonblank Product Numbers must be unique; Formula Name may repeat. Rows without a Product Number get an internal ID and remain unresolved for exact product selection until a number is supplied.
+            Formula Form accepts Powder, Liquid Concentrate, Ready-to-Feed (RTF), Other, or blank. Yield is in fluid ounces.
             Optional columns are <code>Formula Description</code>, <code>Manufacturer</code>, <code>McKesson PO</code>,
             <code>McKesson Price</code>, <code>Covered by Medi-Cal</code>, <code>FDA Class</code>, <code>WIC Class</code>,
             <code>S/T</code>, <code>Infant/Toddler</code>, and <code>Packaging</code>.
@@ -82,12 +88,7 @@ async function uploadProducts() {
             />
             <span>Existing Product Numbers are rejected. No products are added if any row is invalid.</span>
         </div>
-        <p
-            v-if="error"
-            class="form-error"
-        >
-            {{ error }}
-        </p>
+        <ProductUploadErrors :message="error" :issues="issues" />
         <div class="form-actions">
             <NuxtLink
                 class="button button-ghost"

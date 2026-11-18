@@ -161,7 +161,7 @@ describe('CDPH prescription field parser', () => {
 });
 
 it('recognizes an uploaded catalog formula written in the PDF without labelling it Other', async () => {
-    const { createProduct } = await import('../server/utils/productStore');
-    createProduct({ productId: 'PDF-UPLOAD', productCode: 'PDF-UPLOAD', name: 'Uploaded PDF Formula', form: 'powder', category: 'standard', unitsPerCase: 6 });
-    expect(mapPrescriptionFields({ 'formula/medical food': [{ value: 'Uploaded PDF Formula' }] }).formulas[0]).toMatchObject({ formulaName: 'Uploaded PDF Formula', otherFormulaName: '', productForm: 'powder' });
+    const { createProduct } = await import('./helpers/productStore');
+    const product = createProduct({ productId: 'PDF-UPLOAD', productCode: 'PDF-UPLOAD', name: 'Uploaded PDF Formula', form: 'powder', category: 'standard', unitsPerCase: 6 });
+    expect(mapPrescriptionFields({ 'formula/medical food': [{ value: 'Uploaded PDF Formula' }] }, [product]).formulas[0]).toMatchObject({ formulaName: 'Uploaded PDF Formula', otherFormulaName: '', productForm: 'powder' });
 });

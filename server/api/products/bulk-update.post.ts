@@ -1,5 +1,7 @@
-import { parseProductQuantityWorkbook } from '../../utils/productImport';
-import { updateProducts } from '../../utils/productStore';
+import { productDatabase } from '../../utils/productDatabase';
+import { ProductUploadError, productUploadSummary } from '../../../shared/productUploadErrors';
+import { parseProductUpdateWorkbook } from '../../utils/productImport';
+import { updateCatalogProducts } from '../../utils/productRepository';
 
 export default defineEventHandler(async (event) => {
     const parts = await readMultipartFormData(event);
@@ -9,10 +11,10 @@ export default defineEventHandler(async (event) => {
     }
 
     try {
-        const updates = parseProductQuantityWorkbook(file.data);
-        const products = updateProducts(updates);
+        const updates = parseProductUpdateWorkbook(file.data);
+        const products = await updateCatalogProducts(productDatabase(event), updates);
         return { products, count: products.length };
     } catch (error) {
-        throw createError({ statusCode: 400, statusMessage: (error as Error).message });
+        throw createError({ statusCode: (error as {statusCode?:number}).statusCode ?? 400, statusMessage: 'Product update needs corrections.', data: { message: error instanceof ProductUploadError ? productUploadSummary(error.issues) : (error as Error).message, issues: error instanceof ProductUploadError ? error.issues : [] } });
     }
 });

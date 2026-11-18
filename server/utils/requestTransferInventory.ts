@@ -1,6 +1,6 @@
 import {surplusLotColumns,decodeSurplusLot} from './surplusClinicLocations';
 import {requireShipmentFormula,shipmentFormulaKey} from '../../shared/shipmentFormulas';
-import {listProducts} from './productStore';
+import {listProducts} from './productRepository';
 import type {RequestRecord} from '../../shared/domain';
 import type {RequestShipment} from '../../shared/requestShipments';
 import {transferCatalogUnitsPerCase,matchingTransferLot,type RequestAgencyTransfer} from '../../shared/requestTransfers';
@@ -17,7 +17,7 @@ function audit(db:D1Database,lotId:string,requestId:number,actor:number,kind:str
 export async function reserveTransferInventory(db:D1Database,request:RequestRecord,row:RequestShipment,actor:number){
  const stored=await db.prepare(`SELECT ${surplusLotColumns} FROM surplus_lots WHERE id=?`).bind(row.sourceLotId??'').first<SurplusLot>();
  const lot=stored?decodeSurplusLot(stored):null;
- if(lot && row.unitsPerCase===undefined)row={...row,unitsPerCase:transferCatalogUnitsPerCase(lot,listProducts())};
+ if(lot && row.unitsPerCase===undefined)row={...row,unitsPerCase:transferCatalogUnitsPerCase(lot,await listProducts(db))};
  const quantity=row.unitsToTransfer??row.casesShipped*(row.unitsPerCase??0)+(row.looseUnitsShipped??0);
  if(!lot||row.sourceAgencyId!==lot.agencyId||!matchingTransferLot(request,lot)||lot.expirationDate<localDate()||lot.expiredUnits>0||!Number.isSafeInteger(quantity)||quantity<=0||!Number.isSafeInteger(row.unitsPerCase)||row.unitsPerCase!<1||lot.onHand-lot.reserved<quantity)throw transferError('Select matching, unexpired agency surplus and a quantity within the available balance.');
  const formula=requireShipmentFormula(request,{transferFormulaName:lot.formulaName,transferForm:lot.form,transferFlavor:lot.flavor});

@@ -223,6 +223,7 @@ export interface InternalMemberRecord {
 }
 
 export interface ProductRecord {
+    active?: boolean;
     flavor?: string;
     formulaDescription?: string;
     manufacturer?: string;
@@ -238,9 +239,9 @@ export interface ProductRecord {
     productId: string;
     productCode: string;
     name: string;
-    form: ProductForm;
+    form: ProductForm | 'other' | '';
     category: 'standard' | 'exempt' | 'nutritional';
-    unitsPerCase: number;
+    unitsPerCase?: number;
     yield?: number;
     coverage: ProductCoverage[];
     poPrice?: number;

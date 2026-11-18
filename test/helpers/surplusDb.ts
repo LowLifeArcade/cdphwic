@@ -1,3 +1,4 @@
+import { addProductTables } from './productDb';
 import { DatabaseSync } from 'node:sqlite';
 import { readFileSync } from 'node:fs';
 export function surplusDb() {
@@ -13,6 +14,7 @@ export function surplusDb() {
     sqlite.exec(readFileSync(new URL('../../db/migrations/0015_surplus_movement_corrections.sql', import.meta.url), 'utf8'));
     sqlite.exec(readFileSync(new URL('../../db/migrations/0016_transfer_requested_label_count.sql', import.meta.url), 'utf8'));
     sqlite.exec(readFileSync(new URL('../../db/migrations/0017_request_surplus_allocations.sql', import.meta.url), 'utf8'));
+    addProductTables(sqlite);
     const statement = (sql: string, values: unknown[] = []) => ({
         bind: (...params: unknown[]) => statement(sql, params),
         first: async (column?: string) => {
@@ -20,7 +22,11 @@ export function surplusDb() {
             return column ? (r?.[column] ?? null) : (r ?? null);
         },
         all: async () => ({ results: sqlite.prepare(sql).all(...(values as never[])), success: true }),
-        run: async () => ({ success: true, meta: sqlite.prepare(sql).run(...(values as never[])) }),
+        run: async () => {
+            const query = sqlite.prepare(sql);
+            if (/^\s*SELECT|RETURNING/i.test(sql)) return { success: true, results: query.all(...values as never[]), meta: {} };
+            return { success: true, results: [], meta: query.run(...values as never[]) };
+        },
         _sql: sql,
         _values: values,
     });

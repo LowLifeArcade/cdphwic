@@ -70,3 +70,25 @@ it('preserves manual details for products not in the catalog', () => {
     const authorization = { productName: 'Other formula', productForm: 'powder' as const, unitsPerCase: 6, yield: 12, benefitIssuances: [] };
     expect(enterAuthorizationProductNumber(authorization, products, 'CUSTOM-1')).toMatchObject({ productCode: 'CUSTOM-1', unitsPerCase: 6, yield: 12 });
 });
+
+it('keeps incomplete catalog products available by short name without inventing clinical forms or exact identities', () => {
+    const incomplete = { ...base, productCode: '', form: 'other' as const, unitsPerCase: undefined };
+    expect(catalogFormulaOptions([incomplete]).find(option => option.name === base.name)?.forms).toEqual(['powder', 'concentrate', 'ready-to-feed']);
+    expect(resolveProduct([incomplete], { name: base.name })).toBeUndefined();
+});
+
+it('counts numberless variants before deciding an exact product is unambiguous', () => {
+    const candidates = [base, { ...base, productCode: '', unitsPerCase: 12 }];
+    expect(resolveProduct(candidates, selection)).toBeUndefined();
+    expect(resolveProduct(candidates, selection, '001')?.unitsPerCase).toBe(6);
+});
+it('allows staff to resolve unknown catalog forms explicitly without automatic assignment', () => {
+    const unknown = [{ ...base, form: '' as const }, { ...base, form: 'other' as const, productCode: '002' }];
+    expect(matchingProducts(unknown, selection)).toHaveLength(2);
+    expect(resolveProduct(unknown.slice(0, 1), selection)).toBeUndefined();
+    expect(resolveProduct(unknown, selection, '002')?.unitsPerCase).toBe(6);
+});
+it('does not infer transfer case size when a compatible product has an unknown size', async () => {
+    const { transferCatalogUnitsPerCase } = await import('../shared/requestTransfers');
+    expect(transferCatalogUnitsPerCase({ formulaName: base.name, form: base.form, flavor: base.flavor }, [base, { ...base, productCode: '002', unitsPerCase: undefined }])).toBeUndefined();
+});

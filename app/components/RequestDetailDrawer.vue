@@ -249,7 +249,7 @@ function authorizationProduct(authorization:{productName:string;productForm?:str
     return authorizationCatalogProduct(props.products ?? [], authorization);
 }
 function authorizationProducts(authorization:FormulaAuthorization) {
-    return matchingProducts(props.products ?? [], {name:authorization.productName,form:authorization.productForm,flavor:authorization.flavor});
+    return matchingProducts(props.products ?? [], {name:authorization.productName,form:authorization.productForm,flavor:authorization.flavor}).filter(product => product.productCode.trim());
 }
 function chooseAuthorizationProduct(index:number, productCode:string) {
     const authorization=draft.formulaAuthorizations?.[index];

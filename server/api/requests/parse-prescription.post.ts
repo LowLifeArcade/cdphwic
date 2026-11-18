@@ -1,3 +1,5 @@
+import { listProducts } from '../../utils/productRepository';
+import { productDatabase } from '../../utils/productDatabase';
 import type { ProductForm } from '../../../shared/domain';
 import {
     MAX_PRESCRIPTION_BYTES,
@@ -51,7 +53,7 @@ export default defineEventHandler(async (event) => {
     };
     if (isPdf) {
         try {
-            parsed = await extractPrescriptionFields(file.data);
+            parsed = await extractPrescriptionFields(file.data, await listProducts(productDatabase(event)));
         } catch (error) {
             console.error('Prescription PDF parsing failed', error);
             throw createError({ statusCode: 400, statusMessage: 'The PDF fields could not be read. Please enter the fields manually.' });

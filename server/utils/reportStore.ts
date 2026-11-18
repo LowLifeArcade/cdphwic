@@ -1,8 +1,7 @@
 import {formatDisplayDate} from '../../shared/requestPresentation';
 import { SEED_AGENCIES, SEED_INTERNAL_MEMBERS, SEED_MEMBERS, SEED_PARTICIPANTS } from '../data/seed';
 import { getAllRequests } from './requestStore';
-import { listProducts } from './productStore';
-import type { MasterLogRow, McKessonLogRecord } from '../../shared/domain';
+import type { MasterLogRow, McKessonLogRecord, ProductRecord } from '../../shared/domain';
 
 export const MASTER_LOG_MONTHS = [
     '12-01-2025',
@@ -65,8 +64,7 @@ function statusLabel(status: string) {
     );
 }
 
-export function getMasterLogRows(): MasterLogRow[] {
-    const products = listProducts();
+export function getMasterLogRows(products: ProductRecord[] = []): MasterLogRow[] {
     return getAllRequests().map((request) => {
         const agency = SEED_AGENCIES.find((item) => item.id === request.agencyId);
         const contact = SEED_MEMBERS.find((item) => item.id === request.agencyMemberId);
@@ -106,8 +104,8 @@ export function getMasterLogRows(): MasterLogRow[] {
     });
 }
 
-export function getMasterLogExportRows() {
-    return getMasterLogRows().map((row) => ({
+export function getMasterLogExportRows(products: ProductRecord[] = []) {
+    return getMasterLogRows(products).map((row) => ({
         'Date Sent to State': row.dateSentToState,
         'Processed By': row.processedBy,
         'Local Agency': row.localAgency,
@@ -129,8 +127,8 @@ export function getMasterLogExportRows() {
     }));
 }
 
-export function getMasterLogMonthlyTotals() {
-    const rows = getMasterLogRows();
+export function getMasterLogMonthlyTotals(products: ProductRecord[] = []) {
+    const rows = getMasterLogRows(products);
     return MASTER_LOG_MONTHS.map((label) => ({
         label,
         value: rows.reduce((sum, row) => sum + (row.monthlyUnits[monthLabelToKey(label)] ?? 0), 0),

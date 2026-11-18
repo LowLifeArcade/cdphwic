@@ -8,7 +8,7 @@ const form = reactive({
     name: '',
     productId: '',
     productCode: '',
-    form: 'powder' as ProductForm,
+    form: 'powder' as ProductRecord['form'],
     category: 'standard' as ProductInput['category'],
     unitsPerCase: '',
     unitPrice: '',
@@ -25,7 +25,7 @@ function productBody(): ProductInput {
         productCode: form.productCode,
         form: form.form,
         category: form.category,
-        unitsPerCase: Number(form.unitsPerCase),
+        unitsPerCase: form.unitsPerCase === '' ? undefined : Number(form.unitsPerCase),
         unitPrice: form.unitPrice === '' ? undefined : Number(form.unitPrice),
         supplierReference: form.supplierReference,
         coverage: form.coverage,
@@ -70,7 +70,7 @@ async function addProduct() {
         <div class="panel-heading">
             <div>
                 <h2>Product details</h2>
-                <span>All fields are saved to the demo catalog.</span>
+                <span>All fields are saved to the product catalog.</span>
             </div>
         </div>
         <div class="form-grid">
@@ -101,6 +101,7 @@ async function addProduct() {
                     class="form-input"
                     required
                 >
+                    <option value="other">Other</option>
                     <option value="powder">Powder</option>
                     <option value="concentrate">Concentrate</option>
                     <option value="ready-to-feed">Ready to feed</option>
@@ -174,7 +175,7 @@ async function addProduct() {
                         type="checkbox"
                         value="medical"
                     />
-                    Medical
+                    Medi-Cal
                 </label>
             </fieldset>
         </div>

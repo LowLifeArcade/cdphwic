@@ -41,15 +41,16 @@ export function catalogFormulaOptions(products: ProductRecord[] = []): FormulaOp
     const options = formulaCatalog.map(formula => ({ ...formula, forms: [...formula.forms] }));
     for (const product of products) {
         const name = product.name.trim();
+        if (!name) continue;
         let option = options.find(formula => formula.name.toLowerCase() === name.toLowerCase());
         if (!option) {
             option = { name, forms: [], pdfField: '' };
             options.push(option);
         }
-        if (!option.forms.includes(product.form)) option.forms.push(product.form);
+        if (['powder', 'concentrate', 'ready-to-feed'].includes(product.form) && !option.forms.includes(product.form as ProductForm)) option.forms.push(product.form as ProductForm);
         if (product.flavor?.trim() || product.genericFields?.flavor?.trim()) option.hasFlavor = true;
     }
-    return options;
+    return options.map(option => option.forms.length ? option : { ...option, forms: ['powder', 'concentrate', 'ready-to-feed'] as ProductForm[] });
 }
 
 export function findFormula(name: string, products: ProductRecord[] = []) {

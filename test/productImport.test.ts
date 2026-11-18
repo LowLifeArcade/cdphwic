@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import * as XLSX from 'xlsx';
 import { parseProductWorkbook } from '../server/utils/productImport';
-import { createProducts, listProducts } from '../server/utils/productStore';
+import { createProducts, listProducts } from './helpers/productStore';
 
 const headers = ['Formula Name', 'Formula Form', 'Flavor', 'Product Number', 'Units Per Case', 'Yield'];
 function workbook(rows: unknown[][], type: 'xlsx' | 'csv' = 'xlsx') {
@@ -62,7 +62,7 @@ it('rejects invalid legacy quantity values', () => {
 
 it.each(['csv', 'xlsx'] as const)('keeps leading-zero product IDs distinct in bulk quantity updates from %s', async type => {
     const { parseProductQuantityWorkbook } = await import('../server/utils/productImport');
-    const { updateProducts } = await import('../server/utils/productStore');
+    const { updateProducts } = await import('./helpers/productStore');
     const suffix = type === 'csv' ? '91' : '92';
     createProducts([{ productId: `00090${suffix}`, productCode: `00090${suffix}`, name: `Zero ID ${type}`, form: 'powder', category: 'standard', unitsPerCase: 6 }, { productId: `90${suffix}`, productCode: `90${suffix}`, name: `Plain ID ${type}`, form: 'powder', category: 'standard', unitsPerCase: 6 }]);
     const updates = parseProductQuantityWorkbook(workbook([['productId', 'casesApproved', 'casesUsed'], [`00090${suffix}`, 20, 1]], type));
@@ -72,4 +72,47 @@ it.each(['csv', 'xlsx'] as const)('keeps leading-zero product IDs distinct in bu
 it('reports the actual worksheet row for duplicates after blank rows', () => {
     const rows = parseProductWorkbook(workbook([headers, ['First', 'powder', '', 'BLANK-DUP', 6, 8], [], ['Second', 'powder', '', 'BLANK-DUP', 6, 8]]));
     expect(() => createProducts(rows)).toThrow('Row 4');
+});
+
+it('accepts Other and blank Formula Form and blank cells throughout partially populated rows', () => {
+    const rows = parseProductWorkbook(workbook([headers, ['Blank fields', '', '', '', '', ''], ['', 'Other', '', '', '', ''], ['Named Other', 'Other', '', 'BLANK-OTHER', '', '']]));
+    const saved = createProducts(rows, { allowBlanks: true });
+    expect(saved).toHaveLength(3);
+    expect(saved[0]).toMatchObject({ name: 'Blank fields', form: '', productCode: '' });
+    expect(saved[0]?.unitsPerCase).toBeUndefined();
+    expect(saved[0]?.yield).toBeUndefined();
+    expect(saved[1]).toMatchObject({ name: '', form: 'other', productCode: '' });
+    expect(saved[0]?.productId).not.toBe(saved[1]?.productId);
+});
+it('collects actionable row, column, cell and raw value details for every invalid row', () => {
+    const rows = [headers, ['First', 'Mystery form', '', 'ERR-A', 6, 8], ['Second', 'powder', '', 'ERR-B', 'six', 8]];
+    let failure: unknown;
+    try { parseProductWorkbook(workbook(rows)); } catch (error) { failure = error; }
+    expect(failure).toMatchObject({ issues: [
+        { row: 2, column: 'Formula Form', cell: 'B2', value: 'Mystery form', formulaName: 'First', message: expect.stringContaining('Other') },
+        { row: 3, column: 'Units Per Case', cell: 'E3', value: 'six', formulaName: 'Second', message: expect.stringContaining('number') },
+    ] });
+});
+it('continues ignoring wholly empty rows and rejects populated invalid numbers', () => {
+    expect(parseProductWorkbook(workbook([headers, [], ['Name only', '', '', '', '', '']]))).toHaveLength(1);
+    expect(() => parseProductWorkbook(workbook([headers, ['Bad number', 'Other', '', '', -1, '']]))).toThrow('Units Per Case');
+});
+
+it('identifies missing and duplicate spreadsheet headers without falling back to internal names', () => {
+    let missing: unknown;
+    let duplicate: unknown;
+    try { parseProductWorkbook(workbook([headers.slice(1), ['Other', '', 'HEADERS', 6, 8]])); } catch (error) { missing = error; }
+    try { parseProductWorkbook(workbook([[...headers, 'Formula Form'], ['Example', 'powder', '', 'HEADERS', 6, 8, 'powder']])); } catch (error) { duplicate = error; }
+    expect(missing).toMatchObject({ issues: [{ row: 1, column: 'Formula Name', message: expect.stringContaining('header') }] });
+    expect((missing as { issues: unknown[] }).issues).toHaveLength(1);
+    expect(duplicate).toMatchObject({ issues: [{ row: 1, column: 'Formula Form', cell: 'G1', value: 'Formula Form', message: expect.stringContaining('B1') }] });
+});
+it.each(['D2', 'E2'])('reports Excel formula errors instead of importing numeric error codes in %s', address => {
+    const book = XLSX.utils.book_new();
+    const sheet = XLSX.utils.aoa_to_sheet([headers, ['Excel error', 'Other', '', 'EXCEL-ERROR', 6, 8]]);
+    sheet[address] = { t: 'e', v: 7, w: '#DIV/0!' };
+    XLSX.utils.book_append_sheet(book, sheet, 'Products');
+    let error: unknown;
+    try { parseProductWorkbook(XLSX.write(book, { type: 'buffer', bookType: 'xlsx' })); } catch (failure) { error = failure; }
+    expect(error).toMatchObject({ issues: [{ cell: address, value: '#DIV/0!', message: expect.stringContaining('Excel') }] });
 });

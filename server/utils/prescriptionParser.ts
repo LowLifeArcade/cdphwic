@@ -1,4 +1,4 @@
-import { listProducts } from './productStore';
+import type { ProductRecord } from '../../shared/domain';
 import { blankFormula, type FormulaEntry } from '../../shared/formulaEntries';
 import * as pdfjs from 'pdfjs-dist/legacy/build/pdf.mjs';
 import { WorkerMessageHandler } from 'pdfjs-dist/legacy/build/pdf.worker.mjs';
@@ -131,8 +131,7 @@ export function normalizePrescriptionDate(value: string) {
     return date.toISOString().slice(0, 10);
 }
 
-export function mapPrescriptionFields(fields: Record<string, AcroFormField[]>): ParsedPrescriptionFields {
-    const products = listProducts();
+export function mapPrescriptionFields(fields: Record<string, AcroFormField[]>, products: ProductRecord[] = []): ParsedPrescriptionFields {
     const formulaCatalog = catalogFormulaOptions(products);
     const office = fieldValue(fields, 'Medical Office or Clinic Name and Address');
     let officeLines = office.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
@@ -242,7 +241,7 @@ export function configurePrescriptionPdfJs() {
     runtime.pdfjsWorker ??= { WorkerMessageHandler };
 }
 
-export async function extractPrescriptionFields(data: Uint8Array) {
+export async function extractPrescriptionFields(data: Uint8Array, products: ProductRecord[] = []) {
     configurePrescriptionPdfJs();
     // PDF.js transfers the input buffer to its in-process worker. Keep the
     // upload bytes available for validation and R2 storage after parsing.
@@ -251,7 +250,7 @@ export async function extractPrescriptionFields(data: Uint8Array) {
     const document = await loadingTask.promise;
     try {
         const fields = (await document.getFieldObjects()) as Record<string, AcroFormField[]> | null;
-        return mapPrescriptionFields(fields ?? {});
+        return mapPrescriptionFields(fields ?? {}, products);
     } finally {
         await document.destroy();
     }
