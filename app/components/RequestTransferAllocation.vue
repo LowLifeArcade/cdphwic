@@ -26,7 +26,7 @@ function selection(lot:SurplusLot){return props.selections.find(item=>item.row.s
         <div v-if="selections.length" class="selected-transfers">
             <h5>Allocated Transfers</h5>
             <div v-for="item in selections" :key="item.row.transferId||item.row.sourceLotId||item.index" class="allocated-transfer">
-                <div><strong>{{item.row.sourceAgencyName||agency(item.row.sourceAgencyId)}}</strong><small>{{item.row.sourceClinicName||'Clinic not specified'}} · {{item.row.unitsToTransfer??0}} {{unitLabel(item.row.unitsToTransfer??0)}} · {{item.row.transferId?'Reserved — see Shipping for status':'Selected — not reserved'}}</small></div>
+                <div><strong>{{item.row.sourceAgencyName||agency(item.row.sourceAgencyId)}}</strong><small>{{item.row.sourceClinicName||'Clinic not specified'}}</small><small>{{item.row.unitsToTransfer??0}} {{unitLabel(item.row.unitsToTransfer??0)}} · {{item.row.transferId?'Reserved — see Shipping for status':'Selected — not reserved'}}</small></div>
                 <template v-if="!item.row.transferId"><button type="button" class="text-button" :disabled="busy" @click="emit('remove',item.index)">Remove</button></template>
             </div>
         </div>
@@ -44,6 +44,7 @@ function selection(lot:SurplusLot){return props.selections.find(item=>item.row.s
 .surplus-lot-info > strong {font-size:14px;line-height:1.4;}
 .surplus-lot-info small {display:block;color:var(--muted);font-size:13px;line-height:1.4;margin:0;}
 .surplus-lot-info > span {font-size:14px;line-height:1.4;font-weight:600;}
+.allocated-transfer small {display:block;margin:3px 0;color:var(--muted);font-size:13px;line-height:1.4;}
 .transfer-lot .field-label {width:110px;}
 .transfer-lot input {width:100%;}
 .selected-transfers {margin-top:14px;}
