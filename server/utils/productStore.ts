@@ -4,7 +4,7 @@ import type { ProductCoverage, ProductForm, ProductRecord } from '../../shared/d
 export type ProductInput = Omit<
     ProductRecord,
     'id' | 'coverage' | 'casesRemaining' | 'dollarsApproved' | 'dollarsUsed' | 'dollarsRemaining'
-> & { coverage?: ProductCoverage[] };
+> & { coverage?: ProductCoverage[]; importRowNumber?: number };
 export type ProductQuantityUpdate = {
     productId: string;
     casesApproved: number;
@@ -59,18 +59,38 @@ export function validateProductInput(input: Partial<ProductInput>): string[] {
     if (input.coverage && input.coverage.some((coverage) => !['wic', 'medical'].includes(coverage))) {
         errors.push('Coverage must contain only wic or medical.');
     }
-    if (input.unitPrice !== undefined && input.unitPrice !== null && Number(input.unitPrice) < 0) {
+    if (input.unitPrice !== undefined && input.unitPrice !== null && (!Number.isFinite(Number(input.unitPrice)) || Number(input.unitPrice) < 0)) {
         errors.push('Unit price cannot be negative.');
     }
-    if (input.poPrice !== undefined && input.poPrice !== null && Number(input.poPrice) < 0) {
+    if (input.poPrice !== undefined && input.poPrice !== null && (!Number.isFinite(Number(input.poPrice)) || Number(input.poPrice) < 0)) {
         errors.push('PO price cannot be negative.');
     }
 
+    if (input.mcKessonPrice !== undefined && (!Number.isFinite(Number(input.mcKessonPrice)) || Number(input.mcKessonPrice) < 0)) {
+        errors.push('McKesson Price must be a nonnegative number.');
+    }
+    if (input.coveredByMediCal !== undefined && typeof input.coveredByMediCal !== 'boolean') {
+        errors.push('Covered by Medi-Cal must be yes or no.');
+    }
+    for (const [key, label] of [['casesApproved', 'Cases approved'], ['casesUsed', 'Cases used']] as const) {
+        if (input[key] !== undefined && (!Number.isSafeInteger(Number(input[key])) || Number(input[key]) < 0)) errors.push(`${label} must be a whole, nonnegative number.`);
+    }
     return errors;
 }
 
 function normalizeProductInput(input: ProductInput): ProductInput {
     return {
+        flavor: input.flavor?.trim() || undefined,
+        formulaDescription: input.formulaDescription?.trim() || undefined,
+        manufacturer: input.manufacturer?.trim() || undefined,
+        mcKessonPo: input.mcKessonPo?.trim() || undefined,
+        mcKessonPrice: input.mcKessonPrice === undefined ? undefined : Number(input.mcKessonPrice),
+        coveredByMediCal: input.coveredByMediCal,
+        fdaClass: input.fdaClass?.trim() || undefined,
+        wicClass: input.wicClass?.trim() || undefined,
+        st: input.st?.trim() || undefined,
+        infantToddler: input.infantToddler?.trim() || undefined,
+        packaging: input.packaging?.trim() || undefined,
         name: input.name.trim(),
         form: input.form.trim().toLowerCase().replace(/\s+/g, '-') as ProductForm,
         category: input.category,
@@ -97,12 +117,11 @@ export function createProduct(input: ProductInput): ProductRecord {
     if (
         products.some(
             (product) =>
-                product.name.toLowerCase() === input.name.trim().toLowerCase() ||
                 product.productId === input.productId.trim() ||
                 product.productCode === input.productCode.trim(),
         )
     ) {
-        throw new Error('Product name, product ID, and product code must be unique.');
+        throw new Error('Product ID and Product Number must be unique.');
     }
 
     const product: ProductRecord = { id: nextProductId++, ...normalizeProductInput(input) };
@@ -116,23 +135,25 @@ export function updateProduct(id: number, input: ProductInput): ProductRecord {
         throw new Error(`No product found with id ${id}.`);
     }
 
+    // Legacy edit forms omit metadata; an explicit empty value still clears it.
+    const metadataKeys = ['flavor', 'formulaDescription', 'manufacturer', 'mcKessonPo', 'mcKessonPrice', 'coveredByMediCal', 'fdaClass', 'wicClass', 'st', 'infantToddler', 'packaging', 'yield', 'genericFields'] as const;
+    const metadata = Object.fromEntries(metadataKeys.map(key => [key, product[key]]));
+    input = { ...metadata, ...input };
     const errors = validateProductInput(input);
     if (errors.length) {
         throw new Error(errors.join(' '));
     }
 
-    const normalizedName = input.name.trim().toLowerCase();
     const normalizedProductId = input.productId.trim();
     if (
         products.some(
             (candidate) =>
                 candidate.id !== id &&
-                (candidate.name.toLowerCase() === normalizedName ||
-                    candidate.productId === normalizedProductId ||
+                (candidate.productId === normalizedProductId ||
                     candidate.productCode === input.productCode.trim()),
         )
     ) {
-        throw new Error('Product name, product ID, and product code must be unique.');
+        throw new Error('Product ID and Product Number must be unique.');
     }
 
     Object.assign(product, normalizeProductInput(input));
@@ -141,26 +162,18 @@ export function updateProduct(id: number, input: ProductInput): ProductRecord {
 
 export function createProducts(inputs: ProductInput[]): ProductRecord[] {
     const errors = inputs.flatMap((input, index) =>
-        validateProductInput(input).map((message) => `Row ${index + 2}: ${message}`),
+        validateProductInput(input).map((message) => `Row ${input.importRowNumber ?? index + 2}: ${message}`),
     );
-    const names = new Set(products.map((product) => product.name.toLowerCase()));
     const productIds = new Set(products.map((product) => product.productId));
     const productCodes = new Set(products.map((product) => product.productCode));
-    for (const input of inputs) {
-        const normalizedName = input.name.trim().toLowerCase();
-        if (names.has(normalizedName)) {
-            errors.push(`A product named "${input.name.trim()}" already exists.`);
-        }
-        if (productIds.has(input.productId.trim())) {
-            errors.push(`A product with productId "${input.productId.trim()}" already exists.`);
-        }
-        if (productCodes.has(input.productCode.trim())) {
-            errors.push(`A product with productCode "${input.productCode.trim()}" already exists.`);
-        }
-        names.add(normalizedName);
-        productIds.add(input.productId.trim());
-        productCodes.add(input.productCode.trim());
-    }
+    inputs.forEach((input, index) => {
+        const productId = String(input.productId ?? '').trim();
+        const productCode = String(input.productCode ?? '').trim();
+        if (productIds.has(productId)) errors.push(`Row ${input.importRowNumber ?? index + 2}: Product ID "${productId}" already exists.`);
+        if (productCodes.has(productCode)) errors.push(`Row ${input.importRowNumber ?? index + 2}: Product Number "${productCode}" already exists.`);
+        productIds.add(productId);
+        productCodes.add(productCode);
+    });
     if (errors.length) {
         throw new Error(errors.join('\n'));
     }

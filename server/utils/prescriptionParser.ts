@@ -1,7 +1,8 @@
+import { listProducts } from './productStore';
 import { blankFormula, type FormulaEntry } from '../../shared/formulaEntries';
 import * as pdfjs from 'pdfjs-dist/legacy/build/pdf.mjs';
 import { WorkerMessageHandler } from 'pdfjs-dist/legacy/build/pdf.worker.mjs';
-import { formulaCatalog, defaultFormulaForm, availableFormulaForms } from '../../shared/formulaCatalog';
+import { catalogFormulaOptions, defaultFormulaForm, availableFormulaForms } from '../../shared/formulaCatalog';
 import type { ProductForm } from '../../shared/domain';
 import { normalizePhoneNumber } from '../../shared/phone';
 
@@ -131,6 +132,8 @@ export function normalizePrescriptionDate(value: string) {
 }
 
 export function mapPrescriptionFields(fields: Record<string, AcroFormField[]>): ParsedPrescriptionFields {
+    const products = listProducts();
+    const formulaCatalog = catalogFormulaOptions(products);
     const office = fieldValue(fields, 'Medical Office or Clinic Name and Address');
     let officeLines = office.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
     if (officeLines.length === 1) {
@@ -184,7 +187,7 @@ export function mapPrescriptionFields(fields: Record<string, AcroFormField[]>): 
     if (isChecked(fields, 'If premature Provide infant foods after')) {
         restrictionDetails.push(`Provide infant foods after: ${fieldValue(fields, 'premature months')} months`);
     }
-    const formulaNames = formulaCatalog.filter((formula) => isChecked(fields, formula.pdfField)).map((formula) => formula.name);
+    const formulaNames = formulaCatalog.filter((formula) => formula.pdfField && isChecked(fields, formula.pdfField)).map((formula) => formula.name);
     const writtenFormula = fieldValue(fields, 'formula/medical food');
     for (const text of writtenFormula.split(/\r?\n|;/).map((item) => item.trim()).filter(Boolean)) {
         let remaining = text.toLowerCase();
@@ -204,7 +207,7 @@ export function mapPrescriptionFields(fields: Record<string, AcroFormField[]>): 
         const choice = listed?.name ?? 'Other';
         return {
             ...blankFormula(), formulaName: choice, otherFormulaName: listed ? '' : name,
-            productForm: productForm && availableFormulaForms(choice).includes(productForm) ? productForm : defaultFormulaForm(choice),
+            productForm: productForm && availableFormulaForms(choice, products).includes(productForm) ? productForm : defaultFormulaForm(choice, products),
             ouncesPrescribed: index === 0 ? numericFieldValue(fields, 'Amount') ?? '' : '',
             readyToFeedJustification: index === 0 ? fieldValue(fields, 'rtf justification') : '',
         };

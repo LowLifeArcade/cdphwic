@@ -1,12 +1,12 @@
-import type { RequestRecord } from './domain';
+import type { RequestRecord, ProductRecord } from './domain';
 import { requestFormulas, formulaOverviewUpdates } from './requestPresentation';
 import { findFormula, requiresReadyToFeedReason } from './formulaCatalog';
 import { blankFormula, formulaEntryName, type FormulaEntry } from './formulaEntries';
 
-export function editableRequestFormulas(request: Partial<RequestRecord>): FormulaEntry[] {
+export function editableRequestFormulas(request: Partial<RequestRecord>, products: ProductRecord[] = []): FormulaEntry[] {
     return requestFormulas(request).map(formula => {
         const name = formula.otherFormulaName || formula.productName;
-        const listed = findFormula(name);
+        const listed = findFormula(name, products);
         return {
             ...blankFormula(),
             formulaName: listed?.name ?? 'Other',
@@ -18,15 +18,15 @@ export function editableRequestFormulas(request: Partial<RequestRecord>): Formul
         };
     });
 }
-export function requestFormulaUpdates(draft: Partial<RequestRecord>, entries: FormulaEntry[]): Partial<RequestRecord> {
+export function requestFormulaUpdates(draft: Partial<RequestRecord>, entries: FormulaEntry[], products: ProductRecord[] = []): Partial<RequestRecord> {
     const requestedFormulas = entries.map(entry => ({
-        productName:formulaEntryName(entry),
+        productName:formulaEntryName(entry, products),
         otherFormulaName:entry.formulaName.trim().toLowerCase() === 'other' ? entry.otherFormulaName.trim() : undefined,
         productForm:entry.productForm as NonNullable<RequestRecord['productForm']>,
-        flavor:findFormula(entry.formulaName)?.hasFlavor ? entry.formulaFlavor.trim() : undefined,
+        flavor:findFormula(entry.formulaName, products)?.hasFlavor ? entry.formulaFlavor.trim() : undefined,
         ouncesPrescribed:Number(entry.ouncesPrescribed),
-        readyToFeedJustification:requiresReadyToFeedReason(entry.formulaName,entry.productForm) ? entry.readyToFeedJustification : '',
+        readyToFeedJustification:requiresReadyToFeedReason(entry.formulaName,entry.productForm,products) ? entry.readyToFeedJustification : '',
     }));
     const first = requestedFormulas[0]!;
-    return {...formulaOverviewUpdates({...draft, requestedFormulas,productName:first.productName,productForm:first.productForm,formulaFlavor:first.flavor,ouncesPrescribed:first.ouncesPrescribed,genericFields:{...draft.genericFields,readyToFeedJustification:first.readyToFeedJustification}}),requestedFormulas};
+    return {...formulaOverviewUpdates({...draft, requestedFormulas,productName:first.productName,productForm:first.productForm,formulaFlavor:first.flavor,ouncesPrescribed:first.ouncesPrescribed,genericFields:{...draft.genericFields,readyToFeedJustification:first.readyToFeedJustification}}, products),requestedFormulas};
 }

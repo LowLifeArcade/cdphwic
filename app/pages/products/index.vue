@@ -27,7 +27,7 @@ const filteredProducts = computed(() =>
         const query = search.value.trim().toLowerCase();
         const matchesSearch =
             !query ||
-            `${product.name} ${product.productId} ${product.productCode} ${product.supplierReference ?? ''}`
+            `${product.name} ${product.productId} ${product.productCode} ${product.supplierReference ?? ''} ${product.formulaDescription ?? ''} ${product.packaging ?? ''} ${product.flavor ?? ''} ${product.manufacturer ?? ''}`
                 .toLowerCase()
                 .includes(query);
         const matchesCategory = !categoryFilter.value || product.category === categoryFilter.value;
@@ -173,6 +173,8 @@ onBeforeUnmount(() => document.removeEventListener('click', closeProductMenu));
             <div class="panel-heading product-card-heading">
                 <div>
                     <h3>{{ product.name }}</h3>
+                    <p v-if="product.formulaDescription" class="muted-copy">{{ product.formulaDescription }}</p>
+                    <p v-if="product.packaging || product.flavor" class="muted-copy">{{ [product.flavor, product.packaging].filter(Boolean).join(' · ') }}</p>
                     <div class="coverage-tags">
                         <span
                             v-for="coverage in product.coverage"
@@ -222,7 +224,7 @@ onBeforeUnmount(() => document.removeEventListener('click', closeProductMenu));
                     <span>Supplier reference</span><strong>{{ product.supplierReference || 'Not set' }}</strong>
                 </div>
                 <div>
-                    <span>Product code</span><strong>{{ product.productCode }}</strong>
+                    <span>Product Number</span><strong>{{ product.productCode }}</strong>
                 </div>
                 <div>
                     <span>Product ID</span><strong>{{ product.productId }}</strong>
@@ -253,7 +255,7 @@ onBeforeUnmount(() => document.removeEventListener('click', closeProductMenu));
         <div class="product-list-header">
             <span>Product</span>
             <span>Product ID</span>
-            <span>Product code</span>
+            <span>Product Number</span>
             <span>Category</span>
             <span>Form</span>
             <span>Coverage</span>
@@ -270,6 +272,8 @@ onBeforeUnmount(() => document.removeEventListener('click', closeProductMenu));
         >
             <div class="product-list-name">
                 <strong>{{ product.name }}</strong>
+                <small v-if="product.formulaDescription">{{ product.formulaDescription }}</small>
+                <small v-if="product.packaging || product.flavor">{{ [product.flavor, product.packaging].filter(Boolean).join(' · ') }}</small>
                 <div
                     class="product-actions"
                     @click.stop

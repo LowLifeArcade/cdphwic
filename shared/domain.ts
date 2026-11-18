@@ -223,6 +223,17 @@ export interface InternalMemberRecord {
 }
 
 export interface ProductRecord {
+    flavor?: string;
+    formulaDescription?: string;
+    manufacturer?: string;
+    mcKessonPo?: string;
+    mcKessonPrice?: number;
+    coveredByMediCal?: boolean;
+    fdaClass?: string;
+    wicClass?: string;
+    st?: string;
+    infantToddler?: string;
+    packaging?: string;
     id: number;
     productId: string;
     productCode: string;

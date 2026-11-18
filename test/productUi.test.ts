@@ -10,7 +10,7 @@ describe('product catalog actions', () => {
         expect(catalog).toContain('to="/products/bulk-upload"');
         expect(catalog).toContain('Edit product');
         expect(catalog).toContain('aria-label="Product actions"');
-        expect(bulkPage).toContain('productId,productCode,name,form');
+        expect(bulkPage).toContain('Formula Name,Formula Form,Flavor,Product Number');
         expect(bulkPage).toContain("'/api/products/bulk'");
     });
 

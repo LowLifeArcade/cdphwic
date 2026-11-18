@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { matchingProducts, resolveProduct, selectAuthorizationProduct, enterAuthorizationProductNumber, authorizationCatalogProduct } from '~/../shared/productMatching';
 import {unitLabel} from '~/../shared/quantityLabels';
 import {issuanceTransferLots,setIssuanceTransferUnits} from '~/../shared/issuanceTransfers';
 import {toRaw} from 'vue';
@@ -244,8 +245,26 @@ async function reserveIssuanceTransfer(index:number){
 const canRepEdit = computed(() => identity.value === 'admin' || identity.value === 'agency');
 const selectedProduct = computed(() => props.products?.find((product) => product.id === props.request?.productId));
 
-function authorizationProduct(authorization:{productName:string;productForm?:string}) {return props.products?.find(product=>product.name===authorization.productName&&product.form===authorization.productForm);}
-function authorizationUnitsPerCase(authorization:{productName:string;productForm?:string;unitsPerCase?:number}){return authorization.unitsPerCase??authorizationProduct(authorization)?.unitsPerCase;}
+function authorizationProduct(authorization:{productName:string;productForm?:string;flavor?:string;productCode?:string}) {
+    return authorizationCatalogProduct(props.products ?? [], authorization);
+}
+function authorizationProducts(authorization:FormulaAuthorization) {
+    return matchingProducts(props.products ?? [], {name:authorization.productName,form:authorization.productForm,flavor:authorization.flavor});
+}
+function chooseAuthorizationProduct(index:number, productCode:string) {
+    const authorization=draft.formulaAuthorizations?.[index];
+    if(!authorization)return;
+    Object.assign(authorization,selectAuthorizationProduct(authorization,props.products??[],productCode));
+    authorization.approvedCases=undefined;
+    recalculateCasesFromUnitsToOrder(index);
+}
+function enterProductNumber(index:number, productCode:string) {
+    const authorization=draft.formulaAuthorizations?.[index];
+    if(!authorization)return;
+    Object.assign(authorization,enterAuthorizationProductNumber(authorization,props.products??[],productCode));
+    recalculateCasesFromUnitsToOrder(index);
+}
+function authorizationUnitsPerCase(authorization:{productName:string;productForm?:string;flavor?:string;productCode?:string;unitsPerCase?:number}){return authorization.unitsPerCase??authorizationProduct(authorization)?.unitsPerCase;}
 function savedLocalSurplusUnits(index:number,lotId:string){return props.request?formulaAuthorizations(props.request)[index]?.localSurplusAllocations?.find(row=>row.lotId===lotId)?.units??0:0;}
 function localSurplusAvailable(lot:SurplusLot,index:number){return Math.max(0,lot.onHand-lot.reserved+savedLocalSurplusUnits(index,lot.id));}
 function localAgencySurplusLots(authorization:FormulaAuthorization,index:number){const formula=requestFormulas(props.request??{})[index];if(!formula)return [];const name=(formula.otherFormulaName||formula.productName).trim().toLowerCase();return (transferStock.value?.lots??[]).filter(lot=>lot.agencyId===props.request?.agencyId&&lot.form===formula.productForm&&lot.formulaName.trim().toLowerCase()===name&&(lot.flavor??'').trim().toLowerCase()===(formula.flavor??'').trim().toLowerCase()&&lot.expirationDate>=localDate()&&!lot.expiredUnits&&(lot.onHand>lot.reserved||savedLocalSurplusUnits(index,lot.id)>0));}
@@ -262,7 +281,10 @@ function copyRequest(request: RequestRecord): Partial<RequestRecord> {
         ...request,
         genericFields:{...request.genericFields},
         shipping:request.shipping?{...request.shipping}:undefined,
-        formulaAuthorizations:formulaAuthorizations(request),
+        formulaAuthorizations:formulaAuthorizations(request).map(authorization => {
+            const product=authorizationProduct(authorization);
+            return product ? {...authorization,productCode:product.productCode,unitsPerCase:authorization.unitsPerCase??product.unitsPerCase,yield:authorization.yield??product.yield} : authorization;
+        }),
         shipments:staffShipmentRows(request).map(row=>{const size=row.unitsPerCase ?? ((request.requestedFormulas?.length ?? 1)<=1?selectedProduct.value?.unitsPerCase:undefined);return {...row,unitsPerCase:size,...transferDraftFields(row,size)};}),
         requestedFormulas: request.requestedFormulas?.map(formula=>({...formula})),
         participantFirstName: participantNames(request).first,
@@ -415,7 +437,7 @@ function startEditing(section: 'participant' | 'overview' | 'prescription' | 'fo
     if(section==='shipping'){draft.shipping={...blankClinicAddress(),...draft.shipping,clinicName:draft.shipping?.clinicName||props.agency?.name||'',attention:draft.shipping?.attention||props.rep?.name||'',email:draft.shipping?.email||props.rep?.email||'',phone:formatPhoneNumber(draft.shipping?.phone||props.rep?.phone||'')};}
     if (section === 'overview') {
         editableDiagnoses.value = (draft.diagnosis ?? '').split(/[\n;]/).map(value => value.trim()).filter(Boolean);
-        editableFormulas.value = editableRequestFormulas(draft);
+        editableFormulas.value = editableRequestFormulas(draft, props.products);
     }
     if (section === 'prescription') {
         draft.doctorOfficePhone = formatPhoneNumber(draft.doctorOfficePhone ?? '');
@@ -468,14 +490,14 @@ function saveFormSection() {
         const diagnoses = editableDiagnoses.value.map(value => value.trim()).filter(Boolean).join('\n');
         const diagnosisError = validateDiagnoses(diagnoses);
         if (diagnosisError) { error.value = diagnosisError; return; }
-        const duplicateError = validateFormulaSelection(editableFormulas.value.map(entry => ({name:formulaEntryName(entry),form:entry.productForm,flavor:entry.formulaFlavor})));
-        const formulaError = editableFormulas.value.map(validateFormulaEntry).find(Boolean);
+        const duplicateError = validateFormulaSelection(editableFormulas.value.map(entry => ({name:formulaEntryName(entry),form:entry.productForm,flavor:entry.formulaFlavor})), props.products);
+        const formulaError = editableFormulas.value.map(entry => validateFormulaEntry(entry, props.products)).find(Boolean);
         if (duplicateError || formulaError || !editableFormulas.value.length) { error.value = duplicateError || formulaError || 'Add a formula.'; return; }
         if (!Number.isInteger(Number(draft.durationMonths)) || Number(draft.durationMonths) < 1 || Number(draft.durationMonths) > 6) {error.value = 'Enter Duration between 1 and 6 months.'; return;}
-        Object.assign(updates, requestFormulaUpdates({...draft, diagnosis: diagnoses},editableFormulas.value));
+        Object.assign(updates, requestFormulaUpdates({...draft, diagnosis: diagnoses},editableFormulas.value, props.products));
         const first = editableFormulas.value[0]!;
-        if (formulaEntryName(first) !== props.request?.productName || first.productForm !== props.request?.productForm)
-            updates.productId = props.products?.find(product => product.name.toLowerCase() === formulaEntryName(first).toLowerCase() && product.form === first.productForm)?.id ?? -1;
+        if (formulaEntryName(first) !== props.request?.productName || first.productForm !== props.request?.productForm || first.formulaFlavor !== (props.request?.formulaFlavor ?? ''))
+            updates.productId = resolveProduct(props.products??[], {name:formulaEntryName(first),form:first.productForm,flavor:first.formulaFlavor})?.id ?? -1;
     } else if (editingSection.value === 'food') {
         if (!draft.wicFoodRestrictions) { error.value = 'Select WIC Food Restrictions.'; return; }
         if (draft.wicFoodRestrictions === 'not-indicated' && (!draft.wicStaffFoodRestrictions || !draft.wicNutritionStaffName?.trim() || (draft.wicStaffFoodRestrictions === 'restricted' && !draft.wicNutritionStaffNotes?.trim()))) {
@@ -553,6 +575,7 @@ async function saveStaffFields() {
     }
     await save({
         formulaAuthorizations:authorizations,
+        productId:first ? authorizationProduct(first)?.id ?? -1 : -1,
         benefitIssuances: issuances,
         approvedCases: Number(first?.approvedCases??0),
         approvedMonths: Number(first?.approvedMonths??0),
@@ -823,7 +846,7 @@ async function saveAgencyUpdate() {
             <div v-if="editingSection === 'overview'" class="form-grid compact-form-grid prescription-editor">
                 <fieldset v-for="(formula,index) in editableFormulas" :key="index" class="detail-field-wide submitted-formula-card formula-edit-card">
                     <legend v-if="editableFormulas.length > 1">Formula {{index + 1}}</legend>
-                    <AdditionalFormulaFields v-model="editableFormulas[index]" :index="index + 1" auto-fit-justification hide-required-markers />
+                    <AdditionalFormulaFields :products="products" v-model="editableFormulas[index]" :index="index + 1" auto-fit-justification hide-required-markers />
                     <button v-if="index > 0" class="text-button" type="button" @click="editableFormulas.splice(index,1)">Remove Formula {{index + 1}}</button>
                 </fieldset>
                 <div v-if="editableFormulas.length < 2" class="detail-field-wide add-formula-action"><button class="button button-ghost add-formula-button" type="button" @click="editableFormulas.push(blankFormula())">Add another formula</button></div>
@@ -967,10 +990,13 @@ async function saveAgencyUpdate() {
                     <option value="standard">Standard</option><option value="special">Special Order</option>
                 </select>
             </label>
+            <ProductVariantSelect :identity="identity" :products="authorizationProducts(authorization)" :model-value="authorization.productCode" :disabled="saving" @update:model-value="chooseAuthorizationProduct(formulaIndex,$event)" />
             <div class="detail-grid cdph-product-details">
                 <label class="field-label">Formula Name<input v-model="authorization.formulaName" class="form-input" :placeholder="authorization.productName" /></label>
                 <div><span>Form</span><strong>{{formulaFormLabel(authorization.productForm)}}</strong></div>
-                <label class="field-label">Product Number<input v-model="authorization.productCode" class="form-input" :placeholder="authorizationProduct(authorization)?.productCode ?? 'Enter product number'" /></label>
+                <div><span>Flavor</span><strong>{{authorizationProduct(authorization)?.flavor || authorization.flavor || '—'}}</strong></div>
+                <div><span>Packaging</span><strong>{{authorizationProduct(authorization)?.packaging || '—'}}</strong></div>
+                <label class="field-label">Product Number<input v-model="authorization.productCode" class="form-input" @change="enterProductNumber(formulaIndex,authorization.productCode ?? '')" :placeholder="authorizationProduct(authorization)?.productCode ?? 'Enter product number'" /></label>
                 <label class="field-label">Units Per Case<input v-model.number="authorization.unitsPerCase" class="form-input" type="number" min="1" step="1" :placeholder="String(authorizationProduct(authorization)?.unitsPerCase ?? '')" @input="recalculateCasesFromUnitsToOrder(formulaIndex)" /></label>
                 <label class="field-label">Yield (fl oz)<input v-model.number="authorization.yield" class="form-input" type="number" min="0" step="any" :placeholder="String(authorizationProduct(authorization)?.yield ?? '')" /></label>
             </div>

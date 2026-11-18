@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { formulaCatalog, findFormula, availableFormulaForms, defaultFormulaForm, requiresReadyToFeedReason } from '~/../shared/formulaCatalog';
+import { catalogFormulaOptions, findFormula, availableFormulaForms, defaultFormulaForm, requiresReadyToFeedReason } from '~/../shared/formulaCatalog';
 import { validateOtherFormulaName } from '~/../shared/formulaEntries';
+import type { ProductRecord } from '../../shared/domain';
 import type { FormulaEntry } from '~/../shared/formulaEntries';
-const props = defineProps<{ modelValue: FormulaEntry; index: number; autoFitJustification?: boolean; hideRequiredMarkers?: boolean }>();
+const props = defineProps<{ modelValue: FormulaEntry; products?: ProductRecord[]; index: number; autoFitJustification?: boolean; hideRequiredMarkers?: boolean }>();
 const emit = defineEmits<{ 'update:modelValue': [value: FormulaEntry] }>();
 const focused = ref(false);
 const justificationInput = ref<HTMLTextAreaElement>();
@@ -15,20 +16,20 @@ function fitJustification() {
 watch([justificationInput, () => props.modelValue.readyToFeedJustification], () => nextTick(fitJustification), {flush:'post'});
 const active = ref(0);
 const prefix = computed(() => `extra-formula-${props.index}`);
-const selected = computed(() => findFormula(props.modelValue.formulaName));
+const selected = computed(() => findFormula(props.modelValue.formulaName, props.products));
 const other = computed(() => props.modelValue.formulaName.trim().toLowerCase() === 'other');
-const forms = computed(() => availableFormulaForms(props.modelValue.formulaName));
+const forms = computed(() => availableFormulaForms(props.modelValue.formulaName, props.products));
 const matches = computed(() => {
     const query = props.modelValue.formulaName.trim().toLowerCase();
     return query.length >= 3 && !selected.value && !other.value
-        ? [...formulaCatalog.filter((item) => item.name.toLowerCase().includes(query)), { name: 'Other' }] : [];
+        ? [...catalogFormulaOptions(props.products).filter((item) => item.name.toLowerCase().includes(query)), { name: 'Other' }] : [];
 });
 function update<K extends keyof FormulaEntry>(key: K, value: FormulaEntry[K]) {
     emit('update:modelValue', { ...props.modelValue, [key]: value });
 }
 function nameChanged(value: string) {
     active.value = 0;
-    emit('update:modelValue', { ...props.modelValue, formulaName: value, productForm: defaultFormulaForm(value) });
+    emit('update:modelValue', { ...props.modelValue, formulaName: value, formulaFlavor: '', productForm: defaultFormulaForm(value, props.products) });
 }
 </script>
 
@@ -57,7 +58,7 @@ function nameChanged(value: string) {
         <div v-if="other" class="form-field formula-detail-field">
             <label :for="`${prefix}-other`">Other Formula Name{{ hideRequiredMarkers ? '' : ' *' }}</label>
             <input :id="`${prefix}-other`" :value="modelValue.otherFormulaName" class="form-input" required @input="update('otherFormulaName', ($event.target as HTMLInputElement).value)" />
-            <small v-if="modelValue.otherFormulaName.trim() && validateOtherFormulaName(modelValue.otherFormulaName)" class="field-error" role="alert">{{ validateOtherFormulaName(modelValue.otherFormulaName) }}</small>
+            <small v-if="modelValue.otherFormulaName.trim() && validateOtherFormulaName(modelValue.otherFormulaName, products)" class="field-error" role="alert">{{ validateOtherFormulaName(modelValue.otherFormulaName, products) }}</small>
         </div>
         <div v-if="selected?.hasFlavor" class="form-field formula-detail-field">
             <label :for="`${prefix}-flavor`">Flavor</label>
@@ -74,7 +75,7 @@ function nameChanged(value: string) {
             <label :for="`${prefix}-amount`">Amount (in ounces/day){{ hideRequiredMarkers ? '' : ' *' }}</label>
             <input :id="`${prefix}-amount`" :value="modelValue.ouncesPrescribed" class="form-input" type="text" inputmode="decimal" pattern="(?:[0-9]+(?:\.[0-9]+)?|\.[0-9]+)" required @input="update('ouncesPrescribed', ($event.target as HTMLInputElement).value)" />
         </div>
-        <div v-if="requiresReadyToFeedReason(modelValue.formulaName, modelValue.productForm)" class="form-field formula-justification-field">
+        <div v-if="requiresReadyToFeedReason(modelValue.formulaName, modelValue.productForm, products)" class="form-field formula-justification-field">
             <label :for="`${prefix}-reason`">Justification{{ hideRequiredMarkers ? '' : ' *' }}</label>
             <textarea ref="justificationInput" :id="`${prefix}-reason`" :class="{'justification-input': autoFitJustification}" :value="modelValue.readyToFeedJustification" placeholder='List reason(s) why ready-to-feed is needed. Otherwise, type "Only form available"'  class="form-textarea rtf-reason" rows="1" required @input="update('readyToFeedJustification', ($event.target as HTMLTextAreaElement).value)" />
         </div>

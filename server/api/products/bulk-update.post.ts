@@ -1,5 +1,5 @@
-import * as XLSX from 'xlsx';
-import { updateProducts, type ProductQuantityUpdate } from '../../utils/productStore';
+import { parseProductQuantityWorkbook } from '../../utils/productImport';
+import { updateProducts } from '../../utils/productStore';
 
 export default defineEventHandler(async (event) => {
     const parts = await readMultipartFormData(event);
@@ -9,14 +9,7 @@ export default defineEventHandler(async (event) => {
     }
 
     try {
-        const workbook = XLSX.read(file.data, { type: 'buffer' });
-        const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
-        const rows = XLSX.utils.sheet_to_json<Partial<ProductQuantityUpdate>>(firstSheet, { defval: '' });
-        const updates = rows.map((row) => ({
-            productId: String(row.productId ?? '').trim(),
-            casesApproved: Number(row.casesApproved),
-            casesUsed: Number(row.casesUsed),
-        }));
+        const updates = parseProductQuantityWorkbook(file.data);
         const products = updateProducts(updates);
         return { products, count: products.length };
     } catch (error) {

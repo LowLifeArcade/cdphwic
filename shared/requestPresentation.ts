@@ -1,6 +1,6 @@
 import { benefitMonthLabels } from './requestMonthSelection';
 import { findFormula } from './formulaCatalog';
-import type { RequestRecord, RequestedFormula } from './domain';
+import type { RequestRecord, RequestedFormula, ProductRecord } from './domain';
 export function requestFormulas(request: Partial<RequestRecord>): RequestedFormula[] {
     return request.requestedFormulas?.length
         ? request.requestedFormulas
@@ -38,9 +38,9 @@ export function formulaFormLabel(value?: string) {
         : '—';
 }
 
-export function formulaOverviewUpdates(draft: Partial<RequestRecord>): Partial<RequestRecord> {
+export function formulaOverviewUpdates(draft: Partial<RequestRecord>, products: ProductRecord[] = []): Partial<RequestRecord> {
     const name = draft.productName?.trim() ?? '';
-    const otherName = name && !findFormula(name) ? name : undefined;
+    const otherName = name && !findFormula(name, products) ? name : undefined;
     const genericFields = { ...draft.genericFields, otherFormulaName: otherName ?? '' };
     return {
         productName: name,

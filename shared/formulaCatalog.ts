@@ -1,4 +1,4 @@
-import type { ProductForm } from './domain';
+import type { ProductForm, ProductRecord } from './domain';
 
 export interface FormulaOption {
     name: string;
@@ -37,20 +37,35 @@ export const formulaCatalog: FormulaOption[] = [
     { name: 'Similac Alimentum Toddler', forms: ['powder'], pdfField: 'Similac alimentum-2' },
 ];
 
-export function findFormula(name: string) {
-    return formulaCatalog.find((formula) => formula.name.toLowerCase() === name.trim().toLowerCase());
+export function catalogFormulaOptions(products: ProductRecord[] = []): FormulaOption[] {
+    const options = formulaCatalog.map(formula => ({ ...formula, forms: [...formula.forms] }));
+    for (const product of products) {
+        const name = product.name.trim();
+        let option = options.find(formula => formula.name.toLowerCase() === name.toLowerCase());
+        if (!option) {
+            option = { name, forms: [], pdfField: '' };
+            options.push(option);
+        }
+        if (!option.forms.includes(product.form)) option.forms.push(product.form);
+        if (product.flavor?.trim() || product.genericFields?.flavor?.trim()) option.hasFlavor = true;
+    }
+    return options;
 }
 
-export function availableFormulaForms(name: string): ProductForm[] {
+export function findFormula(name: string, products: ProductRecord[] = []) {
+    return catalogFormulaOptions(products).find((formula) => formula.name.toLowerCase() === name.trim().toLowerCase());
+}
+
+export function availableFormulaForms(name: string, products: ProductRecord[] = []): ProductForm[] {
     if (name.trim().toLowerCase() === 'other') return ['powder', 'concentrate', 'ready-to-feed'];
-    return findFormula(name)?.forms ?? [];
+    return findFormula(name, products)?.forms ?? [];
 }
 
-export function defaultFormulaForm(name: string): ProductForm | '' {
-    const forms = availableFormulaForms(name);
+export function defaultFormulaForm(name: string, products: ProductRecord[] = []): ProductForm | '' {
+    const forms = availableFormulaForms(name, products);
     return forms.length === 1 ? forms[0]! : '';
 }
 
-export function requiresReadyToFeedReason(name: string, form: string) {
-    return form === 'ready-to-feed' && availableFormulaForms(name).length > 1;
+export function requiresReadyToFeedReason(name: string, form: string, products: ProductRecord[] = []) {
+    return form === 'ready-to-feed' && availableFormulaForms(name, products).length > 1;
 }

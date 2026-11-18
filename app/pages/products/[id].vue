@@ -30,6 +30,7 @@ const saving = ref(false);
 
 function productBody(): ProductInput {
     return {
+        ...product,
         name: form.name,
         productId: form.productId,
         productCode: form.productCode,
@@ -93,9 +94,13 @@ async function saveProduct() {
                     <span>Changes are saved to the demo catalog.</span>
                 </div>
             </div>
+            <div v-if="product?.formulaDescription || product?.packaging" class="detail-section">
+                <p v-if="product.formulaDescription">{{ product.formulaDescription }}</p>
+                <p v-if="product.packaging" class="muted-copy">Packaging: {{ product.packaging }}<template v-if="product.flavor"> · {{ product.flavor }}</template></p>
+            </div>
             <div class="form-grid">
                 <div class="form-field">
-                    <label for="product-name">Name</label>
+                    <label for="product-name">Formula Name</label>
                     <input
                         id="product-name"
                         v-model="form.name"
@@ -126,7 +131,7 @@ async function saveProduct() {
                     </select>
                 </div>
                 <div class="form-field">
-                    <label for="product-code">Product code</label>
+                    <label for="product-code">Product Number</label>
                     <input
                         id="product-code"
                         v-model="form.productCode"

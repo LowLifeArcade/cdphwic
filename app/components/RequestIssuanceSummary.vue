@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import {authorizationCatalogProduct} from '~/../shared/productMatching';
 import {unitLabel} from '~/../shared/quantityLabels';
 import type {ProductRecord,RequestRecord} from '~/../shared/domain';
 import {formulaAuthorizations,formatIssuanceMonth,type FormulaAuthorization} from '~/../shared/formulaAuthorizations';
@@ -8,7 +9,7 @@ const props=defineProps<{request:RequestRecord;products?:ProductRecord[]}>();
 const emit=defineEmits<{recordIssue:[command:{formulaIndex:number;month:string;units:number}]}>();
 const authorizations=computed(()=>formulaAuthorizations(props.request));
 const supplies=computed(()=>authorizations.value.map(row=>issuanceSupplySources(props.request,row)));
-function product(row:FormulaAuthorization){return props.products?.find(product=>product.name===row.productName&&product.form===row.productForm);}
+function product(row:FormulaAuthorization){return authorizationCatalogProduct(props.products??[],row);}
 function assigned(row:FormulaAuthorization){return (row.localSurplusAllocations??[]).reduce((sum,allocation)=>sum+allocation.units,0);}
 function localIssueTarget(row:FormulaAuthorization,month:string){let remaining=assigned(row);for(const issuance of [...row.benefitIssuances].filter(item=>item.month&&item.quantity>0).sort((a,b)=>a.month.localeCompare(b.month))){const target=Math.min(issuance.quantity,remaining);remaining-=target;if(issuance.month===month)return target;}return 0;}
 function issuedForMonth(row:FormulaAuthorization,month:string){return row.localSurplusIssued?.find(issue=>issue.month===month)?.units??0;}

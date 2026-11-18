@@ -25,7 +25,7 @@ export function matchingTransferLot(request:Partial<RequestRecord>,lot:SurplusLo
 }
 
 export function transferCatalogUnitsPerCase(lot:{formulaName:string;form:string;flavor?:string},products:import('./domain').ProductRecord[]):number|undefined {
- const matches=products.filter(p=>normalizeVariantText(p.name)===normalizeVariantText(lot.formulaName)&&formKey(p.form)===formKey(lot.form)&&(!p.genericFields?.flavor||normalizeVariantText(p.genericFields.flavor)===normalizeVariantText(lot.flavor??'')));
+ const matches=products.filter(p=>normalizeVariantText(p.name)===normalizeVariantText(lot.formulaName)&&formKey(p.form)===formKey(lot.form)&&(!(p.flavor??p.genericFields?.flavor)||normalizeVariantText(p.flavor??p.genericFields?.flavor??'')===normalizeVariantText(lot.flavor??'')));
  const sizes=[...new Set(matches.map(p=>p.unitsPerCase).filter(n=>Number.isSafeInteger(n)&&n>0))];return sizes.length===1?sizes[0]:undefined;
 }
 

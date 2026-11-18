@@ -5,7 +5,8 @@ import { hasMedicalDocumentation, medicalDocumentationRequiredMessage } from '~/
 import {shippingContact,blankClinicAddress,validateShipping,type RequestShipping,type ClinicRecord} from '~/../shared/shipping';
 import {canEditSubmission,hasPendingMoreInfo,restoreSubmittedForm} from '~/../shared/requestEditing';
 import { benefitMonthLabels, toggleRequestedMonth, serializeRequestedMonths, validateRequestedMonths } from '~/../shared/requestMonthSelection';
-import { formulaCatalog, findFormula, availableFormulaForms, defaultFormulaForm, requiresReadyToFeedReason } from '~/../shared/formulaCatalog';
+import { catalogFormulaOptions, findFormula, availableFormulaForms, defaultFormulaForm, requiresReadyToFeedReason } from '~/../shared/formulaCatalog';
+import { resolveProduct } from '~/../shared/productMatching';
 import type { ProductForm, RequestRecord } from '~/../shared/domain';
 import { blankFormula, formulaEntryName, getFormulaFieldErrors, validateOtherFormulaName, validateFormulaEntry, validateFormulaSelection, type FormulaEntry } from '~/../shared/formulaEntries';
 import { diagnosisCatalog, findDiagnosis, validateDiagnoses } from '~/../shared/diagnosisCatalog';
@@ -181,13 +182,14 @@ const form = reactive({
 });
 
 const isOtherFormula = computed(() => form.formulaName.trim().toLowerCase() === 'other');
-const selectedFormula = computed(() => findFormula(form.formulaName));
-const availableForms = computed(() => availableFormulaForms(form.formulaName));
-const selectedProduct = computed(() => products.value.find((product) =>
-    product.name.toLowerCase() === selectedFormula.value?.name.toLowerCase() && product.form === form.productForm,
-));
+const selectedFormula = computed(() => findFormula(form.formulaName, products.value));
+const availableForms = computed(() => availableFormulaForms(form.formulaName, products.value));
+const selectedProduct = computed(() => resolveProduct(products.value, {
+    name: isOtherFormula.value ? form.otherFormulaName : form.formulaName,
+    form: form.productForm, flavor: form.formulaFlavor,
+}));
 const productName = computed(() => isOtherFormula.value ? form.otherFormulaName.trim() : selectedFormula.value?.name ?? form.formulaName.trim());
-const formulaSelectionError = computed(() => validateFormulaSelection([form, ...additionalFormulas.value].map((entry) => ({ name: formulaEntryName(entry), form: entry.productForm, flavor: entry.formulaFlavor }))));
+const formulaSelectionError = computed(() => validateFormulaSelection([form, ...additionalFormulas.value].map((entry) => ({ name: formulaEntryName(entry, products.value), form: entry.productForm, flavor: entry.formulaFlavor })), products.value));
 watch(formulaSelectionError, (error, previous) => { if (error && error !== previous) formulaAlert.value = error; });
 function addAdditionalFormula() {
     if (!additionalFormulas.value.length) additionalFormulas.value.push(blankFormula());
@@ -196,14 +198,14 @@ function dismissFormulaAlert() {
     formulaAlert.value = '';
     nextTick(() => document.getElementById('extra-formula-2')?.focus());
 }
-const requestedFormulaNames = computed(() => [...new Set([productName.value, ...additionalFormulas.value.map(formulaEntryName)].filter(Boolean))]);
+const requestedFormulaNames = computed(() => [...new Set([productName.value, ...additionalFormulas.value.map(entry => formulaEntryName(entry, products.value))].filter(Boolean))]);
 function surplusForms(name: string) {
-    return findFormula(name) ? availableFormulaForms(name) : availableFormulaForms('Other');
+    return findFormula(name, products.value) ? availableFormulaForms(name, products.value) : availableFormulaForms('Other');
 }
 function initializeSurplus(entry: typeof surplusEntries.value[number]) {
-    const match = [form, ...additionalFormulas.value].find((formula) => formulaEntryName(formula) === entry.productName);
-    entry.productForm = match?.productForm || defaultFormulaForm(entry.productName);
-    entry.flavor = findFormula(entry.productName)?.hasFlavor ? match?.formulaFlavor ?? '' : '';
+    const match = [form, ...additionalFormulas.value].find((formula) => formulaEntryName(formula, products.value) === entry.productName);
+    entry.productForm = match?.productForm || defaultFormulaForm(entry.productName, products.value);
+    entry.flavor = findFormula(entry.productName, products.value)?.hasFlavor ? match?.formulaFlavor ?? '' : '';
 }
 function agencySurplusStock(entry:typeof surplusEntries.value[number]){
     const lots=(surplusInventory.value?.lots??[]).filter((lot:any)=>
@@ -236,20 +238,21 @@ function selectedBenefitMonths() {
 }
 function serializedFormulas() {
     return [form, ...additionalFormulas.value].map((entry) => ({
-        productName: formulaEntryName(entry), productForm: entry.productForm as ProductForm,
+        productName: formulaEntryName(entry, products.value), productForm: entry.productForm as ProductForm,
         ouncesPrescribed: Number(entry.ouncesPrescribed), flavor: entry.formulaFlavor,
         otherFormulaName: entry.formulaName.trim().toLowerCase() === 'other' ? entry.otherFormulaName.trim() : undefined,
-        readyToFeedJustification: requiresReadyToFeedReason(entry.formulaName, entry.productForm) ? entry.readyToFeedJustification : '',
+        readyToFeedJustification: requiresReadyToFeedReason(entry.formulaName, entry.productForm, products.value) ? entry.readyToFeedJustification : '',
     }));
 }
 watch(() => isOtherFormula.value ? 'Other' : selectedFormula.value?.name, () => {
-    form.productForm = defaultFormulaForm(form.formulaName);
+    form.productForm = defaultFormulaForm(form.formulaName, products.value);
+    form.formulaFlavor = '';
 }, { flush: 'sync' });
 
 const formulaMatches = computed(() => {
     const query = form.formulaName.trim().toLowerCase();
     return query.length >= 3 && !selectedFormula.value && !isOtherFormula.value
-        ? [...formulaCatalog.filter((item) => item.name.toLowerCase().includes(query)), { name: 'Other' }] : [];
+        ? [...catalogFormulaOptions(products.value).filter((item) => item.name.toLowerCase().includes(query)), { name: 'Other' }] : [];
 });
 function selectFormula(name: string) {
     form.formulaName = name;
@@ -391,11 +394,11 @@ async function processPrescription(file: File) {
             Object.assign(form, parsedFormulas[0]);
             additionalFormulas.value = parsedFormulas.slice(1, 2);
             if (parsedFormulas.length > 2) {
-                formulaAlert.value = `Only up to 2 formulas are allowed. The PDF also lists: ${parsedFormulas.slice(2).map(formulaEntryName).join(', ')}. Review the uploaded documentation and use a separate request for additional formulas.`;
+                formulaAlert.value = `Only up to 2 formulas are allowed. The PDF also lists: ${parsedFormulas.slice(2).map(entry => formulaEntryName(entry, products.value)).join(', ')}. Review the uploaded documentation and use a separate request for additional formulas.`;
             }
         }
         if (!availableForms.value.includes(form.productForm as ProductForm)) {
-            form.productForm = defaultFormulaForm(form.formulaName);
+            form.productForm = defaultFormulaForm(form.formulaName, products.value);
         }
         parserMessage.value = result.message;
         parserMissing.value = result.missing;
@@ -508,7 +511,7 @@ function syncFieldValidity() {
         const ids = index === 0
             ? {formulaName:'formula',otherFormulaName:'other-formula-name',productForm:'formula-form',ouncesPrescribed:'ounces',readyToFeedJustification:'rtf-justification'}
             : {formulaName:`extra-formula-${index+1}`,otherFormulaName:`extra-formula-${index+1}-other`,productForm:`extra-formula-${index+1}-form`,ouncesPrescribed:`extra-formula-${index+1}-amount`,readyToFeedJustification:`extra-formula-${index+1}-reason`};
-        for (const [key, message] of Object.entries(getFormulaFieldErrors(entry))) setError(ids[key as keyof typeof ids], message!);
+        for (const [key, message] of Object.entries(getFormulaFieldErrors(entry, products.value))) setError(ids[key as keyof typeof ids], message!);
     });
     if (!form.doctorHasSignedOff) setError('doctor-signed-off', providerSignatureMessage);
     if (duplicateError) setError('extra-formula-2', duplicateError);
@@ -594,13 +597,13 @@ async function submitRequest() {
         if (invalid && 'reportValidity' in invalid) (invalid as HTMLInputElement).reportValidity();
         return;
     }
-    submissionError.value = formulaSelectionError.value || validateAgencyFields(form);
+    submissionError.value = formulaSelectionError.value || validateAgencyFields(form, products.value);
     if (!submissionError.value && ((!selectedFormula.value && !isOtherFormula.value) || (isOtherFormula.value && (!form.otherFormulaName.trim() || form.otherFormulaName.trim().toLowerCase() === 'other')) || !availableForms.value.includes(form.productForm as ProductForm))) {
         submissionError.value = 'Select a matching formula name and an available form.';
     }
     if (!submissionError.value) {
         for (const [index, entry] of additionalFormulas.value.entries()) {
-            const error = validateFormulaEntry(entry);
+            const error = validateFormulaEntry(entry, products.value);
             if (error) { submissionError.value = `Formula ${index + 2}: ${error}`; break; }
         }
     }
@@ -942,7 +945,7 @@ async function submitRequest() {
                         <div v-if="isOtherFormula" class="form-field formula-detail-field">
                             <label for="other-formula-name">{{ requiredLabel('Other Formula Name') }}</label>
                             <input id="other-formula-name" v-model="form.otherFormulaName" class="form-input" required aria-describedby="other-formula-error" />
-                            <small v-if="form.otherFormulaName.trim() && validateOtherFormulaName(form.otherFormulaName)" id="other-formula-error" class="field-error" role="alert">{{ validateOtherFormulaName(form.otherFormulaName) }}</small>
+                            <small v-if="form.otherFormulaName.trim() && validateOtherFormulaName(form.otherFormulaName, products)" id="other-formula-error" class="field-error" role="alert">{{ validateOtherFormulaName(form.otherFormulaName, products) }}</small>
                         </div>
                         <div v-if="selectedFormula?.hasFlavor" class="form-field formula-detail-field">
                             <label for="formula-flavor">Flavor</label>
@@ -975,7 +978,7 @@ async function submitRequest() {
                             />
                         </div>
                         <div
-                            v-if="requiresReadyToFeedReason(form.formulaName, form.productForm)"
+                            v-if="requiresReadyToFeedReason(form.formulaName, form.productForm, products)"
                             class="form-field formula-justification-field"
                         >
                             <label for="rtf-justification">{{ requiredLabel('Justification') }}</label>
@@ -992,7 +995,7 @@ async function submitRequest() {
                 </fieldset>
                 <fieldset v-for="(_, index) in additionalFormulas" :key="index" class="additional-formula formula-group full">
                     <legend>Formula {{ index + 2 }}</legend>
-                    <AdditionalFormulaFields v-model="additionalFormulas[index]!" :index="index + 2" />
+                    <AdditionalFormulaFields :products="products" v-model="additionalFormulas[index]!" :index="index + 2" />
                     <p v-if="formulaSelectionError" class="field-error" role="alert">{{ formulaSelectionError }}</p>
                     <button class="text-button" type="button" @click="additionalFormulas.splice(index, 1)">Remove Formula {{ index + 2 }}</button>
                 </fieldset>
@@ -1202,7 +1205,7 @@ async function submitRequest() {
                         <option v-for="option in surplusForms(entry.productName)" :key="option" :value="option">{{ { powder: 'Powder', concentrate: 'Liquid Concentrate', 'ready-to-feed': 'Ready-to-Feed' }[option] }}</option>
                     </select>
                 </div>
-                <div v-if="findFormula(entry.productName)?.hasFlavor" class="form-field">
+                <div v-if="findFormula(entry.productName, products)?.hasFlavor" class="form-field">
                     <label :for="`surplus-flavor-${index}`">Flavor</label>
                     <input :id="`surplus-flavor-${index}`" v-model="entry.flavor" class="form-input" />
                 </div>

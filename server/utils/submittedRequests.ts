@@ -178,7 +178,7 @@ export async function updateSubmittedRequest(
     if (updates.requestedFormulas !== undefined) {
         if (!Array.isArray(updates.requestedFormulas) || !updates.requestedFormulas.length)
             throw Object.assign(new Error('Add at least one formula.'), {statusCode:400});
-        const formulaError = validateFormulaSelection(updates.requestedFormulas.map(formula => ({name:formula.otherFormulaName || formula.productName,form:formula.productForm,flavor:formula.flavor})));
+        const formulaError = validateFormulaSelection(updates.requestedFormulas.map(formula => ({name:formula.otherFormulaName || formula.productName,form:formula.productForm,flavor:formula.flavor})), listProducts());
         if (formulaError) throw Object.assign(new Error(formulaError), {statusCode:400,statusMessage:formulaError});
     }
     if (updates.shipments) {
@@ -298,7 +298,7 @@ export async function editSubmittedRequest(
     if(request.shipping)request.shipping={...request.shipping,...shippingContact(request.shipping,requestContact(user,previous.agencyId,previous.agencyMemberId))};
     if (options.attachment !== undefined) request.prescriptionAttachment = options.attachment ?? undefined;
     if(!options.saveOnly || request.shipping?.clinicId)request.shipping = await resolveShipping(db,user,previous.agencyId,request.shipping,previous.shipping);
-    const validation = options.saveOnly ? '' : validateRequestSubmission(request);
+    const validation = options.saveOnly ? '' : validateRequestSubmission(request, listProducts());
     if (validation) throw Object.assign(new Error(validation), { statusCode: 400, statusMessage: validation });
     const rows = (r: RequestRecord) =>
         JSON.stringify(

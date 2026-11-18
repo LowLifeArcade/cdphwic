@@ -1,3 +1,4 @@
+import type { ProductRecord } from './domain';
 import { requiresReadyToFeedReason } from './formulaCatalog';
 import { validateDiagnoses } from './diagnosisCatalog';
 export const providerSignatureMessage = 'Please verify that medical documentation is signed by a health care provider with prescriptive authority.';
@@ -15,7 +16,7 @@ export function validateAgencyFields(fields: {
     wicFoodRestrictions: string; wicStaffFoodRestrictions: string; wicNutritionStaffNotes: string; wicNutritionStaffName: string;
     formulaName: string;
     productForm: string; readyToFeedJustification: string; prescriptionSignedDate: string;
-}): string {
+}, products: ProductRecord[] = []): string {
     if (![fields.familyId, fields.individualId, fields.benefitsStartDate, fields.requestKind].every((value) => value.trim())) {
         return 'Complete all required Additional Participant Details fields.';
     }
@@ -23,7 +24,7 @@ export function validateAgencyFields(fields: {
     if (fields.medicalStatus === 'yes' && !['Denied', 'Pending PA', 'Product Not Covered'].includes(fields.mediCalStatus)) {
         return 'Select Medi-Cal Status.';
     }
-    if (requiresReadyToFeedReason(fields.formulaName, fields.productForm) && !fields.readyToFeedJustification.trim()) {
+    if (requiresReadyToFeedReason(fields.formulaName, fields.productForm, products) && !fields.readyToFeedJustification.trim()) {
         return 'List reason(s) why ready-to-feed is needed.';
     }
     if (!Number.isFinite(Number(fields.ouncesPrescribed)) || Number(fields.ouncesPrescribed) <= 0) return 'Enter Amount Per Day greater than zero.';

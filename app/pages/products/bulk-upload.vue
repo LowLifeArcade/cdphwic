@@ -57,19 +57,22 @@ async function uploadProducts() {
             </div>
         </div>
         <p class="muted-copy">
-            Use one row per product. Required columns are <code>productId</code>, <code>productCode</code>,
-            <code>name</code>, <code>form</code>, <code>category</code>, and <code>unitsPerCase</code>. Optional columns
-            are <code>unitPrice</code>, <code>poPrice</code>, <code>casesApproved</code>, <code>casesUsed</code>,
-            <code>supplierReference</code>, and <code>coverage</code>. Use <code>powder</code>,
-            <code>concentrate</code>, or <code>ready-to-feed</code> for form. Optional <code>yield</code> populates the
-            request processing details.
+            Use one row per product. Required headers are <code>Formula Name</code>, <code>Formula Form</code>,
+            <code>Flavor</code>, <code>Product Number</code>, <code>Units Per Case</code>, and <code>Yield</code>.
+            Flavor may be blank for unflavored products. Product Number must be unique; Formula Name may repeat.
+            Use Powder, Liquid Concentrate, or Ready-to-Feed for Formula Form. Yield is in fluid ounces.
+            Optional columns are <code>Formula Description</code>, <code>Manufacturer</code>, <code>McKesson PO</code>,
+            <code>McKesson Price</code>, <code>Covered by Medi-Cal</code>, <code>FDA Class</code>, <code>WIC Class</code>,
+            <code>S/T</code>, <code>Infant/Toddler</code>, and <code>Packaging</code>.
+            Use Yes or No for Covered by Medi-Cal. These details are retained for reporting and staff product selection.
+            Format Product Number as text to preserve leading zeroes. Existing internal column headers are also supported.
         </p>
         <div class="upload-example">
             <strong>Example headers</strong>
             <code
-                >productId,productCode,name,form,category,unitsPerCase,yield,unitPrice,poPrice,casesApproved,casesUsed,supplierReference,coverage</code
+                >Formula Name,Formula Form,Flavor,Product Number,Units Per Case,Yield,Formula Description,Manufacturer,McKesson PO,McKesson Price,Covered by Medi-Cal,FDA Class,WIC Class,S/T,Infant/Toddler,Packaging</code
             >
-            <code>PROD-305,166806,Example Formula,powder,standard,12,31.25,31.25,100,0,EXAMPLE-305,wic</code>
+            <code>Example Formula,Powder,Vanilla,00166806,12,8,Example Formula Vanilla 8 oz,Example Manufacturer,PO-123,31.25,Yes,Exempt,A,S,Toddler,8 oz can</code>
         </div>
         <div class="upload-drop">
             <input
@@ -77,7 +80,7 @@ async function uploadProducts() {
                 type="file"
                 accept=".csv,.xls,.xlsx"
             />
-            <span>Existing product names are rejected.</span>
+            <span>Existing Product Numbers are rejected. No products are added if any row is invalid.</span>
         </div>
         <p
             v-if="error"

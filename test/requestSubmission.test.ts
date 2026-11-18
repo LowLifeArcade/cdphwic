@@ -60,3 +60,8 @@ describe('submission requirements', () => {
         expect(validateRequestSubmission({ ...complete, wicFoodRestrictions: 'not-indicated', wicStaffFoodRestrictions: 'restricted', wicNutritionStaffName: 'Sam', wicNutritionStaffNotes: 'No milk' })).toBe('');
     });
 });
+
+it('accepts uploaded catalog formulas on the server without requiring Other', () => {
+    const products = [{ id: 9001, productId: 'P', productCode: 'P', name: 'Uploaded formula', form: 'powder', category: 'standard', unitsPerCase: 6, coverage: ['wic'] }] as import('../shared/domain').ProductRecord[];
+    expect(validateRequestSubmission({ ...complete, productName: 'Uploaded formula', productForm: 'powder', genericFields: {}, requestedFormulas: [{ productName: 'Uploaded formula', productForm: 'powder', ouncesPrescribed: 8 }] }, products)).toBe('');
+});
