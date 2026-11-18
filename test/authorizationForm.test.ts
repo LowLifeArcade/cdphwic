@@ -123,3 +123,28 @@ it('uses singular Unit for one and plural Units for zero in the PDF panel',async
   expect(draw.mock.calls.some(call=>call[0]==='Units'&&call[1]?.x===522)).toBe(true);
  }finally{draw.mockRestore();}
 });
+
+it.each(['authorization','shipment-confirmation'] as const)('fills missing product metadata from an exact catalog match in %s',async(kind)=>{
+ const {PDFPage}=await import('pdf-lib');const {vi}=await import('vitest');const draw=vi.spyOn(PDFPage.prototype,'drawText');
+ const product={id:1,productId:'CAT-1',productCode:'CAT-1',name:'Nutramigen',form:'powder' as const,category:'standard' as const,coverage:[],unitsPerCase:6,yield:32};
+ try{
+  await createAuthorizationFormPdf(request,agency,rep,kind,[product]);
+  expect(draw.mock.calls.map(call=>call[0]).join('\n')).toContain('Product Number: CAT-1 | Units Per Case: 6 | Yield: 32 fl oz');
+ }finally{draw.mockRestore();}
+});
+
+it('preserves saved metadata and leaves ambiguous or deliberately cleared products unresolved',async()=>{
+ const {PDFPage}=await import('pdf-lib');const {vi}=await import('vitest');const draw=vi.spyOn(PDFPage.prototype,'drawText');
+ const product={id:1,productId:'CAT-1',productCode:'CAT-1',name:'Nutramigen',form:'powder' as const,category:'standard' as const,coverage:[],unitsPerCase:6,yield:32};
+ try{
+  for(const [details,catalog,expected] of [
+   [{productCode:'CAT-1',unitsPerCase:12,yield:24},[product],'Product Number: CAT-1 | Units Per Case: 12 | Yield: 24 fl oz'],
+   [{},[product,{...product,id:2,productCode:'CAT-2'}],'Product Number: — | Units Per Case: — | Yield: —'],
+   [{productCode:''},[product],'Product Number: — | Units Per Case: — | Yield: —'],
+  ] as const){
+   draw.mockClear();
+   await createAuthorizationFormPdf({...request,formulaAuthorizations:[{productName:request.productName,productForm:request.productForm,benefitIssuances:request.benefitIssuances!,...details}]},agency,rep,'authorization',[...catalog]);
+   expect(draw.mock.calls.map(call=>call[0]).join('\n')).toContain(expected);
+  }
+ }finally{draw.mockRestore();}
+});

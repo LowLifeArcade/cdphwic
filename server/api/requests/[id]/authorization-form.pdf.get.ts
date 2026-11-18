@@ -1,3 +1,5 @@
+import {listProducts} from '../../../utils/productRepository';
+import {SEED_PRODUCTS} from '../../../data/seed';
 import { submittedRequest } from '../../../utils/submittedRequests';
 import { getSessionFromHeaders } from '../../../utils/session';
 import { canSeeAgency } from '../../../../shared/surplus';
@@ -23,7 +25,8 @@ export default defineEventHandler(async (event) => {
     const versionId=getQuery(event).version;
     const version=versionId?request.authorizationVersions?.find(item=>item.id===versionId):request.authorizationVersions?.at(-1);
     if(versionId&&!version)throw createError({statusCode:404,statusMessage:'Authorization version not found.'});
-    const pdf = await createAuthorizationFormPdf(version?.record??request, agency, rep);
+    const products=env?.CDPHWIC?await listProducts(env.CDPHWIC,{includeInactive:true}):SEED_PRODUCTS;
+    const pdf = await createAuthorizationFormPdf(version?.record??request, agency, rep,'authorization',products);
     setResponseHeader(event, 'content-type', 'application/pdf');
     setResponseHeader(event, 'content-disposition', `attachment; filename="authorization-form-${request.id}.pdf"`);
     return pdf;

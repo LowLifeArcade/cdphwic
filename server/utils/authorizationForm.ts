@@ -1,11 +1,12 @@
+import {authorizationCatalogProduct} from '../../shared/productMatching';
 import {unitLabel} from '../../shared/quantityLabels';
 import {PDFDocument,StandardFonts,rgb} from 'pdf-lib';
 import {formatIssuanceMonth,formulaAuthorizations} from '../../shared/formulaAuthorizations';
 import {formatDisplayDate as date,formulaFormLabel} from '../../shared/requestPresentation';
-import type {AgencyMemberRecord,AgencyRecord,RequestRecord} from '../../shared/domain';
+import type {AgencyMemberRecord,AgencyRecord,RequestRecord,ProductRecord} from '../../shared/domain';
 import {issuanceSupplySources,supplyCaseDetails} from '../../shared/issuanceSupply';
 import {shipmentQuantities} from '../../shared/shipmentQuantities';
-export async function createAuthorizationFormPdf(request:RequestRecord,agency?:AgencyRecord,rep?:AgencyMemberRecord,kind:'authorization'|'shipment-confirmation'='authorization'):Promise<Uint8Array>{
+export async function createAuthorizationFormPdf(request:RequestRecord,agency?:AgencyRecord,rep?:AgencyMemberRecord,kind:'authorization'|'shipment-confirmation'='authorization',products:ProductRecord[]=[]) :Promise<Uint8Array>{
  const doc=await PDFDocument.create();const regular=await doc.embedFont(StandardFonts.Helvetica);const bold=await doc.embedFont(StandardFonts.HelveticaBold);
  const blue=rgb(0,37/255,149/255),ink=rgb(.08,.12,.16),muted=rgb(.42,.44,.45);
  let page=doc.addPage([612,792]);let y=728;
@@ -22,7 +23,10 @@ export async function createAuthorizationFormPdf(request:RequestRecord,agency?:A
   }return lines;
  };
  const section=(title:string)=>{ensure(42);y-=8;page.drawText(title,{x:42,y,size:11,font:bold,color:blue});y-=6;page.drawLine({start:{x:42,y},end:{x:570,y},thickness:.5,color:rgb(.78,.81,.85)});y-=13;};
- const authorizations=request.formulaAuthorizations?.length?request.formulaAuthorizations:formulaAuthorizations(request);
+ const authorizations=(request.formulaAuthorizations?.length?request.formulaAuthorizations:formulaAuthorizations(request)).map(authorization=>{
+  const product=authorizationCatalogProduct(products,authorization);
+  return {...authorization,productCode:authorization.productCode??product?.productCode,unitsPerCase:authorization.unitsPerCase??product?.unitsPerCase,yield:authorization.yield??product?.yield};
+ });
  const fullFormulaName=(formula:{productName?:string;productForm?:string;flavor?:string})=>[formula.productName,formulaFormLabel(formula.productForm),formula.flavor].filter(Boolean).join(' ');
  const phone=(value?:string)=>{
   if(!value)return undefined;
