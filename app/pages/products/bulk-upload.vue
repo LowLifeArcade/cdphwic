@@ -62,23 +62,27 @@ async function uploadProducts() {
             </div>
         </div>
         <p class="muted-copy">
-            Use one row per product. Required headers are <code>Formula Name</code>, <code>Formula Form</code>,
-            <code>Flavor</code>, <code>Product Number</code>, <code>Units Per Case</code>, and <code>Yield</code>.
+            Use one row per product. The column order is <code>Formula Description</code>, <code>Manufacturer</code>,
+            <code>Formula Name</code>, <code>Formula Form</code>, <code>Flavor</code>, <code>Packaging</code>,
+            <code>Product Number</code>, <code>Units Per Case</code>, <code>Yield</code>, <code>Covered by Medi-Cal</code>,
+            <code>McKesson PO</code>, <code>McKesson Price</code>, <code>FDA Class</code>, <code>WIC Category</code>,
+            <code>S/T</code>, and <code>Infant/Toddler</code>.
+            Required headers are Formula Name, Formula Form, Flavor, Product Number, Units Per Case, and Yield; other columns are optional.
+            Headers are matched by name, so existing files with a different column order remain supported.
             Cell values may be blank in every column. Completely empty rows are ignored.
             Nonblank Product Numbers must be unique; Formula Name may repeat. Rows without a Product Number get an internal ID and remain unresolved for exact product selection until a number is supplied.
             Formula Form accepts Powder, Liquid Concentrate, Ready-to-Feed (RTF), Other, or blank. Yield is in fluid ounces.
-            Optional columns are <code>Formula Description</code>, <code>Manufacturer</code>, <code>McKesson PO</code>,
-            <code>McKesson Price</code>, <code>Covered by Medi-Cal</code>, <code>FDA Class</code>, <code>WIC Category</code>,
-            <code>S/T</code>, <code>Infant/Toddler</code>, and <code>Packaging</code>.
-            Use Yes or No for Covered by Medi-Cal. These details are retained for reporting and staff product selection.
-            Format Product Number as text to preserve leading zeroes. Existing internal column headers are also supported.
+            Use Yes or No for Covered by Medi-Cal. FDA Class choices are Exempt, Non-exempt, and Not infant.
+            WIC Category choices are Exempt, Nutritional, Contract, and SNC. S/T choices are Standard and Therapeutic.
+            Infant/Toddler choices are Infant, Toddler, and Adult. These details are retained for reporting and staff product selection.
+            Format Product Number as text to preserve leading zeroes. Existing internal column headers and WIC Class are also supported.
         </p>
         <div class="upload-example">
             <strong>Example headers</strong>
             <code
-                >Formula Name,Formula Form,Flavor,Product Number,Units Per Case,Yield,Formula Description,Manufacturer,McKesson PO,McKesson Price,Covered by Medi-Cal,FDA Class,WIC Category,S/T,Infant/Toddler,Packaging</code
+                >Formula Description,Manufacturer,Formula Name,Formula Form,Flavor,Packaging,Product Number,Units Per Case,Yield,Covered by Medi-Cal,McKesson PO,McKesson Price,FDA Class,WIC Category,S/T,Infant/Toddler</code
             >
-            <code>Example Formula,Powder,Vanilla,00166806,12,8,Example Formula Vanilla 8 oz,Example Manufacturer,PO-123,31.25,Yes,Exempt,A,S,Toddler,8 oz can</code>
+            <code>Example Formula Vanilla 8 oz,Example Manufacturer,Example Formula,Powder,Vanilla,8 oz can,00166806,12,8,Yes,PO-123,31.25,Exempt,Contract,Standard,Infant</code>
         </div>
         <div class="upload-drop">
             <input

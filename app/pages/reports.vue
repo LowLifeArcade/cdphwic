@@ -1,8 +1,12 @@
 <script setup lang="ts">
+import { reportFeatureFlags } from '~/../shared/featureFlags';
 import type { MasterLogRow, McKessonLogRecord } from '~/../shared/domain';
 
 const { data: masterLog } = await useFetch<{ months: string[]; rows: MasterLogRow[] }>('/api/reports/master-log');
-const { data: mckessonLog } = await useFetch<{ rows: McKessonLogRecord[] }>('/api/reports/mckesson-log');
+const mckessonReportEnabled = reportFeatureFlags(useRuntimeConfig().public).mckessonReport;
+const mckessonLog = mckessonReportEnabled
+    ? (await useFetch<{ rows: McKessonLogRecord[] }>('/api/reports/mckesson-log')).data
+    : ref<{ rows: McKessonLogRecord[] } | null>(null);
 const masterRows = computed(() => masterLog.value?.rows ?? []);
 const masterMonths = computed(() => masterLog.value?.months ?? []);
 const mckessonRows = computed(() => mckessonLog.value?.rows ?? []);
@@ -61,7 +65,7 @@ function currency(value: number) {
         <div>
             <p class="eyebrow">Admin</p>
             <h1>Reports</h1>
-            <p>Review the Master Log and McKesson purchasing activity.</p>
+            <p>{{ mckessonReportEnabled ? 'Review the Master Log and McKesson purchasing activity.' : 'Review the Master Log.' }}</p>
         </div>
     </div>
 
@@ -140,7 +144,7 @@ function currency(value: number) {
         </p>
     </section>
 
-    <section class="panel report-section">
+    <section v-if="mckessonReportEnabled" class="panel report-section">
         <div class="panel-heading">
             <div>
                 <h2>McKesson Log</h2>

@@ -2,8 +2,8 @@ import type { ProductCoverage, ProductRecord } from '../../shared/domain';
 
 export type ProductInput = Omit<
     ProductRecord,
-    'id' | 'coverage' | 'casesRemaining' | 'dollarsApproved' | 'dollarsUsed' | 'dollarsRemaining' | 'yield' | 'mcKessonPrice' | 'coveredByMediCal'
-> & { coverage?: ProductCoverage[]; importRowNumber?: number; yield?: number | null; mcKessonPrice?: number | null; coveredByMediCal?: boolean | null };
+    'id' | 'unitsPerCase' | 'coverage' | 'casesRemaining' | 'dollarsApproved' | 'dollarsUsed' | 'dollarsRemaining' | 'yield' | 'mcKessonPrice' | 'coveredByMediCal'
+> & { unitsPerCase?: number | null; coverage?: ProductCoverage[]; importRowNumber?: number; yield?: number | null; mcKessonPrice?: number | null; coveredByMediCal?: boolean | null };
 export type ProductQuantityUpdate = {
     productId: string;
     casesApproved: number;

@@ -1,8 +1,8 @@
-import {shipmentFeatureDefaults} from './shared/featureFlags';
+import {shipmentFeatureDefaults, reportFeatureDefaults} from './shared/featureFlags';
 import {appearanceInitScript} from './shared/appearance';
 // https://nuxt.com/docs/api/configuration/nuxt-config
 export default defineNuxtConfig({
-    runtimeConfig: {public: {...shipmentFeatureDefaults}},
+    runtimeConfig: {public: {...shipmentFeatureDefaults, ...reportFeatureDefaults}},
     compatibilityDate: '2026-10-07',
     app: {head: {script: [{innerHTML: appearanceInitScript, tagPosition:'head', tagPriority:'critical'}]}},
     devtools: { enabled: true },
