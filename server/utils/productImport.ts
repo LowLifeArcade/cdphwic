@@ -9,7 +9,7 @@ const mappedHeaders = {
     'formula description': 'formulaDescription', manufacturer: 'manufacturer',
     'mckesson po': 'mcKessonPo', 'mckesson price': 'mcKessonPrice',
     'covered by medi-cal': 'coveredByMediCal', 'fda class': 'fdaClass',
-    'wic class': 'wicClass', 's/t': 'st', 'infant/toddler': 'infantToddler', packaging: 'packaging',
+    'wic category': 'wicClass', 'wic class': 'wicClass', 's/t': 'st', 'infant/toddler': 'infantToddler', packaging: 'packaging',
 } as const;
 const numericFields = new Set(['unitsPerCase', 'yield', 'mcKessonPrice', 'unitPrice', 'poPrice', 'casesApproved', 'casesUsed']);
 const requiredHeaders = ['Formula Name', 'Formula Form', 'Flavor', 'Product Number', 'Units Per Case', 'Yield'];

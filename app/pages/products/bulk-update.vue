@@ -60,8 +60,8 @@ async function updateProducts() {
             Add only the columns you want to update. Omitted columns remain unchanged; included blank cells clear their values.
             Supported columns include <code>Formula Name</code>, <code>Formula Form</code>, <code>Flavor</code>, <code>Units Per Case</code>, <code>Yield</code>,
             <code>Formula Description</code>, <code>Manufacturer</code>, <code>McKesson PO</code>, <code>McKesson Price</code>, <code>Covered by Medi-Cal</code>,
-            <code>FDA Class</code>, <code>WIC Class</code>, <code>S/T</code>, <code>Infant/Toddler</code>, and <code>Packaging</code>.
-            Cases Approved, Cases Used, Unit Price, PO Price, Supplier Reference, Category, and Coverage are also supported.
+            <code>FDA Class</code>, <code>WIC Category</code>, <code>S/T</code>, <code>Infant/Toddler</code>, and <code>Packaging</code>.
+            Cases Approved, Cases Used, Unit Price, PO Price, Supplier Reference and Coverage are also supported.
             Product Numbers must already exist. No updates are saved if any row is invalid.
         </p>
         <div class="upload-example">

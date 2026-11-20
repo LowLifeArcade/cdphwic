@@ -16,7 +16,6 @@ const viewMode = computed<'grid' | 'list'>({
     },
 });
 const search = ref('');
-const categoryFilter = ref('');
 const formFilter = ref('');
 const coverageFilter = ref('');
 const openMenuId = ref<number | null>(null);
@@ -31,11 +30,10 @@ const filteredProducts = computed(() =>
             `${product.name} ${product.productId} ${product.productCode} ${product.supplierReference ?? ''} ${product.formulaDescription ?? ''} ${product.packaging ?? ''} ${product.flavor ?? ''} ${product.manufacturer ?? ''}`
                 .toLowerCase()
                 .includes(query);
-        const matchesCategory = !categoryFilter.value || product.category === categoryFilter.value;
         const matchesForm = !formFilter.value || product.form === formFilter.value;
         const matchesCoverage =
             !coverageFilter.value || product.coverage.includes(coverageFilter.value as 'wic' | 'medical');
-        return matchesSearch && matchesCategory && matchesForm && matchesCoverage;
+        return matchesSearch && matchesForm && matchesCoverage;
     }),
 );
 
@@ -68,7 +66,7 @@ onBeforeUnmount(() => {
         <div>
             <p class="eyebrow">Catalog</p>
             <h1>Products</h1>
-            <p>Formula catalog with category and packaging information.</p>
+            <p>Formula catalog with product and packaging information.</p>
         </div>
         <div class="form-actions">
             <NuxtLink
@@ -95,16 +93,6 @@ onBeforeUnmount(() => {
             placeholder="Search products"
             aria-label="Search products"
         />
-        <select
-            v-model="categoryFilter"
-            class="filter-select"
-            aria-label="Filter by category"
-        >
-            <option value="">All categories</option>
-            <option value="standard">Standard</option>
-            <option value="exempt">Exempt</option>
-            <option value="nutritional">Nutritional</option>
-        </select>
         <select
             v-model="formFilter"
             class="filter-select"
@@ -221,10 +209,7 @@ onBeforeUnmount(() => {
             </div>
             <div class="data-list">
                 <div>
-                    <span>Category</span><strong>{{ product.category }}</strong>
-                </div>
-                <div>
-                    <span>Form</span><strong>{{ formulaFormLabel(product.form) }}</strong>
+                    <span>Form</span><strong>{{ product.form === 'ready-to-feed' ? 'Ready-to-Feed' : formulaFormLabel(product.form) }}</strong>
                 </div>
                 <div>
                     <span>Units / case</span><strong>{{ product.unitsPerCase ?? '—' }}</strong>
@@ -269,7 +254,6 @@ onBeforeUnmount(() => {
             <span>Product</span>
             <span>Product ID</span>
             <span>Product Number</span>
-            <span>Category</span>
             <span>Form</span>
             <span>Coverage</span>
             <span>Approved</span>
@@ -309,8 +293,7 @@ onBeforeUnmount(() => {
             </div>
             <span>{{ product.productId }}</span>
             <span>{{ product.productCode }}</span>
-            <span>{{ product.category }}</span>
-            <span>{{ formulaFormLabel(product.form) }}</span>
+            <span>{{ product.form === 'ready-to-feed' ? 'Ready-to-Feed' : formulaFormLabel(product.form) }}</span>
             <div class="coverage-tags">
                 <span
                     v-for="coverage in product.coverage"

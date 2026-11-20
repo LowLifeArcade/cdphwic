@@ -13,7 +13,7 @@ function workbook(rows: unknown[][], type: 'xlsx' | 'csv' = 'xlsx') {
 describe('product spreadsheet import', () => {
     it.each(['xlsx', 'csv'] as const)('maps spreadsheet headers and preserves all metadata from %s', (type) => {
         const [row] = parseProductWorkbook(workbook([
-            [...headers, 'Formula Description', 'Manufacturer', 'McKesson PO', 'McKesson Price', 'Covered by Medi-Cal', 'FDA Class', 'WIC Class', 'S/T', 'Infant/Toddler', 'Packaging'],
+            [...headers, 'Formula Description', 'Manufacturer', 'McKesson PO', 'McKesson Price', 'Covered by Medi-Cal', 'FDA Class', 'WIC Category', 'S/T', 'Infant/Toddler', 'Packaging'],
             ['Example', 'Ready to Feed', 'Vanilla', '001234', 6, 8, 'Example Vanilla 8 oz carton', 'Maker', '000PO', '$123.45', 'Yes', 'Exempt', 'Class A', 'S', 'Toddler', '8 oz carton'],
         ], type));
         expect(row).toMatchObject({ name: 'Example', form: 'ready-to-feed', flavor: 'Vanilla', productCode: '001234', productId: '001234', unitsPerCase: 6, yield: 8, formulaDescription: 'Example Vanilla 8 oz carton', manufacturer: 'Maker', mcKessonPo: '000PO', mcKessonPrice: 123.45, coveredByMediCal: true, fdaClass: 'Exempt', wicClass: 'Class A', st: 'S', infantToddler: 'Toddler', packaging: '8 oz carton' });

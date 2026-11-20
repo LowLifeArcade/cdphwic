@@ -19,7 +19,7 @@ describe('product catalog actions', () => {
 
         expect(catalog).toContain("useCookie<string>('products-view-mode'");
         expect(catalog).toContain("savedViewMode.value === 'list' ? 'list' : 'grid'");
-        expect(catalog).toContain('categoryFilter');
+        expect(catalog).not.toContain('categoryFilter');
         expect(catalog).toContain('coverageFilter');
         expect(catalog).toContain('class="coverage-tag"');
         expect(catalog).toContain('class="product-list"');

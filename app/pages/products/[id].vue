@@ -43,7 +43,7 @@ const spreadsheetTextFields = [
     { key: 'manufacturer', label: 'Manufacturer' },
     { key: 'mcKessonPo', label: 'McKesson PO' },
     { key: 'fdaClass', label: 'FDA Class' },
-    { key: 'wicClass', label: 'WIC Class' },
+    { key: 'wicClass', label: 'WIC Category' },
     { key: 'st', label: 'S/T' },
     { key: 'infantToddler', label: 'Infant/Toddler' },
 ] as const;
@@ -189,7 +189,7 @@ async function saveProduct() {
                         <option value="other">Other</option>
                         <option value="powder">Powder</option>
                         <option value="concentrate">Concentrate</option>
-                        <option value="ready-to-feed">Ready to feed</option>
+                        <option value="ready-to-feed">Ready-to-Feed</option>
                     </select>
                 </div>
                 <div class="form-field">
@@ -199,18 +199,6 @@ async function saveProduct() {
                         v-model="form.productCode"
                         class="form-input"
                     />
-                </div>
-                <div class="form-field">
-                    <label for="product-category">Category</label>
-                    <select
-                        id="product-category"
-                        v-model="form.category"
-                        class="form-input"
-                    >
-                        <option value="standard">Standard</option>
-                        <option value="exempt">Exempt</option>
-                        <option value="nutritional">Nutritional</option>
-                    </select>
                 </div>
                 <div class="form-field">
                     <label for="units-per-case">Units per case</label>

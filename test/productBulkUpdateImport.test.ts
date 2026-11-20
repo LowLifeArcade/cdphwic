@@ -16,8 +16,8 @@ describe('catalog update spreadsheet', () => {
         expect(Object.hasOwn(row!.changes, 'unitsPerCase')).toBe(true);
         expect(Object.hasOwn(row!.changes, 'category')).toBe(false);
     });
-    it('accepts every human field and legacy extras', () => {
-        const [row] = parseProductUpdateWorkbook(workbook([['Product Number', 'Formula Name', 'Formula Form', 'Flavor', 'Units Per Case', 'Yield', 'Formula Description', 'Manufacturer', 'McKesson PO', 'McKesson Price', 'Covered by Medi-Cal', 'FDA Class', 'WIC Class', 'S/T', 'Infant/Toddler', 'Packaging', 'Cases Approved', 'Cases Used', 'Unit Price', 'PO Price', 'Supplier Reference', 'Category', 'Coverage'], ['123', 'Name', 'Liquid Concentrate', 'Vanilla', 6, 8, 'Description', 'Maker', 'PO', 10, 'No', 'FDA', 'WIC', 'S', 'Toddler', 'Can', 20, 2, 3, 4, 'Ref', 'exempt', 'wic medical']]));
+    it.each(['WIC Category', 'WIC Class'])('accepts every human field and legacy extras with %s', (wicHeader) => {
+        const [row] = parseProductUpdateWorkbook(workbook([['Product Number', 'Formula Name', 'Formula Form', 'Flavor', 'Units Per Case', 'Yield', 'Formula Description', 'Manufacturer', 'McKesson PO', 'McKesson Price', 'Covered by Medi-Cal', 'FDA Class', wicHeader, 'S/T', 'Infant/Toddler', 'Packaging', 'Cases Approved', 'Cases Used', 'Unit Price', 'PO Price', 'Supplier Reference', 'Category', 'Coverage'], ['123', 'Name', 'Liquid Concentrate', 'Vanilla', 6, 8, 'Description', 'Maker', 'PO', 10, 'No', 'FDA', 'WIC', 'S', 'Toddler', 'Can', 20, 2, 3, 4, 'Ref', 'exempt', 'wic medical']]));
         expect(row?.changes).toEqual({ name: 'Name', form: 'concentrate', flavor: 'Vanilla', unitsPerCase: 6, yield: 8, formulaDescription: 'Description', manufacturer: 'Maker', mcKessonPo: 'PO', mcKessonPrice: 10, coveredByMediCal: false, fdaClass: 'FDA', wicClass: 'WIC', st: 'S', infantToddler: 'Toddler', packaging: 'Can', casesApproved: 20, casesUsed: 2, unitPrice: 3, poPrice: 4, supplierReference: 'Ref', category: 'exempt', coverage: ['wic', 'medical'] });
     });
     it('collects invalid cells and missing and duplicate selectors with actual row numbers', () => {
