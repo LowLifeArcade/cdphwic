@@ -18,7 +18,7 @@ function closeOnEscape(event:KeyboardEvent){if(event.key==='Escape')open.value=f
 onMounted(()=>window.addEventListener('keydown',closeOnEscape));
 onBeforeUnmount(()=>window.removeEventListener('keydown',closeOnEscape));
 const unread = computed(() => data.value?.notices.filter((n) => !n.is_read).length ?? 0);
-function openMessage(requestId:number){open.value=false;window.dispatchEvent(new CustomEvent('open-request-message',{detail:requestId}));}
+function openMessage(requestId:number){open.value=false;(document.activeElement as HTMLElement|null)?.blur();window.dispatchEvent(new CustomEvent('open-request-message',{detail:requestId}));}
 function notificationTitle(n:any){const formula=String(n.formula_label??'').replaceAll(' · ',' ');return [n.participant_name,formula].filter(Boolean).join(' | ')||formula||'Formula Surplus';}
 function notificationNature(n:any){return ({'request-info':'Request More Info','request-response':'Response to Request More Info','request-eta':'Shipment Update','transfer-stock':'Transfer Request','transfer-ready':'Transfer Labels Ready','transfer-confirmed':'Stock Confirmed','transfer-pickup':'Transfer Pickup',forecast:'Anticipated Surplus',donation:'Donation Reminder',destruction:'Expired Stock'} as Record<string,string>)[n.kind]??'Inventory Update';}
 async function toggleNotices(){
@@ -150,7 +150,8 @@ async function download(kind: string) {
     </div>
 </template>
 <style scoped>
-.notice-trigger {position:relative;display:flex;width:100%;height:40px;gap:10px;padding:0 12px;border:1px solid var(--line);background:var(--surface);color:var(--text);}
+.notice-trigger {position:relative;display:flex;width:100%;height:40px;gap:10px;padding:0 12px;border:0;border-radius:9px;background:transparent;color:var(--secondary-text, #a9b4c8);font-size:0.86rem;transition:0.2s ease;}
+.notice-trigger:hover {background:var(--nav-active);color:var(--nav-text, #fff);}
 .notice-backdrop {position:fixed;inset:0;z-index:69;background:transparent;}
 .notice-trigger-label {font-size:14px;}
 .notice-count {position:absolute;top:-5px;right:-8px;min-width:18px;height:18px;padding:0 4px;display:grid;place-items:center;border-radius:10px;background:#002595;color:#fff;font-size:11px;font-weight:700;border:2px solid var(--surface);}

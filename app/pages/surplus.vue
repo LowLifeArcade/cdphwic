@@ -34,7 +34,7 @@ async function openShipment(){
 }
 const identity = useState<'admin' | 'agency' | 'internal'>('demo-identity', () => 'admin');
 const headers = computed(() => ({ 'x-demo-user': identity.value }));
-const { data, refresh, error } = await useFetch('/api/surplus', { headers, server: false });
+const { data, refresh, error } = await useFetch('/api/surplus', { headers, server: false, watch: [identity] });
 async function refreshTransferState(){await refresh();await refreshNuxtData('pending-transfer-count');}
 const { data: agencyData } = await useFetch('/api/agencies');
 watch([()=>route.query.transfer,()=>data.value?.transfers],async([selected])=>{
