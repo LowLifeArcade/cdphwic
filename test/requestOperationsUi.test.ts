@@ -99,7 +99,10 @@ describe('request operations UI', () => {
         expect(drawer).toContain('Edit review decision');
         expect(drawer).not.toContain('Undo approval or denial');
         expect(drawer.indexOf('<RequestMedicalDetails')).toBeLessThan(drawer.indexOf('<h3>Review Decision</h3>'));
-        expect(drawer.indexOf('<h3>Review Decision</h3>')).toBeLessThan(drawer.indexOf('<h3>Request More Info</h3>'));
+        expect(drawer.indexOf('<h3>Request More Info</h3>')).toBeLessThan(drawer.indexOf('<h3>Review Decision</h3>'));
+        expect(drawer).toContain('<span>Request More Info</span>');
+        expect(drawer).toContain('class="review-details-toggle" type="button" :aria-expanded="moreInfoExpanded"');
+        expect(drawer).toContain('canCollapseMoreInfo');
         expect(drawer).toContain('Next Steps');
         expect(drawer).toContain('class="cdph-fields" :disabled="draft.status === \'denied\'"');
         expect(drawer.indexOf('State-Issued Formula Authorization')).toBeLessThan(drawer.indexOf('<h3>Shipping</h3>'));
