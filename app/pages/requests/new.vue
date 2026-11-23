@@ -147,6 +147,7 @@ const savedShippingContact=computed<{attention?:string;email?:string;phone?:stri
 const shipping=computed<RequestShipping>({get:()=>({...enteredShipping.value,...shippingContact(enteredShipping.value,savedShippingContact.value)}),set:value=>{enteredShipping.value=value;}});
 watch([identity,requestAgencyMemberId],()=>{enteredShipping.value={...enteredShipping.value,attention:undefined,email:undefined,phone:undefined};},{flush:'sync'});
 
+const historyOpen = ref(false);
 const form = reactive({
     patientFirstName: '',
     patientLastName: '',
@@ -647,7 +648,7 @@ async function submitRequest() {
     <form v-else
         ref="requestForm"
         class="panel form-panel request-form"
-        :class="{'validation-attempted': validationAttempted}"
+        :class="{'validation-attempted': validationAttempted, 'history-visible': historyOpen}"
         novalidate
         @submit.prevent="submitRequest"
     >
@@ -874,6 +875,7 @@ async function submitRequest() {
                             <option value="extension">Extension</option>
                         </select>
                     </div>
+                    <RequestHistory v-if="form.requestKind === 'extension'" class="full" :family-id="form.familyId" :individual-id="form.individualId" :name="`${form.patientFirstName} ${form.patientLastName}`" :dob="form.participantDob" :current-id="editingId" context="form" @preview="historyOpen=$event" />
                     <div class="form-field">
                         <label for="breastfeeding">Breastfeeding</label>
                         <select id="breastfeeding" v-model="form.breastfeedingStatus" class="form-input" @change="form.breastfeedingDiscontinuedDate = ''">
@@ -1303,4 +1305,9 @@ async function submitRequest() {
 .diagnosis-edit-error {flex-basis:100%;margin:0;}
 .diagnosis-is-editing .diagnosis-entry-actions {padding-top:5px;}
 @media (max-width:600px){.diagnosis-list .diagnosis-is-editing {flex-wrap:wrap;}}
+</style>
+
+<style scoped>
+@media(min-width:901px) {.request-form.history-visible {width:calc(55vw - 64px);margin-right:45vw;}}
+@media(max-width:900px) {.request-form.history-visible {padding-bottom:48dvh;}}
 </style>

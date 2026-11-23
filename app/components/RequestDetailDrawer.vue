@@ -56,6 +56,7 @@ const shortcutApplied=ref('');
 const shortcutNotice=ref('');
 const saving = ref(false);
 const documentOpen=ref(false);
+const historyOpen=ref(false);
 watch(()=>[props.request?.id,props.request?.prescriptionAttachment?.storageKey,identity.value],()=>{documentOpen.value=false;});
 const error = ref('');
 const staffSaveStatus = ref<'idle' | 'saving' | 'saved' | 'failed'>('idle');
@@ -719,14 +720,18 @@ async function saveAgencyUpdate() {
     <aside
         v-if="request"
         class="detail-drawer"
-        :class="{'document-visible':documentOpen}"
+        :class="{'document-visible':documentOpen || historyOpen}"
         @click.stop
     >
         <div class="drawer-header">
             <div>
                 <span class="eyebrow">Request #{{ request.id }}</span>
-                <h2>{{ request.participantName }}</h2>
-                <button v-if="canStaffEdit && request.status!=='denied' && editingSection !== 'participant'" class="text-button participant-name-edit" type="button" aria-label="Edit participant name" @click="editParticipantName">Edit name</button>
+                <div class="participant-name-heading">
+                    <h2>{{ request.participantName }}</h2>
+                    <button v-if="canStaffEdit && request.status!=='denied' && editingSection !== 'participant'" class="participant-name-edit" type="button" aria-label="Edit participant name" title="Edit participant name" @click="editParticipantName">
+                        <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m16 3 5 5-13 13H3v-5L16 3Z"/><path d="m14 5 5 5"/></svg>
+                    </button>
+                </div>
                 <div class="request-kind-attachment">
                 <span class="request-tag request-kind-tag">{{ request.requestKind === 'extension' ? 'Extension' : 'New' }}</span>
                 <button v-if="request.prescriptionAttachment" type="button" class="attachment-toggle" title="View medical documentation" :aria-expanded="documentOpen" aria-controls="request-document-panel" @click="documentOpen=!documentOpen"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l10-10a4 4 0 0 1 5.66 5.66L9.41 17.41a2 2 0 0 1-2.83-2.83l9.19-9.19" /></svg><span>Rx</span></button>
@@ -778,6 +783,7 @@ async function saveAgencyUpdate() {
             </div>
             <span>Submitted {{ formatDisplayDate(request.submissionDate) }}</span>
         </div>
+        <RequestHistory :key="request.id" :family-id="String(request.participantFamilyId ?? '')" :individual-id="request.wicIndividualId ?? ''" :name="request.participantName" :dob="request.participantDob ?? ''" :current-id="request.id" context="review" :suspended="documentOpen" @preview="historyOpen=$event; if($event) documentOpen=false" />
         <button v-if="canCollapseReviewDetails" class="review-details-toggle" type="button" :aria-expanded="reviewDetailsExpanded" :aria-controls="`review-details-${request.id}`" @click="reviewDetailsExpanded=!reviewDetailsExpanded"><span>Participant and Medical Details</span><span aria-hidden="true">{{reviewDetailsExpanded?'⌃':'⌄'}}</span></button>
         <div :id="`review-details-${request.id}`" v-show="!canCollapseReviewDetails || reviewDetailsExpanded">
         <section class="detail-section participant-summary">
@@ -1353,4 +1359,12 @@ async function saveAgencyUpdate() {
 .anticipated-surplus-row > div > span,.anticipated-surplus-row small {color:var(--muted);font-size:12px;}
 @media(max-width:760px){.anticipated-surplus-row{grid-template-columns:1fr 1fr;}.anticipated-surplus-row > div:first-child{grid-column:1/-1;}}
 .local-surplus-total {margin:0;text-align:right;}
+</style>
+
+<style scoped>
+.participant-name-heading {display:flex;align-items:baseline;gap:8px;min-width:0;margin-bottom:8px;}
+.participant-name-heading h2 {margin:0;min-width:0;overflow-wrap:anywhere;}
+.participant-name-edit {display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;width:28px;height:28px;padding:5px;border:0;border-radius:5px;background:transparent;color:var(--muted);cursor:pointer;align-self:flex-start;}
+.participant-name-edit:hover {background:var(--button-secondary-bg);color:var(--button-secondary-text);}
+.participant-name-edit:focus-visible {outline:2px solid currentColor;outline-offset:2px;}
 </style>
