@@ -9,7 +9,7 @@ it.each([undefined,'','No','PO-123'])('defaults non-Yes McKesson PO products to 
     expect(updated.formulaAuthorizations?.[0]).toMatchObject({standardCases:0,specialOrderCases:4});
     expect(state.formulaOrders?.[0]?.specialOrder).toBe(false);
 });
-it.each(['Yes','YES',' yes '])('defaults Yes products to standard (%s)',flag=>{
+it.each(['Yes','YES',' yes ','Y',' y '])('defaults Yes products to standard (%s)',flag=>{
     expect(applyCatalogOrderDefault(request(),0,product(flag)).formulaAuthorizations?.[0]).toMatchObject({standardCases:4,specialOrderCases:0});
 });
 it('retains a special default before quantities have been entered',()=>{

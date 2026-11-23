@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import {isMcKessonPo} from '~/../shared/mckessonPo';
 import {applyCatalogOrderDefault,catalogPoCasesRemaining} from '~/../shared/catalogOrderDefaults';
 import { candidateProducts, resolveProduct, enterAuthorizationProductNumber, authorizationCatalogProduct } from '~/../shared/productMatching';
 import {unitLabel} from '~/../shared/quantityLabels';
@@ -1010,7 +1011,7 @@ async function saveAgencyUpdate() {
                 </select>
             </label>
             <ProductVariantSelect :identity="identity" :products="authorizationProducts(authorization)" :model-value="authorization.productCode" :disabled="saving" @update:model-value="chooseAuthorizationProduct(formulaIndex,$event)" />
-            <p v-if="authorizationProduct(authorization)" class="muted-copy" role="status">Cases remaining on current PO: <strong>{{catalogPoCasesRemaining(authorizationProduct(authorization)) ?? 'Not available'}}</strong></p>
+            <p v-if="authorizationProduct(authorization) && !isMcKessonPo(authorizationProduct(authorization)?.mcKessonPo)" class="muted-copy" role="status">Catalog cases remaining: <strong>{{catalogPoCasesRemaining(authorizationProduct(authorization)) ?? 'Not available'}}</strong></p>
             <div class="detail-grid cdph-product-details">
                 <label class="field-label">Formula Name<input v-model="authorization.formulaName" class="form-input" :placeholder="authorization.productName" /></label>
                 <div><span>Form</span><strong>{{formulaFormLabel(authorizationProduct(authorization)?.form === 'other' ? authorization.productForm : authorizationProduct(authorization)?.form || authorization.productForm)}}</strong></div>
@@ -1083,6 +1084,7 @@ async function saveAgencyUpdate() {
             </fieldset>
         </section>
 
+        <McKessonOrderPanel v-if="canStaffEdit" :key="request.id" :request="request" :products="products ?? []" />
         <RequestIssuanceSummary v-if="identity==='agency'" :request="request" :products="products" @record-issue="recordLocalSurplusIssue" />
 
         <section ref="shippingSection" :id="`shipments-${request.id}`" class="detail-section" tabindex="-1">

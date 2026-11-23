@@ -1,9 +1,10 @@
 import type {ProductRecord,RequestRecord} from './domain';
+import {isMcKessonPo} from './mckessonPo';
 import {formulaOrders} from './formulaOrders';
 
 export function applyCatalogOrderDefault(request:Partial<RequestRecord>,index:number,product:ProductRecord):Pick<RequestRecord,'formulaOrders'|'formulaAuthorizations'> {
     const orders=formulaOrders(request);
-    const special=product.mcKessonPo?.trim().toLowerCase()!=='yes';
+    const special=!isMcKessonPo(product.mcKessonPo);
     if(orders[index])orders[index]!.specialOrder=special;
     const authorizations=request.formulaAuthorizations?.map((row,rowIndex)=>rowIndex!==index?row:{...row,
         standardCases:row.approvedCases===undefined?undefined:special?0:row.approvedCases,

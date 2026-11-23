@@ -24,9 +24,9 @@ async function renderCatalog(products: ProductRecord[], filters: { search?: stri
     const initialFilters = [filters.search ?? '', filters.po === undefined ? '' : filters.po, filters.category === undefined ? '' : filters.category];
     let refIndex = 0;
     const ref = (value: unknown) => Vue.ref(refIndex < initialFilters.length ? initialFilters[refIndex++] : value);
-    new Function('require', 'module', 'exports', 'useFetch', 'useCookie', 'ref', 'computed', 'onMounted', 'onBeforeUnmount', code)(
+    new Function('require', 'module', 'exports', 'useFetch', 'useCookie', 'ref', 'computed', 'onMounted', 'onBeforeUnmount', 'useState', code)(
         require, module, module.exports,
-        vi.fn(async () => ({ data: Vue.ref({ products }) })), () => Vue.ref('grid'), ref, Vue.computed, Vue.onMounted, Vue.onBeforeUnmount,
+        vi.fn(async () => ({ data: Vue.ref({ products }) })), () => Vue.ref('grid'), ref, Vue.computed, Vue.onMounted, Vue.onBeforeUnmount, () => Vue.ref('agency'),
     );
     const app = Vue.createSSRApp(module.exports.default!);
     app.component('NuxtLink', { props: ['to'], setup: (props, { slots }) => () => Vue.h('a', { href: props.to }, slots.default?.()) });
