@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useProductMutation } from '~/features/products/composables/useProductMutation';
 import type { ProductForm, ProductRecord } from '~/../shared/domain';
 
 type ProductInput = Omit<ProductRecord, 'id'>;
@@ -15,8 +16,7 @@ const form = reactive({
     supplierReference: '',
     coverage: ['wic'] as ProductInput['coverage'],
 });
-const error = ref('');
-const saving = ref(false);
+const { error, saving, run } = useProductMutation();
 
 function productBody(): ProductInput {
     return {
@@ -33,19 +33,13 @@ function productBody(): ProductInput {
 }
 
 async function addProduct() {
-    error.value = '';
-    saving.value = true;
-    try {
+    await run(async () => {
         await $fetch('/api/products', {
             method: 'POST',
             body: productBody(),
         });
         await router.push('/products');
-    } catch (requestError) {
-        error.value = (requestError as { statusMessage?: string }).statusMessage ?? 'Product could not be added.';
-    } finally {
-        saving.value = false;
-    }
+    }, 'Product could not be added.', false);
 }
 </script>
 

@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import type { ProductRecord } from '~/../shared/domain';
 
-import { createProductEditor, productEditorBody, productEditorFields, productEditorOptions, productEditorOptionLabel } from '~/../shared/productEditor';
+import { createProductEditor, productEditorBody } from '~/../shared/productEditor';
+import ProductEditorFields from '~/features/products/components/ProductEditorFields.vue';
+import { useProductMutation } from '~/features/products/composables/useProductMutation';
 
 const route = useRoute();
 const router = useRouter();
@@ -9,8 +11,7 @@ const productId = String(route.params.id);
 const { data, error: loadError } = await useFetch<{ product: ProductRecord }>(`/api/products/${productId}`);
 const product = data.value?.product;
 const form = reactive(createProductEditor(product));
-const error = ref(loadError.value?.statusMessage ?? '');
-const saving = ref(false);
+const { error, saving, run } = useProductMutation(loadError.value?.statusMessage ?? '');
 const showDeleteConfirmation = ref(false);
 const deleteButton = ref<HTMLButtonElement>();
 const identity = useState<'admin' | 'agency' | 'internal'>('demo-identity', () => 'admin');
@@ -20,34 +21,20 @@ function cancelDelete() {
 }
 async function deleteProduct() {
     if (!showDeleteConfirmation.value || saving.value) return;
-    error.value = '';
-    saving.value = true;
-    try {
+    await run(async () => {
         await $fetch(`/api/products/${productId}`, { method: 'DELETE' });
         await router.push('/products');
-    } catch (requestError) {
-        const failure = requestError as { data?: { statusMessage?: string }; statusMessage?: string };
-        error.value = failure.data?.statusMessage ?? failure.statusMessage ?? 'Product could not be deleted. Please try again.';
-    } finally {
-        saving.value = false;
-    }
+    }, 'Product could not be deleted. Please try again.');
 }
 
 async function saveProduct() {
-    error.value = '';
-    saving.value = true;
-    try {
+    await run(async () => {
         await $fetch(`/api/products/${productId}`, {
             method: 'PUT',
             body: productEditorBody(product!, form),
         });
         await router.push('/products');
-    } catch (requestError) {
-        const failure = requestError as { data?: { statusMessage?: string }; statusMessage?: string };
-        error.value = failure.data?.statusMessage ?? failure.statusMessage ?? 'Product could not be updated.';
-    } finally {
-        saving.value = false;
-    }
+    }, 'Product could not be updated.');
 }
 </script>
 
@@ -82,17 +69,7 @@ async function saveProduct() {
                     <span>Changes are saved to the product catalog.</span>
                 </div>
             </div>
-            <div class="form-grid">
-                <div v-for="field in productEditorFields" :key="field.key" class="form-field" :class="{ full: 'type' in field && field.type === 'textarea' }">
-                    <label :for="`product-${field.key}`">{{ field.label }}<template v-if="field.key === 'yield'"> (fl oz)</template></label>
-                    <textarea v-if="'type' in field && field.type === 'textarea'" :id="`product-${field.key}`" v-model="form[field.key]" class="form-textarea" rows="3" />
-                    <select v-else-if="'type' in field && field.type === 'select'" :id="`product-${field.key}`" v-model="form[field.key]" class="form-input">
-                        <option v-for="value in productEditorOptions(field, form[field.key])" :key="value" :value="value">{{ productEditorOptionLabel(value) }}</option>
-                    </select>
-                    <input v-else-if="'type' in field && field.type === 'number'" :id="`product-${field.key}`" v-model="form[field.key]" class="form-input" type="number" :min="field.key === 'unitsPerCase' ? 1 : 0" :step="field.key === 'mcKessonPrice' ? '0.01' : 'any'" />
-                    <input v-else :id="`product-${field.key}`" v-model="form[field.key]" class="form-input" type="text" />
-                </div>
-            </div>
+            <ProductEditorFields :form="form" />
             <p
                 v-if="error"
                 class="form-error"

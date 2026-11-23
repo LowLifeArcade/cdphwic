@@ -37,12 +37,8 @@ it('does not discard explicit strength or clinical qualifiers when matching shor
     expect(candidateProducts(rows,{name:'PediaSure 1.5 with Fiber'})).toEqual([]);
 });
 it('offers every flavor of the requested Kate Farms formula in the drawer',async()=>{
-    const {readFileSync}=await import('node:fs');
-    const {transformWithEsbuild}=await import('vite');
-    const source=readFileSync(new URL('../app/components/RequestDetailDrawer.vue',import.meta.url),'utf8');
-    const block=source.slice(source.indexOf('function authorizationProducts('),source.indexOf('function chooseAuthorizationProduct('));
-    const {code}=await transformWithEsbuild(block,'drawer.ts',{loader:'ts'});
+    const {useAuthorizationEditor}=await import('../app/features/requests/composables/useAuthorizationEditor');
     const products=kate.map((p,index)=>({...p,id:index+1}));
-    const list=new Function('props','candidateProducts','authorizationProduct',code+'; return authorizationProducts;')({products},candidateProducts,()=>undefined);
+    const {authorizationProducts:list}=useAuthorizationEditor({},()=>products,()=>null);
     expect(list({productName:'Kate Farms Pediatric Std 1.2 Cal',productForm:'ready-to-feed',flavor:'Vanilla'}).map((p:ProductRecord)=>p.productCode)).toEqual(['851823006997','811112030713']);
 });

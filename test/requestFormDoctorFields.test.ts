@@ -1,6 +1,10 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
+const provider = readFileSync(new URL('../app/features/requests/components/RequestProviderFields.vue', import.meta.url), 'utf8');
+const participant = readFileSync(new URL('../app/features/requests/components/RequestParticipantFields.vue', import.meta.url), 'utf8');
+const payload = readFileSync(new URL('../app/features/requests/requestSubmissionBody.ts', import.meta.url), 'utf8');
+const formModel = readFileSync(new URL('../app/features/requests/requestForm.ts', import.meta.url), 'utf8');
 const requestForm = readFileSync(new URL('../app/pages/requests/new.vue', import.meta.url), 'utf8');
 
 describe('new request doctor fields', () => {
@@ -34,58 +38,52 @@ describe('new request doctor fields', () => {
     });
 
     it('orders participant, formula, provider, and additional information sections', () => {
-        const headings = [...requestForm.matchAll(/<h2>(.*?)<\/h2>/g)].map((match) => match[1]!.includes("requiredLabel('WIC Food Restrictions')") ? 'WIC Food Restrictions' : match[1]);
-        expect(headings).toEqual([
-            'Medical Documentation *',
-            'Participant',
-            'Medical Formula/Nutritionals and Qualifying Diagnosis',
-            'WIC Food Restrictions',
-            'Health Care Provider',
-            'Surplus Formula',
-            'Shipping',
-            'Additional Information',
-        ]);
-        const providerFields = ['doctor-name', 'doctor-signed-off', 'prescription-signed-date', 'doctor-office', 'doctor-address', 'doctor-phone'];
-        const positions = providerFields.map((id) => requestForm.indexOf(`id="${id}"`));
+        const sections = ['Medical Documentation *', '<RequestParticipantFields', 'Medical Formula/Nutritionals and Qualifying Diagnosis', '<RequestFoodRestrictionFields', '<RequestProviderFields', '<h2>Surplus Formula</h2>', '<h2>Shipping</h2>', '<h2>Additional Information</h2>'];
+        const positions = sections.map(marker => requestForm.indexOf(marker));
+        expect(positions.every(position => position >= 0)).toBe(true);
         expect(positions).toEqual([...positions].sort((a, b) => a - b));
-        expect(requestForm.indexOf('id="medical"')).toBeLessThan(requestForm.indexOf('id="formula"'));
-        expect(requestForm.indexOf('id="diagnosis"')).toBeLessThan(requestForm.indexOf('id="doctor-name"'));
+        const providerFields = ['doctor-name', 'doctor-signed-off', 'prescription-signed-date', 'doctor-office', 'doctor-address', 'doctor-phone'];
+        const providerPositions = providerFields.map((id) => provider.indexOf(`id="${id}"`));
+        expect(providerPositions.every(position => position >= 0)).toBe(true);
+        expect(providerPositions).toEqual([...providerPositions].sort((a, b) => a - b));
+        expect(requestForm.indexOf('<RequestParticipantFields')).toBeLessThan(requestForm.indexOf('id="formula"'));
+        expect(requestForm.indexOf('id="diagnosis"')).toBeLessThan(requestForm.indexOf('<RequestProviderFields'));
     });
 
     it('renders and submits provider details with a signature checkbox', () => {
-        expect(requestForm).toContain('doctorPrintedName:');
-        expect(requestForm).toContain('doctorOfficeName:');
-        expect(requestForm).toContain('doctorOfficeAddress:');
+        expect(payload).toContain('doctorPrintedName:');
+        expect(payload).toContain('doctorOfficeName:');
+        expect(payload).toContain('doctorOfficeAddress:');
         expect(requestForm).toContain('doctorOfficePhone:');
-        expect(requestForm).toContain('prescriptionSignedDate:');
-        expect(requestForm).toContain('v-model="form.prescriptionSignedDate"');
-        expect(requestForm).toContain('v-model="form.doctorPrintedName"');
-        expect(requestForm).toContain('v-model="form.doctorOfficeName"');
-        expect(requestForm).toContain('v-model="form.doctorOfficeAddress"');
-        expect(requestForm).toContain('v-model="form.doctorOfficePhone"');
-        expect(requestForm).toContain('@input="formatDoctorPhone"');
-        expect(requestForm).toContain('pattern="\\(\\d{3}\\) \\d{3}-\\d{4}"');
-        expect(requestForm).toContain('doctorOfficePhone: normalizePhoneNumber(form.doctorOfficePhone)');
-        expect(requestForm).toContain("requiredLabel('Provider Name')");
-        expect(requestForm).toContain("requiredLabel('Medical Office/Clinic Name and Address')");
-        expect(requestForm).toContain('aria-label="Medical office/clinic address"');
-        expect(requestForm).toContain("requiredLabel('Phone Number')");
-        expect(requestForm).toContain("requiredLabel('Provider Signature')");
-        const signatureInput = requestForm.match(/<input\s+id="doctor-signed-off"[\s\S]*?\/>/)?.[0];
+        expect(payload).toContain('prescriptionSignedDate:');
+        expect(provider).toContain('v-model="form.prescriptionSignedDate"');
+        expect(provider).toContain('v-model="form.doctorPrintedName"');
+        expect(provider).toContain('v-model="form.doctorOfficeName"');
+        expect(provider).toContain('v-model="form.doctorOfficeAddress"');
+        expect(provider).toContain('v-model="form.doctorOfficePhone"');
+        expect(provider).toContain('@input="formatDoctorPhone"');
+        expect(provider).toContain('pattern="\\(\\d{3}\\) \\d{3}-\\d{4}"');
+        expect(payload).toContain('doctorOfficePhone: normalizePhoneNumber(form.doctorOfficePhone)');
+        expect(provider).toContain("requiredLabel('Provider Name')");
+        expect(provider).toContain("requiredLabel('Medical Office/Clinic Name and Address')");
+        expect(provider).toContain('aria-label="Medical office/clinic address"');
+        expect(provider).toContain("requiredLabel('Phone Number')");
+        expect(provider).toContain("requiredLabel('Provider Signature')");
+        const signatureInput = provider.match(/<input\s+id="doctor-signed-off"[\s\S]*?\/>/)?.[0];
         expect(signatureInput).toContain('aria-required="true"');
         expect(signatureInput).toMatch(/\srequired(?:\s|=)/);
         expect(signatureInput).not.toContain('title=');
-        expect(requestForm).toContain('doctorHasSignedOff: false');
-        expect(requestForm).toContain('v-model="form.doctorHasSignedOff"');
-        expect(requestForm).toContain('doctorHasSignedOff: form.doctorHasSignedOff');
-        expect(requestForm).toContain('class="checkbox-control"');
-        expect(requestForm).toContain('id="doctor-signed-off"');
-        expect(requestForm.indexOf('id="doctor-signed-off"')).toBeLessThan(requestForm.indexOf('id="prescription-signed-date"'));
-        expect(requestForm).toContain('checkbox-confirmation');
-        expect(requestForm).toContain('doctorPrintedName: form.doctorPrintedName');
-        expect(requestForm).toContain('doctorOfficeName: form.doctorOfficeName');
-        expect(requestForm).toContain('doctorOfficeAddress: form.doctorOfficeAddress');
-        expect(requestForm).toContain('doctorOfficePhone: normalizePhoneNumber(form.doctorOfficePhone)');
+        expect(formModel).toContain('doctorHasSignedOff: false');
+        expect(provider).toContain('v-model="form.doctorHasSignedOff"');
+        expect(payload).toContain('doctorHasSignedOff: form.doctorHasSignedOff');
+        expect(provider).toContain('class="checkbox-control"');
+        expect(provider).toContain('id="doctor-signed-off"');
+        expect(provider.indexOf('id="doctor-signed-off"')).toBeLessThan(provider.indexOf('id="prescription-signed-date"'));
+        expect(provider).toContain('checkbox-confirmation');
+        expect(payload).toContain('doctorPrintedName: form.doctorPrintedName');
+        expect(payload).toContain('doctorOfficeName: form.doctorOfficeName');
+        expect(payload).toContain('doctorOfficeAddress: form.doctorOfficeAddress');
+        expect(payload).toContain('doctorOfficePhone: normalizePhoneNumber(form.doctorOfficePhone)');
         expect(requestForm).not.toContain('doctorSignature:');
         expect(requestForm).not.toContain('v-model="form.doctorSignature"');
     });

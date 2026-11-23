@@ -19,6 +19,10 @@ it('renders the formula controls in the requested order without legacy inputs', 
         saveProduct() {}, deleteProduct() {}, cancelDelete() {},
     }) });
     app.component('NuxtLink', { render: () => Vue.h('a') });
+    const fields = parse(readFileSync(new URL('../app/features/products/components/ProductEditorFields.vue', import.meta.url), 'utf8')).descriptor;
+    const compiled = compileTemplate({ source: fields.template!.content, filename: 'ProductEditorFields.vue', id: 'fields', compilerOptions: { mode: 'function' } });
+    expect(compiled.errors).toEqual([]);
+    app.component('ProductEditorFields', { props: ['form'], render: new Function('Vue', compiled.code)(Vue), setup: () => ({ productEditorFields, productEditorOptions, productEditorOptionLabel }) });
     const html = await renderToString(app);
     expect([...html.matchAll(/<label[^>]*>(.*?)<\/label>/g)].map(match => match[1].replace(/<!--[\s\S]*?-->/g, '').replace(' (fl oz)', ''))).toEqual(productEditorFields.map(field => field.label));
     expect(html).not.toMatch(/Unit price|PO price|Cases approved|Cases used|Supplier reference|Product ID|<legend>Coverage/);

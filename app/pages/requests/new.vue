@@ -1,6 +1,16 @@
 <script setup lang="ts">
+import { restoreRequestDraft, serializeRequestDraft } from '~/features/requests/requestDraft';
+import RequestProviderFields from '~/features/requests/components/RequestProviderFields.vue';
+import RequestFoodRestrictionFields from '~/features/requests/components/RequestFoodRestrictionFields.vue';
+import RequestParticipantFields from '~/features/requests/components/RequestParticipantFields.vue';
+import { toRef } from 'vue';
+import { validateDiagnoses } from '~/../shared/diagnosisCatalog';
+import { usePrescriptionUpload, type PrescriptionParseResult } from '~/features/requests/composables/usePrescriptionUpload';
+import { requestSubmissionBody } from '~/features/requests/requestSubmissionBody';
+import { blankRequestForm } from '~/features/requests/requestForm';
+import { useRequestDiagnoses } from '~/features/requests/composables/useRequestDiagnoses';
 import {unitLabel} from '~/../shared/quantityLabels';
-import {breastfeedingOptions,type BreastfeedingStatus,validateBreastfeeding} from '~/../shared/breastfeeding';
+import {validateBreastfeeding} from '~/../shared/breastfeeding';
 import { hasMedicalDocumentation, medicalDocumentationRequiredMessage } from '~/../shared/medicalDocumentation';
 import {shippingContact,blankClinicAddress,validateShipping,type RequestShipping,type ClinicRecord} from '~/../shared/shipping';
 import {canEditSubmission,hasPendingMoreInfo,restoreSubmittedForm} from '~/../shared/requestEditing';
@@ -9,8 +19,7 @@ import { catalogFormulaOptions, findFormula, availableFormulaForms, defaultFormu
 import { resolveProduct } from '~/../shared/productMatching';
 import type { ProductForm, RequestRecord } from '~/../shared/domain';
 import { blankFormula, formulaEntryName, getFormulaFieldErrors, validateOtherFormulaName, validateFormulaEntry, validateFormulaSelection, type FormulaEntry } from '~/../shared/formulaEntries';
-import { diagnosisCatalog, findDiagnosis, validateDiagnoses } from '~/../shared/diagnosisCatalog';
-import { addDiagnosis, validateAgencyFields, providerSignatureMessage } from '~/../shared/newRequestFields';
+import { validateAgencyFields, providerSignatureMessage } from '~/../shared/newRequestFields';
 import { formatPhoneNumber, normalizePhoneNumber } from '~/../shared/phone';
 import {availableUnits,normalizeVariantText} from '~/../shared/surplus';
 
@@ -46,88 +55,11 @@ const additionalFormulas = ref<FormulaEntry[]>([]);
 const surplusEntries = ref<Array<{ productName: string; productForm: ProductForm | ''; flavor: string; units: string | number; expirationDate: string; clinicId?: string }>>([]);
 const requestedMonths = ref<string[]>([]);
 const requestForm = ref<HTMLFormElement | null>(null);
-const diagnosisDetailInput = ref<HTMLInputElement | null>(null);
-const diagnosisDetails = ref('');
 const formulaFocused = ref(false);
 const formulaMatchIndex = ref(0);
-const diagnosisMatchIndex = ref(0);
-const diagnosisFocused = ref(false);
-const fileInput = ref<HTMLInputElement>();
 const submitted = ref(false);
 const validationAttempted = ref(false);
 const submissionError = ref('');
-const diagnosisInput = ref('');
-const editingDiagnosisIndex=ref<number|null>(null);
-const editingDiagnosisValue=ref('');
-const diagnosisEditError=ref('');
-function finishDiagnosisEdit(validate=true){
-    if(editingDiagnosisIndex.value===null)return true;
-    const value=editingDiagnosisValue.value.trim();
-    const error=validate?validateDiagnoses(value):'';
-    if(error){diagnosisEditError.value=error;return false;}
-    const entries=[...diagnoses.value];
-    entries[editingDiagnosisIndex.value]=value;
-    form.diagnosis=entries.filter(Boolean).join('\n');
-    editingDiagnosisIndex.value=null;
-    diagnosisEditError.value='';
-    return true;
-}
-function startDiagnosisEdit(index:number){
-    if(!finishDiagnosisEdit())return;
-    editingDiagnosisValue.value=diagnoses.value[index]??'';
-    editingDiagnosisIndex.value=index;
-    diagnosisEditError.value='';
-}
-function cancelDiagnosisEdit(){editingDiagnosisIndex.value=null;diagnosisEditError.value='';}
-const diagnoses = computed(() => form.diagnosis.split(/[\n;]/).map((value) => value.trim()).filter(Boolean));
-
-const pendingDiagnosis = computed(() => findDiagnosis(diagnosisInput.value));
-const diagnosisMatches = computed(() => diagnosisInput.value.trim() && !pendingDiagnosis.value
-    ? diagnosisCatalog.filter((item) => item.name.toLowerCase().includes(diagnosisInput.value.trim().toLowerCase())) : []);
-function selectDiagnosis(name: string) {
-    diagnosisInput.value = name;
-    diagnosisDetails.value = '';
-    diagnosisMatchIndex.value = 0;
-    if (findDiagnosis(name)?.detail) nextTick(() => diagnosisDetailInput.value?.focus());
-}
-function commitDiagnosis() {
-    const input = diagnosisInput.value.trim();
-    if (!input) return true;
-    const choice = findDiagnosis(input);
-    if (choice?.detail && !diagnosisDetails.value.trim()) {
-        submissionError.value = `Provide details for ${choice.name}.`;
-        nextTick(() => diagnosisDetailInput.value?.focus());
-        return false;
-    }
-    const entry = choice?.detail ? `${choice.name}: ${diagnosisDetails.value.trim()}` : choice?.name ?? input;
-    form.diagnosis = addDiagnosis(diagnoses.value, entry).join('\n');
-    diagnosisInput.value = '';
-    diagnosisDetails.value = '';
-    submissionError.value = '';
-    return true;
-}
-function handleDiagnosisEnter() {
-    const match = diagnosisMatches.value[diagnosisMatchIndex.value];
-    if (diagnosisFocused.value && match) {
-        selectDiagnosis(match.name);
-        if (!match.detail) commitDiagnosis();
-    }
-    else commitDiagnosis();
-}
-
-function removeDiagnosis(index: number) {
-    if(editingDiagnosisIndex.value===index)editingDiagnosisIndex.value=null;
-    else if(editingDiagnosisIndex.value!==null && editingDiagnosisIndex.value>index)editingDiagnosisIndex.value--;
-    form.diagnosis = diagnoses.value.filter((_, itemIndex) => itemIndex !== index).join('\n');
-}
-const parsing = ref(false);
-const parserMessage = ref('');
-const parserError = ref('');
-const parserMissing = ref<string[]>([]);
-const selectedPrescription = ref<File | null>(null);
-const uploadedStorageKey = ref('');
-const removeConfirmationOpen = ref(false);
-let removeConfirmationResolver: ((confirmed: boolean) => void) | undefined;
 const { data: productData } = await useFetch('/api/products');
 const products = computed(() => productData.value?.products ?? []);
 const {data:agencyOptions}=await useFetch('/api/agencies');
@@ -148,38 +80,39 @@ const shipping=computed<RequestShipping>({get:()=>({...enteredShipping.value,...
 watch([identity,requestAgencyMemberId],()=>{enteredShipping.value={...enteredShipping.value,attention:undefined,email:undefined,phone:undefined};},{flush:'sync'});
 
 const historyOpen = ref(false);
-const form = reactive({
-    patientFirstName: '',
-    patientLastName: '',
-    participantDob: '',
-    familyId: '',
-    individualId: '',
-    benefitsStartDate: '',
-    requestKind: '' as '' | 'new' | 'extension',
-    breastfeedingStatus: '' as '' | BreastfeedingStatus,
-    breastfeedingDiscontinuedDate: '',
-    formulaName: '',
-    otherFormulaName: '',
-    formulaFlavor: '',
-    wicFoodRestrictions: '' as '' | 'under-6-months' | 'none' | 'restricted' | 'not-indicated',
-    wicFoodRestrictionDetails: '',
-    wicStaffFoodRestrictions: '' as '' | 'none' | 'restricted',
-    wicNutritionStaffNotes: '',
-    wicNutritionStaffName: '',
-    productForm: '' as ProductForm | '',
-    readyToFeedJustification: '',
-    medicalStatus: '',
-    mediCalStatus: '',
-    diagnosis: '',
-    ouncesPrescribed: '',
-    durationMonths: '',
-    doctorPrintedName: '',
-    doctorHasSignedOff: false,
-    doctorOfficeName: '',
-    doctorOfficeAddress: '',
-    doctorOfficePhone: '',
-    prescriptionSignedDate: '',
-    additionalNotes: '',
+const form = reactive(blankRequestForm());
+const { diagnosisDetailInput, diagnosisDetails, diagnosisMatchIndex, diagnosisFocused, diagnosisInput, editingDiagnosisIndex, editingDiagnosisValue, diagnosisEditError, diagnoses, pendingDiagnosis, diagnosisMatches, finishDiagnosisEdit, startDiagnosisEdit, cancelDiagnosisEdit, selectDiagnosis, commitDiagnosis, handleDiagnosisEnter, removeDiagnosis } = useRequestDiagnoses(toRef(form, 'diagnosis'), submissionError);
+
+const { parsing, parserMessage, parserError, parserMissing, selectedPrescription, uploadedStorageKey, removeConfirmationOpen, fileInput, resolveRemoveConfirmation, removePrescription, selectPrescription, handleFileSelection, handleDrop } = usePrescriptionUpload({
+    async parse(file) {
+        const body = new FormData();
+        body.append('prescription', file);
+        const result = await $fetch<PrescriptionParseResult>('/api/requests/parse-prescription', { method: 'POST', body });
+        return result;
+    },
+    async remove(key) {
+        await $fetch('/api/requests/prescription-upload/remove', { method: 'POST', body: { key } });
+    },
+    removeExisting() { if (existingAttachment.value) removeExistingAttachment.value = true; },
+    apply(extracted) {
+        const { formulas: parsedFormulas, ...parsedFields } = extracted;
+        Object.assign(form, {
+            ...parsedFields,
+            formulaName: extracted.formulaName || form.formulaName,
+            doctorOfficePhone: formatPhoneNumber(extracted.doctorOfficePhone),
+            medicalStatus: extracted.medicalStatus === 'pending' ? '' : extracted.medicalStatus,
+        });
+        if (parsedFormulas?.length) {
+            Object.assign(form, parsedFormulas[0]);
+            additionalFormulas.value = parsedFormulas.slice(1, 2);
+            if (parsedFormulas.length > 2) {
+                formulaAlert.value = `Only up to 2 formulas are allowed. The PDF also lists: ${parsedFormulas.slice(2).map(entry => formulaEntryName(entry, products.value)).join(', ')}. Review the uploaded documentation and use a separate request for additional formulas.`;
+            }
+        }
+        if (!availableForms.value.includes(form.productForm as ProductForm)) {
+            form.productForm = defaultFormulaForm(form.formulaName, products.value);
+        }
+    },
 });
 
 const isOtherFormula = computed(() => form.formulaName.trim().toLowerCase() === 'other');
@@ -269,19 +202,18 @@ if (draftId.value) {
     if (draftError.value) throw createError(draftError.value);
     const draft = draftData.value;
     if (!draft) throw createError({statusCode:404,statusMessage:'Incomplete request not found.'});
-    const { _submissionId, _diagnosisInput, _diagnosisDetails, _additionalFormulas, _surplusEntries, _requestedMonths, ...values } = draft.form;
-    Object.assign(form, values);
+    const restored = restoreRequestDraft(draft.form);
+    Object.assign(form, restored.form);
     requestAgencyId.value=(draft as typeof draft & {request?:RequestRecord}).request?.agencyId??requestAgencyId.value;
     selectedAgencyMemberId.value=(draft as typeof draft & {request?:RequestRecord}).request?.agencyMemberId??selectedAgencyMemberId.value;
-    if(values._shipping) shipping.value=JSON.parse(String(values._shipping));
-    delete (form as Record<string,unknown>)._shipping;
-    if (_submissionId) submissionId.value = String(_submissionId);
-    additionalFormulas.value = _additionalFormulas ? JSON.parse(String(_additionalFormulas)) : [];
-    surplusEntries.value = _surplusEntries ? JSON.parse(String(_surplusEntries)) : [];
+    if (restored.shipping) shipping.value = restored.shipping;
+    if (restored.submissionId) submissionId.value = restored.submissionId;
+    additionalFormulas.value = restored.additionalFormulas;
+    surplusEntries.value = restored.surplusEntries;
     for (const entry of surplusEntries.value) if (!entry.productForm) initializeSurplus(entry);
-    requestedMonths.value = _requestedMonths ? JSON.parse(String(_requestedMonths)) : [];
-    diagnosisInput.value = String(_diagnosisInput ?? '');
-    diagnosisDetails.value = String(_diagnosisDetails ?? '');
+    requestedMonths.value = restored.requestedMonths;
+    diagnosisInput.value = restored.diagnosisInput;
+    diagnosisDetails.value = restored.diagnosisDetails;
     uploadedStorageKey.value = draft.prescriptionKey;
     if (draft.fileName) selectedPrescription.value = new File([], draft.fileName);
 }
@@ -331,7 +263,15 @@ async function saveRequest() {
             body: {
                 id: draftId.value,
                 agencyId:requestAgencyId.value,agencyMemberId:requestAgencyMemberId.value,
-                form: { ...form, _shipping:JSON.stringify(shipping.value), _submissionId: submissionId.value, _diagnosisInput: diagnosisInput.value, _diagnosisDetails: diagnosisDetails.value, _additionalFormulas: JSON.stringify(additionalFormulas.value), _surplusEntries: JSON.stringify(surplusEntries.value), _requestedMonths: JSON.stringify(requestedMonths.value) },
+                form: serializeRequestDraft(form, {
+                    shipping: shipping.value,
+                    submissionId: submissionId.value,
+                    diagnosisInput: diagnosisInput.value,
+                    diagnosisDetails: diagnosisDetails.value,
+                    additionalFormulas: additionalFormulas.value,
+                    surplusEntries: surplusEntries.value,
+                    requestedMonths: requestedMonths.value,
+                }),
                 prescriptionKey: uploadedStorageKey.value,
                 fileName: selectedPrescription.value?.name ?? '',
             },
@@ -348,140 +288,6 @@ async function saveRequest() {
 
 function requiredLabel(label: string) {
     return `${label} *`;
-}
-
-async function processPrescription(file: File) {
-    parserError.value = '';
-    parserMessage.value = '';
-    parserMissing.value = [];
-    parsing.value = true;
-    const body = new FormData();
-    body.append('prescription', file);
-    try {
-        const result = await $fetch<{
-            message: string;
-            missing: string[];
-            storageKey: string;
-            extracted: {
-                formulas: FormulaEntry[];
-                formulaName: string;
-                wicFoodRestrictions: '' | 'under-6-months' | 'none' | 'restricted' | 'not-indicated';
-                wicFoodRestrictionDetails: string;
-                patientFirstName: string;
-                patientLastName: string;
-                participantDob: string;
-                doctorPrintedName: string;
-                doctorOfficeName: string;
-                doctorOfficeAddress: string;
-                medicalStatus: 'yes' | 'no' | 'pending';
-                productForm?: ProductForm;
-                readyToFeedJustification: string;
-                ouncesPrescribed?: number;
-                durationMonths?: number;
-                diagnosis: string;
-                doctorOfficePhone: string;
-                prescriptionSignedDate: string;
-                additionalNotes: string;
-            };
-        }>('/api/requests/parse-prescription', { method: 'POST', body });
-        const { formulas: parsedFormulas, ...parsedFields } = result.extracted;
-        Object.assign(form, {
-            ...parsedFields,
-            formulaName: result.extracted.formulaName || form.formulaName,
-            doctorOfficePhone: formatPhoneNumber(result.extracted.doctorOfficePhone),
-            medicalStatus: result.extracted.medicalStatus === 'pending' ? '' : result.extracted.medicalStatus,
-        });
-        if (parsedFormulas?.length) {
-            Object.assign(form, parsedFormulas[0]);
-            additionalFormulas.value = parsedFormulas.slice(1, 2);
-            if (parsedFormulas.length > 2) {
-                formulaAlert.value = `Only up to 2 formulas are allowed. The PDF also lists: ${parsedFormulas.slice(2).map(entry => formulaEntryName(entry, products.value)).join(', ')}. Review the uploaded documentation and use a separate request for additional formulas.`;
-            }
-        }
-        if (!availableForms.value.includes(form.productForm as ProductForm)) {
-            form.productForm = defaultFormulaForm(form.formulaName, products.value);
-        }
-        parserMessage.value = result.message;
-        parserMissing.value = result.missing;
-        uploadedStorageKey.value = result.storageKey;
-    } catch (requestError) {
-        parserError.value =
-            (requestError as { statusMessage?: string }).statusMessage ?? 'Prescription could not be read.';
-    } finally {
-        parsing.value = false;
-    }
-}
-
-function formatDoctorPhone(event: Event) {
-    const input = event.target as HTMLInputElement;
-    form.doctorOfficePhone = formatPhoneNumber(input.value);
-    input.value = form.doctorOfficePhone;
-}
-
-function requestRemoveConfirmation() {
-    if (!selectedPrescription.value) {
-        return Promise.resolve(true);
-    }
-
-    removeConfirmationOpen.value = true;
-    return new Promise<boolean>((resolve) => {
-        removeConfirmationResolver = resolve;
-    });
-}
-
-function resolveRemoveConfirmation(confirmed: boolean) {
-    removeConfirmationOpen.value = false;
-    const resolve = removeConfirmationResolver;
-    removeConfirmationResolver = undefined;
-    resolve?.(confirmed);
-}
-
-async function removePrescription() {
-    if (!(await requestRemoveConfirmation())) {
-        return false;
-    }
-
-    try {
-        if (uploadedStorageKey.value) {
-            await $fetch('/api/requests/prescription-upload/remove', {
-                method: 'POST',
-                body: { key: uploadedStorageKey.value },
-            });
-        }
-        if (existingAttachment.value) removeExistingAttachment.value=true;
-        selectedPrescription.value = null;
-        uploadedStorageKey.value = '';
-        parserMessage.value = '';
-        parserMissing.value = [];
-        if (fileInput.value) {
-            fileInput.value.value = '';
-        }
-        return true;
-    } catch (requestError) {
-        parserError.value =
-            (requestError as { statusMessage?: string }).statusMessage ?? 'The prescription could not be removed.';
-        return false;
-    }
-}
-
-async function selectPrescription(file: File | undefined) {
-    if (!file) {
-        return;
-    }
-    if (selectedPrescription.value && !(await removePrescription())) {
-        return;
-    }
-    selectedPrescription.value = file;
-    await processPrescription(file);
-}
-
-async function handleFileSelection(event: Event) {
-    const input = event.target as HTMLInputElement;
-    await selectPrescription(input.files?.[0]);
-}
-
-async function handleDrop(event: DragEvent) {
-    await selectPrescription(event.dataTransfer?.files?.[0]);
 }
 
 const hasRequiredDocumentation = computed(() => hasMedicalDocumentation({
@@ -525,63 +331,24 @@ function syncFieldValidity() {
 }
 watch([form, additionalFormulas, surplusEntries, diagnosisInput, diagnosisDetails, requestForm, validationAttempted, shipping], syncFieldValidity, {deep:true, flush:'post', immediate:true});
 
-function submissionBody(saveOnly=false){
-    const participantName = `${form.patientFirstName} ${form.patientLastName}`.trim();
-        const body = new FormData();
-        body.append(
-            'request',
-            JSON.stringify({
-                saveOnly,
-                draftId: draftId.value,
-                revision: editingRevision.value,
-                removePrescriptionAttachment: removeExistingAttachment.value,
-                submissionId: submissionId.value,
-                agencyId: requestAgencyId.value,
-                agencyMemberId: requestAgencyMemberId.value,
-                shipping: shipping.value,
-                participantName,
-                participantFirstName: form.patientFirstName,
-                participantLastName: form.patientLastName,
-                participantDob: form.participantDob,
-                participantFamilyId: Number(form.familyId) || undefined,
-                wicIndividualId: form.individualId || undefined,
-                benefitsStartDate: form.benefitsStartDate,
-                benefitMonthsRequested: selectedBenefitMonths(),
-                requestKind: form.requestKind,
-                breastfeedingStatus: form.breastfeedingStatus,
-                breastfeedingDiscontinuedDate: form.breastfeedingStatus === 'Discontinued BF' ? form.breastfeedingDiscontinuedDate : '',
-                productId: selectedProduct.value?.id ?? -1,
-                productName: productName.value,
-                requestedFormulas: serializedFormulas(),
-                surplusItems: surplusEntries.value.map((entry) => ({ ...entry, units: Number(entry.units) })),
-                productForm: form.productForm,
-                formulaFlavor: selectedFormula.value?.hasFlavor ? form.formulaFlavor.trim() : undefined,
-                wicFoodRestrictions: form.wicFoodRestrictions || undefined,
-                wicFoodRestrictionDetails: form.wicFoodRestrictions === 'restricted' ? form.wicFoodRestrictionDetails : '',
-                wicStaffFoodRestrictions: form.wicFoodRestrictions === 'not-indicated' ? form.wicStaffFoodRestrictions || undefined : undefined,
-                wicNutritionStaffNotes: form.wicFoodRestrictions === 'not-indicated' && form.wicStaffFoodRestrictions === 'restricted' ? form.wicNutritionStaffNotes : '',
-                wicNutritionStaffName: form.wicNutritionStaffName,
-                medicalStatus: form.medicalStatus,
-                mediCalStatus: form.medicalStatus === 'yes' ? form.mediCalStatus : undefined,
-                diagnosis: form.diagnosis,
-                ouncesPrescribed: Number(form.ouncesPrescribed),
-                durationMonths: Number(form.durationMonths),
-                doctorPrintedName: form.doctorPrintedName,
-                doctorHasSignedOff: form.doctorHasSignedOff,
-                doctorOfficeName: form.doctorOfficeName,
-                doctorOfficeAddress: form.doctorOfficeAddress,
-                doctorOfficePhone: normalizePhoneNumber(form.doctorOfficePhone),
-                prescriptionSignedDate: form.prescriptionSignedDate,
-                prescriptionKey: uploadedStorageKey.value || undefined,
-                status: 'unopened',
-                genericFields: {
-                    otherFormulaName: isOtherFormula.value ? form.otherFormulaName.trim() : '',
-                    readyToFeedJustification: form.readyToFeedJustification,
-                    additionalNotes: form.additionalNotes,
-                },
-            }),
-        );
-    return body;
+function submissionBody(saveOnly = false) {
+    return requestSubmissionBody(form, {
+        draftId: draftId.value,
+        revision: editingRevision.value,
+        removePrescriptionAttachment: removeExistingAttachment.value,
+        submissionId: submissionId.value,
+        agencyId: requestAgencyId.value,
+        agencyMemberId: requestAgencyMemberId.value,
+        shipping: shipping.value,
+        benefitMonthsRequested: selectedBenefitMonths(),
+        productId: selectedProduct.value?.id,
+        productName: productName.value,
+        requestedFormulas: serializedFormulas(),
+        surplusItems: surplusEntries.value,
+        hasFlavor: selectedFormula.value?.hasFlavor,
+        isOtherFormula: isOtherFormula.value,
+        prescriptionKey: uploadedStorageKey.value,
+    }, saveOnly);
 }
 async function submitRequest() {
     submitted.value = false;
@@ -770,138 +537,7 @@ async function submitRequest() {
             </section>
         </div>
 
-        <section class="form-section">
-            <div class="panel-heading">
-                <div>
-                    <h2>Participant</h2>
-                </div>
-            </div>
-            <div class="form-grid participant-grid">
-                <div class="form-field">
-                    <label for="patient-first">{{ requiredLabel('Patient First Name') }}</label>
-                    <input
-                        id="patient-first"
-                        v-model="form.patientFirstName"
-                        class="form-input"
-                        required
-                    />
-                </div>
-                <div class="form-field">
-                    <label for="patient-last">{{ requiredLabel('Patient Last Name') }}</label>
-                    <input
-                        id="patient-last"
-                        v-model="form.patientLastName"
-                        class="form-input"
-                        required
-                    />
-                </div>
-                <div class="form-field">
-                    <label for="dob">Date of Birth</label>
-                    <input
-                        id="dob"
-                        v-model="form.participantDob"
-                        class="form-input"
-                        type="date"
-                        required
-                    />
-                </div>
-                <div class="insurance-fields">
-                <div class="form-field">
-                    <label for="medical">Health Insurance</label>
-                    <select
-                        id="medical"
-                        v-model="form.medicalStatus"
-                        required
-                        class="form-input"
-                    >
-                        <option disabled value="">Select health insurance</option>
-                        <option value="yes">Medi-Cal</option>
-                        <option value="no">Private Insurance</option>
-                    </select>
-                </div>
-                <div v-if="form.medicalStatus === 'yes'" class="form-field">
-                    <label for="medi-cal-status">Medi-Cal Status</label>
-                    <select id="medi-cal-status" v-model="form.mediCalStatus" class="form-input" required>
-                        <option disabled value="">Select Medi-Cal status</option>
-                        <option value="Denied">Denied</option>
-                        <option value="Pending PA">Pending PA</option>
-                        <option value="Product Not Covered">Product Not Covered</option>
-                    </select>
-                </div>
-            </div>
-            </div>
-            <fieldset class="form-field full local-agency-fields">
-                <legend>Additional Participant Details</legend>
-                <p>To be provided by the local agency. These fields are needed to submit the request but not part of complete medical documentation.</p>
-                <div class="form-grid">
-                    <div class="form-field">
-                        <label for="family">WIC Family ID</label>
-                        <input
-                            id="family"
-                            v-model="form.familyId"
-                            required
-                            class="form-input"
-                        />
-                    </div>
-                    <div class="form-field">
-                        <label for="individual">WIC Individual ID</label>
-                        <input
-                            id="individual"
-                            v-model="form.individualId"
-                            required
-                            class="form-input"
-                        />
-                    </div>
-                    <div class="form-field">
-                        <label for="benefits-start">Benefits Start Date</label>
-                        <input
-                            id="benefits-start"
-                            v-model="form.benefitsStartDate"
-                            class="form-input"
-                            type="date"
-                            required
-                        />
-                    </div>
-                    <div class="form-field">
-                        <label for="request-type">Request Type</label>
-                        <select
-                            id="request-type"
-                            v-model="form.requestKind"
-                            class="form-input"
-                            required
-                        >
-                            <option disabled value="">Select New or Extension</option>
-                            <option value="new">New</option>
-                            <option value="extension">Extension</option>
-                        </select>
-                    </div>
-                    <RequestHistory v-if="form.requestKind === 'extension'" class="full" :family-id="form.familyId" :individual-id="form.individualId" :name="`${form.patientFirstName} ${form.patientLastName}`" :dob="form.participantDob" :current-id="editingId" context="form" @preview="historyOpen=$event" />
-                    <div class="form-field">
-                        <label for="breastfeeding">Breastfeeding</label>
-                        <select id="breastfeeding" v-model="form.breastfeedingStatus" class="form-input" @change="form.breastfeedingDiscontinuedDate = ''">
-                            <option value="">Select</option>
-                            <option v-for="option in breastfeedingOptions" :key="option" :value="option">{{option}}</option>
-                        </select>
-                    </div>
-                    <div v-if="form.breastfeedingStatus === 'Discontinued BF'" class="form-field">
-                        <label for="breastfeeding-discontinued-date">Date BF Discontinued</label>
-                        <input id="breastfeeding-discontinued-date" v-model="form.breastfeedingDiscontinuedDate" type="date" class="form-input" required />
-                    </div>
-                </div>
-                <fieldset class="benefit-month-picker">
-                    <legend>Benefit Month(s) Requested</legend>
-                    <small>Select up to 3 months.</small>
-                    <div class="benefit-month-options">
-                        <label v-for="month in benefitMonthOptions" :key="month.value" class="benefit-month-option" :class="{ 'month-selected': month.selected }">
-                            <input type="checkbox" :checked="month.selected"
-                                :disabled="requestedMonths.length >= 3 && !month.selected"
-                                @change="toggleBenefitMonth(month.value)" />
-                            {{ month.label }}
-                        </label>
-                    </div>
-                </fieldset>
-            </fieldset>
-        </section>
+        <RequestParticipantFields :form="form" :editing-id="editingId" :requested-months="requestedMonths" :benefit-month-options="benefitMonthOptions" @toggle-month="toggleBenefitMonth" @preview="historyOpen=$event" />
 
         <section class="form-section">
             <div class="panel-heading">
@@ -1060,128 +696,9 @@ async function submitRequest() {
             </div>
         </section>
 
-        <section class="form-section">
-            <div class="panel-heading"><h2>{{ requiredLabel('WIC Food Restrictions') }}</h2></div>
-            <fieldset class="food-restriction-options" aria-label="WIC Food Restrictions" data-required-group tabindex="-1" :aria-invalid="validationAttempted && !form.wicFoodRestrictions">
-                <label v-for="option in [
-                    { value: 'under-6-months', label: 'Participant is under 6 months' },
-                    { value: 'none', label: 'No food restrictions (all WIC foods allowed)' },
-                    { value: 'restricted', label: 'Food restrictions (see medical documentation)' },
-                    { value: 'not-indicated', label: 'Neither box checked by HCP' },
-                ]" :key="option.value" class="checkbox-control checkbox-confirmation">
-                    <input
-                        type="checkbox"
-                        :checked="form.wicFoodRestrictions === option.value"
-                        @change="form.wicFoodRestrictions = form.wicFoodRestrictions === option.value ? '' : option.value as typeof form.wicFoodRestrictions"
-                    />
-                    {{ option.label }}
-                </label>
-            </fieldset>
-            <fieldset v-if="form.wicFoodRestrictions === 'not-indicated'" class="local-agency-fields staff-food-review">
-                <legend>Local Agency WIC Nutrition Staff Review</legend>
-                <p>A WIC Nutrition Staff member must complete this section.</p>
-                <div class="food-restriction-options" role="group" aria-label="WIC Nutrition Staff food restrictions" data-required-group tabindex="-1" :aria-invalid="validationAttempted && !form.wicStaffFoodRestrictions">
-                    <label v-for="option in [
-                        { value: 'none', label: 'No food restrictions (all WIC foods allowed)' },
-                        { value: 'restricted', label: 'Food restrictions (listed below)' },
-                    ]" :key="option.value" class="checkbox-control checkbox-confirmation">
-                        <input type="checkbox" :checked="form.wicStaffFoodRestrictions === option.value"
-                            @change="form.wicStaffFoodRestrictions = form.wicStaffFoodRestrictions === option.value ? '' : option.value as 'none' | 'restricted'" />
-                        {{ option.label }}
-                    </label>
-                </div>
-                <div class="form-grid">
-                    <div v-if="form.wicStaffFoodRestrictions === 'restricted'" class="form-field full">
-                        <label for="wic-staff-notes">{{ requiredLabel('WIC Nutrition Staff Notes') }}</label>
-                        <textarea id="wic-staff-notes" v-model="form.wicNutritionStaffNotes" class="form-textarea" required />
-                    </div>
-                    <div class="form-field full compact-staff-name">
-                        <label for="wic-staff-name">{{ requiredLabel('WIC Nutrition Staff Name') }}</label>
-                        <input id="wic-staff-name" v-model="form.wicNutritionStaffName" class="form-input" required />
-                    </div>
-                </div>
-            </fieldset>
-        </section>
+        <RequestFoodRestrictionFields :form="form" :validation-attempted="validationAttempted" />
 
-        <section class="form-section">
-            <div class="panel-heading">
-                <div>
-                    <h2>Health Care Provider</h2>
-                </div>
-            </div>
-            <div class="form-grid">
-                <div class="form-field full">
-                    <label for="doctor-name">{{ requiredLabel('Provider Name') }}</label>
-                    <input
-                        id="doctor-name"
-                        v-model="form.doctorPrintedName"
-                        class="form-input"
-                        required
-                    />
-                </div>
-                <div class="form-field checkbox-confirmation compact-signature">
-                    <label
-                        class="checkbox-control"
-                        for="doctor-signed-off"
-                    >
-                        <input
-                            id="doctor-signed-off"
-                            v-model="form.doctorHasSignedOff"
-                            type="checkbox"
-                            required
-                            aria-required="true"
-                        />
-                        <span>{{ requiredLabel('Provider Signature') }}</span>
-                    </label>
-                </div>
-                <div class="form-field">
-                    <label for="prescription-signed-date">{{ requiredLabel('Date Signed') }}</label>
-                    <input
-                        id="prescription-signed-date"
-                        v-model="form.prescriptionSignedDate"
-                        required
-                        class="form-input"
-                        type="date"
-                    />
-                </div>
-                <div class="form-field">
-                    <label for="doctor-office">{{ requiredLabel('Medical Office/Clinic Name and Address') }}</label>
-                    <input
-                        id="doctor-office"
-                        aria-label="Medical office/clinic name"
-                        placeholder="Office/clinic name"
-                        v-model="form.doctorOfficeName"
-                        class="form-input"
-                        required
-                    />
-                    <textarea
-                        id="doctor-address"
-                        aria-label="Medical office/clinic address"
-                        placeholder="Street address&#10;City, State ZIP"
-                        v-model="form.doctorOfficeAddress"
-                        class="form-textarea office-address"
-                        rows="3"
-                        required
-                    />
-                </div>
-                <div class="form-field compact-provider-phone">
-                    <label for="doctor-phone">{{ requiredLabel('Phone Number') }}</label>
-                    <input
-                        id="doctor-phone"
-                        v-model="form.doctorOfficePhone"
-                        class="form-input"
-                        type="tel"
-                        inputmode="tel"
-                        autocomplete="tel"
-                        pattern="\(\d{3}\) \d{3}-\d{4}"
-                        minlength="14"
-                        maxlength="14"
-                        @input="formatDoctorPhone"
-                        required
-                    />
-                </div>
-            </div>
-        </section>
+        <RequestProviderFields :form="form" />
 
         <section class="form-section">
             <div class="panel-heading"><h2>Surplus Formula</h2></div>
@@ -1291,11 +808,6 @@ async function submitRequest() {
         </p>
     </form>
 </template>
-
-<style scoped>
-.participant-grid {align-items:start;}
-.insurance-fields {display:grid;gap:16px;align-content:start;}
-</style>
 
 <style scoped>.correction-request-note{border-left:3px solid #902A92;padding:12px 16px;margin-bottom:16px;}.correction-request-note p{white-space:pre-wrap;overflow-wrap:anywhere;}</style>
 
