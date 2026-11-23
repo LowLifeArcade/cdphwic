@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { matchingProducts, resolveProduct, selectAuthorizationProduct, enterAuthorizationProductNumber, authorizationCatalogProduct } from '~/../shared/productMatching';
+import {applyCatalogOrderDefault,catalogPoCasesRemaining} from '~/../shared/catalogOrderDefaults';
+import { candidateProducts, resolveProduct, enterAuthorizationProductNumber, authorizationCatalogProduct } from '~/../shared/productMatching';
 import {unitLabel} from '~/../shared/quantityLabels';
 import {issuanceTransferLots,setIssuanceTransferUnits} from '~/../shared/issuanceTransfers';
 import {toRaw} from 'vue';
@@ -250,20 +251,30 @@ function authorizationProduct(authorization:{productName:string;productForm?:str
     return authorizationCatalogProduct(props.products ?? [], authorization);
 }
 function authorizationProducts(authorization:FormulaAuthorization) {
-    return matchingProducts(props.products ?? [], {name:authorization.productName,form:authorization.productForm,flavor:authorization.flavor}).filter(product => product.productCode.trim());
+    // Keep all catalog flavors available for staff to review against the requested flavor.
+    const matches=candidateProducts(props.products ?? [], {name:authorization.productName,form:authorization.productForm}).filter(product => product.productCode.trim());
+    const selected=authorizationProduct(authorization);
+    return selected && !matches.some(product=>product.id===selected.id) ? [selected,...matches] : matches;
 }
 function chooseAuthorizationProduct(index:number, productCode:string) {
     const authorization=draft.formulaAuthorizations?.[index];
     if(!authorization)return;
-    Object.assign(authorization,selectAuthorizationProduct(authorization,props.products??[],productCode));
+    Object.assign(authorization,enterAuthorizationProductNumber(authorization,props.products??[],productCode));
     authorization.approvedCases=undefined;
+    applySelectedProductDefault(index);
     recalculateCasesFromUnitsToOrder(index);
 }
 function enterProductNumber(index:number, productCode:string) {
     const authorization=draft.formulaAuthorizations?.[index];
     if(!authorization)return;
     Object.assign(authorization,enterAuthorizationProductNumber(authorization,props.products??[],productCode));
+    applySelectedProductDefault(index);
     recalculateCasesFromUnitsToOrder(index);
+}
+function applySelectedProductDefault(index:number) {
+    const authorization=draft.formulaAuthorizations?.[index];
+    const product=authorization && authorizationProduct(authorization);
+    if(product)Object.assign(draft,applyCatalogOrderDefault(draft,index,product));
 }
 function authorizationUnitsPerCase(authorization:{productName:string;productForm?:string;flavor?:string;productCode?:string;unitsPerCase?:number}){return authorization.unitsPerCase??authorizationProduct(authorization)?.unitsPerCase;}
 function savedLocalSurplusUnits(index:number,lotId:string){return props.request?formulaAuthorizations(props.request)[index]?.localSurplusAllocations?.find(row=>row.lotId===lotId)?.units??0:0;}
@@ -576,6 +587,7 @@ async function saveStaffFields() {
     }
     await save({
         formulaAuthorizations:authorizations,
+        formulaOrders:draft.formulaOrders,
         productId:first ? authorizationProduct(first)?.id ?? -1 : -1,
         benefitIssuances: issuances,
         approvedCases: Number(first?.approvedCases??0),
@@ -589,9 +601,10 @@ async function saveStaffFields() {
 
 async function changeFormulaOrder(index:number,value:string){
     if(!props.request)return;
-    const rows=formulaOrders(props.request);
+    const rows=formulaOrders(draft);
     if(!rows[index])return;
     rows[index]!.specialOrder=value==='special';
+    draft.formulaOrders=rows;
     const authorization=draft.formulaAuthorizations?.[index];
     if(authorization?.approvedCases!==undefined){
         authorization.standardCases=rows[index]!.specialOrder?0:authorization.approvedCases;
@@ -602,8 +615,8 @@ async function changeFormulaOrder(index:number,value:string){
 function adjustFulfillmentAllocation(index:number){
     const authorization=draft.formulaAuthorizations?.[index];
     if(!authorization||!Number.isSafeInteger(authorization.approvedCases)||authorization.approvedCases!<0)return;
-    if(authorization.standardCases===undefined&&authorization.specialOrderCases===undefined){
-        const special=formulaOrders(props.request??{})[index]?.specialOrder===true;
+    if((authorization.standardCases===undefined&&authorization.specialOrderCases===undefined)||(authorization.standardCases===0&&authorization.specialOrderCases===0)){
+        const special=draft.formulaOrders?.[index]?.specialOrder ?? (formulaOrders(props.request??{})[index]?.specialOrder===true);
         authorization.standardCases=special?0:authorization.approvedCases;
         authorization.specialOrderCases=special?authorization.approvedCases:0;
     }else if(authorization.standardCases===0){authorization.specialOrderCases=authorization.approvedCases;}
@@ -992,14 +1005,15 @@ async function saveAgencyUpdate() {
             <fieldset v-for="(authorization,formulaIndex) in draft.formulaAuthorizations" :key="`${authorization.productName}-${authorization.productForm}-${authorization.flavor}`" class="authorization-formula">
                 <legend v-if="(draft.formulaAuthorizations?.length??0)>1">Formula {{formulaIndex+1}}</legend>
             <label v-if="!splitOrderTypesEnabled && formulaOrders(request)[formulaIndex]" class="field-label formula-order-type">Order Type
-                <select class="form-input" :value="formulaOrders(request)[formulaIndex]!.specialOrder?'special':'standard'" :aria-label="`Formula ${formulaIndex+1} Order Type`" :disabled="saving" @change="changeFormulaOrder(formulaIndex,($event.target as HTMLSelectElement).value)">
+                <select class="form-input" :value="(draft.formulaOrders?.[formulaIndex]?.specialOrder ?? formulaOrders(request)[formulaIndex]!.specialOrder)?'special':'standard'" :aria-label="`Formula ${formulaIndex+1} Order Type`" :disabled="saving" @change="changeFormulaOrder(formulaIndex,($event.target as HTMLSelectElement).value)">
                     <option value="standard">Standard</option><option value="special">Special Order</option>
                 </select>
             </label>
             <ProductVariantSelect :identity="identity" :products="authorizationProducts(authorization)" :model-value="authorization.productCode" :disabled="saving" @update:model-value="chooseAuthorizationProduct(formulaIndex,$event)" />
+            <p v-if="authorizationProduct(authorization)" class="muted-copy" role="status">Cases remaining on current PO: <strong>{{catalogPoCasesRemaining(authorizationProduct(authorization)) ?? 'Not available'}}</strong></p>
             <div class="detail-grid cdph-product-details">
                 <label class="field-label">Formula Name<input v-model="authorization.formulaName" class="form-input" :placeholder="authorization.productName" /></label>
-                <div><span>Form</span><strong>{{formulaFormLabel(authorization.productForm)}}</strong></div>
+                <div><span>Form</span><strong>{{formulaFormLabel(authorizationProduct(authorization)?.form === 'other' ? authorization.productForm : authorizationProduct(authorization)?.form || authorization.productForm)}}</strong></div>
                 <div><span>Flavor</span><strong>{{authorizationProduct(authorization)?.flavor || authorization.flavor || '—'}}</strong></div>
                 <div><span>Packaging</span><strong>{{authorizationProduct(authorization)?.packaging || '—'}}</strong></div>
                 <label class="field-label">Product Number<input v-model="authorization.productCode" class="form-input" @change="enterProductNumber(formulaIndex,authorization.productCode ?? '')" :placeholder="authorizationProduct(authorization)?.productCode ?? 'Enter product number'" /></label>

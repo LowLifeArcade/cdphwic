@@ -22,8 +22,8 @@ function earlierLocalIssuesComplete(row:FormulaAuthorization,month:string){let r
         <fieldset v-for="(authorization,index) in authorizations" :key="index" class="authorization-formula">
             <legend v-if="authorizations.length>1">Formula {{index+1}}</legend>
             <div class="detail-grid">
-                <div><span>Formula Name</span><strong>{{authorization.formulaName||authorization.productName}}<template v-if="authorization.flavor"> · {{authorization.flavor}}</template></strong></div>
-                <div><span>Form</span><strong>{{formulaFormLabel(authorization.productForm)}}</strong></div>
+                <div><span>Formula Name</span><strong>{{authorization.formulaName||authorization.productName}}<template v-if="product(authorization)?.flavor || authorization.flavor"> · {{product(authorization)?.flavor || authorization.flavor}}</template></strong></div>
+                <div><span>Form</span><strong>{{formulaFormLabel(product(authorization)?.form === 'other' ? authorization.productForm : product(authorization)?.form || authorization.productForm)}}</strong></div>
                 <div><span>Product Number</span><strong>{{authorization.productCode||product(authorization)?.productCode||'—'}}</strong></div>
                 <div><span>Units Per Case</span><strong>{{authorization.unitsPerCase??product(authorization)?.unitsPerCase??'—'}}</strong></div>
                 <div><span>Yield</span><strong>{{(authorization.yield??product(authorization)?.yield)!==undefined?`${authorization.yield??product(authorization)?.yield} fl oz`:'—'}}</strong></div>

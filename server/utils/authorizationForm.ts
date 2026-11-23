@@ -25,7 +25,7 @@ export async function createAuthorizationFormPdf(request:RequestRecord,agency?:A
  const section=(title:string)=>{ensure(42);y-=8;page.drawText(title,{x:42,y,size:11,font:bold,color:blue});y-=6;page.drawLine({start:{x:42,y},end:{x:570,y},thickness:.5,color:rgb(.78,.81,.85)});y-=13;};
  const authorizations=(request.formulaAuthorizations?.length?request.formulaAuthorizations:formulaAuthorizations(request)).map(authorization=>{
   const product=authorizationCatalogProduct(products,authorization);
-  return {...authorization,productCode:authorization.productCode??product?.productCode,unitsPerCase:authorization.unitsPerCase??product?.unitsPerCase,yield:authorization.yield??product?.yield};
+  return {...authorization,productForm:product?.form && product.form !== 'other' ? product.form : authorization.productForm,flavor:product?.flavor ?? authorization.flavor,productCode:authorization.productCode??product?.productCode,unitsPerCase:authorization.unitsPerCase??product?.unitsPerCase,yield:authorization.yield??product?.yield};
  });
  const fullFormulaName=(formula:{productName?:string;productForm?:string;flavor?:string})=>[formula.productName,formulaFormLabel(formula.productForm),formula.flavor].filter(Boolean).join(' ');
  const phone=(value?:string)=>{

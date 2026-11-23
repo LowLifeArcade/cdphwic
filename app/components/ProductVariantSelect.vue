@@ -18,7 +18,7 @@ const emit = defineEmits<{ 'update:modelValue': [value: string] }>();
                 {{ product.formulaDescription || product.name }} · {{ product.flavor || 'Unflavored' }} · {{ product.packaging || 'Packaging not specified' }} · {{ product.productCode }}
             </option>
         </select>
-        <small v-if="!products.length">No matching catalog product. Product details can be entered below.</small>
-        <small v-else-if="products.length > 1 && !modelValue">Select a Product Number to populate the correct product details.</small>
+        <small v-if="!products.length">No matching catalog product. Enter a Product Number to search the catalog, or enter product details below.</small>
+        <small v-else-if="products.length > 1 && !modelValue">Select an exact product from the candidates to populate its details.</small>
     </label>
 </template>

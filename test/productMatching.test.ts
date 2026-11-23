@@ -92,3 +92,28 @@ it('does not infer transfer case size when a compatible product has an unknown s
     const { transferCatalogUnitsPerCase } = await import('../shared/requestTransfers');
     expect(transferCatalogUnitsPerCase({ formulaName: base.name, form: base.form, flavor: base.flavor }, [base, { ...base, productCode: '002', unitsPerCase: undefined }])).toBeUndefined();
 });
+
+it.each([
+    ['Kate Farms Pediatric Std 1.2', 'Kate Farms Pediatric Std 1.2 Cal', 'KF-001'],
+    ['Boost Kid Essentials', 'Boost Kid Essentials 1.5', 'BKE-001'],
+])('finds %s by Product Number across the catalog despite a name mismatch', (requestedName,catalogName,code) => {
+    const catalog = {...base, name:catalogName,productCode:code,unitsPerCase:24,yield:8.45};
+    const authorization={productName:requestedName,productForm:'ready-to-feed' as const,flavor:'Vanilla',benefitIssuances:[{month:'2026-11',quantity:24}]};
+    const entered=enterAuthorizationProductNumber(authorization,[catalog],` ${code} `);
+    expect(entered).toMatchObject({productName:requestedName,formulaName:catalogName,productCode:code,unitsPerCase:24,yield:8.45,benefitIssuances:authorization.benefitIssuances});
+    expect(authorizationCatalogProduct([catalog],entered)).toBe(catalog);
+});
+it('uses an explicit Product Number to resolve missing or different submitted flavor without replacing the requested formula',()=>{
+    const authorization={productName:'Requested formula',productForm:'powder' as const,benefitIssuances:[]};
+    const entered=enterAuthorizationProductNumber(authorization,[base],'001');
+    expect(entered).toMatchObject({productName:'Requested formula',productForm:'powder',formulaName:base.name,unitsPerCase:6,yield:8});
+    expect(authorizationCatalogProduct([base],entered)?.flavor).toBe('Vanilla');
+});
+
+it('keeps a number-only catalog match when saving and reopening an authorization',async()=>{
+    const {formulaAuthorizations}=await import('../shared/formulaAuthorizations');
+    const entered=enterAuthorizationProductNumber({productName:'Original request label',productForm:'ready-to-feed',benefitIssuances:[]},[base],'001');
+    const reopened=formulaAuthorizations(JSON.parse(JSON.stringify({requestedFormulas:[{productName:'Original request label',productForm:'ready-to-feed',ouncesPrescribed:8}],formulaAuthorizations:[entered]})))[0]!;
+    expect(reopened).toMatchObject({productName:'Original request label',formulaName:base.name,productCode:'001',unitsPerCase:6,yield:8});
+    expect(authorizationCatalogProduct([base],reopened)).toBe(base);
+});
