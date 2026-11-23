@@ -2,7 +2,7 @@
 import {shipmentFeatureFlags} from '~/../shared/featureFlags';
 import {caseBalance,shipmentListSummary} from '~/../shared/shipmentCaseTracking';
 import {localDate} from '~/../shared/surplus';
-import {deliveryCategory,filterAndSortRequests,type DeliveryFilter,type RequestTagFilter,type RequestListSort} from '~/../shared/requestListFilters';
+import {deliveryCategory,filterAndSortRequests,requestsInSection,type RequestListSection,type DeliveryFilter,type RequestTagFilter,type RequestListSort} from '~/../shared/requestListFilters';
 import {formulaOrders,allFormulasSpecialOrder,hasFormulaAwaitingEta} from '~/../shared/formulaOrders';
 import {fulfillmentProgress,hasSplitOrderAllocation} from '~/../shared/fulfillmentAllocations';
 import {formatEtaDate,formatDisplayDate,formulaFormLabel} from '~/../shared/requestPresentation';
@@ -31,10 +31,32 @@ function etaLabel(request:RequestRecord){
 const shipmentFeatures=shipmentFeatureFlags(useRuntimeConfig().public);
 function showSplitOrderProgress(request:RequestRecord){return shipmentFeatures.splitOrderTypes||hasSplitOrderAllocation(request);}
 function needsCaseReview(request:RequestRecord) {if(!shipmentFeatures.caseReconciliation&&!shipmentFeatures.potentialOverDelivery)return false;const balance=caseBalance(request);return (shipmentFeatures.caseReconciliation&&(balance.excess>0||balance.needsApproval))||(shipmentFeatures.potentialOverDelivery&&balance.projectedExcess>0);}
+const section = ref<RequestListSection>('active');
+const activeRequests = computed(() => requestsInSection(props.requests, 'active'));
+const completedRequests = computed(() => requestsInSection(props.requests, 'completed'));
+const sectionRequests = computed(() => requestsInSection(props.requests, section.value));
+const sectionTabs = computed(() => [
+    {value: 'active' as const, label: 'Active', count: activeRequests.value.length},
+    {value: 'completed' as const, label: 'Completed', count: completedRequests.value.length},
+    {value: 'all' as const, label: 'All', count: props.requests.length},
+]);
+function onTabKeydown(event: KeyboardEvent, index: number) {
+    let next: number;
+    if (event.key === 'ArrowRight') next = (index + 1) % sectionTabs.value.length;
+    else if (event.key === 'ArrowLeft') next = (index + sectionTabs.value.length - 1) % sectionTabs.value.length;
+    else if (event.key === 'Home') next = 0;
+    else if (event.key === 'End') next = sectionTabs.value.length - 1;
+    else return;
+    event.preventDefault();
+    changeSection(sectionTabs.value[next]!.value);
+    const tabs = (event.currentTarget as HTMLElement).parentElement?.querySelectorAll<HTMLButtonElement>('[role=tab]');
+    tabs?.[next]?.focus();
+}
+function changeSection(value: RequestListSection) { section.value = value; selected.value = null; }
 const deliveryFilter = ref<DeliveryFilter>('all');
 const tagFilter = ref<RequestTagFilter>('all');
 const sortBy = ref<RequestListSort>('submitted');
-const visibleRequests = computed(()=>filterAndSortRequests(props.requests,deliveryFilter.value,tagFilter.value,sortBy.value));
+const visibleRequests = computed(()=>filterAndSortRequests(sectionRequests.value,deliveryFilter.value,tagFilter.value,sortBy.value));
 watch(identity,()=>{selected.value=null;});
 const selectedIndex = computed(() => visibleRequests.value.findIndex((request) => request.id === selected.value?.id));
 const previousRequest = computed(() => visibleRequests.value[selectedIndex.value - 1]);
@@ -57,6 +79,9 @@ async function openRequest(request: RequestRecord) {
         Object.assign(request,result.request);
         if(import.meta.client)window.dispatchEvent(new Event('request-messages-changed'));
     } catch {openError.value='The request could not be opened. Please refresh and try again.';return;}
+    if (section.value !== 'all' && (request.status === 'complete') !== (section.value === 'completed')) {
+        section.value=request.status === 'complete' ? 'completed' : 'active';
+    }
     selected.value=request;
     if(import.meta.client&&route.hash===`#more-info-${request.id}`){await nextTick();document.getElementById(`more-info-${request.id}`)?.scrollIntoView({block:'start'});}
 }
@@ -68,6 +93,14 @@ watch([()=>route.query.request,()=>props.requests],async([id],[previousId])=>{co
 
 <template>
     <p v-if="openError" role="alert">{{openError}}</p>
+    <div class="request-section-tabs" role="tablist" aria-label="Request status">
+        <button v-for="(tab, index) in sectionTabs" :id="`request-tab-${tab.value}`" :key="tab.value"
+            type="button" role="tab" :aria-selected="section === tab.value" aria-controls="request-list-panel"
+            :tabindex="section === tab.value ? 0 : -1" @click="changeSection(tab.value)" @keydown="onTabKeydown($event, index)">
+            {{ tab.label }} <span class="request-tab-count">{{ tab.count }}</span>
+        </button>
+    </div>
+    <div id="request-list-panel" role="tabpanel" :aria-labelledby="`request-tab-${section}`">
     <div class="filter-bar request-list-controls">
         <label>Delivery<select v-model="deliveryFilter" class="filter-select"><option value="all">All deliveries</option><option value="awaiting">Awaiting Receipt</option><option value="partial">Partially Received</option><option value="received">Fully Received</option><option value="issue">Shipment Issue</option></select></label>
         <label>Tags<select v-model="tagFilter" class="filter-select"><option value="all">All tags</option><option value="new">New</option><option value="extension">Extension</option><option value="approved">Approved</option><option value="special">Special Order</option></select></label>
@@ -132,7 +165,12 @@ watch([()=>route.query.request,()=>props.requests],async([id],[previousId])=>{co
             v-if="!visibleRequests.length"
             class="empty-state"
         >
-            No requests match this view.
+            <template v-if="section === 'active' && !activeRequests.length">
+                <p>You’re all caught up. No active requests.</p>
+                <button v-if="completedRequests.length" type="button" class="button button-secondary" @click="changeSection('completed')">View completed requests</button>
+            </template>
+            <template v-else-if="section === 'completed' && !completedRequests.length">No completed requests yet.</template>
+            <template v-else>No requests match these filters.</template>
         </div>
         <RequestDetailDrawer
             v-if="selected"
@@ -155,6 +193,7 @@ watch([()=>route.query.request,()=>props.requests],async([id],[previousId])=>{co
             @click="selected = null"
         />
     </div>
+    </div>
 </template>
 
 <style scoped>
@@ -163,6 +202,11 @@ watch([()=>route.query.request,()=>props.requests],async([id],[previousId])=>{co
 .request-formula-item strong {display:block;white-space:normal;overflow-wrap:anywhere;line-height:1.4;}
 .request-formula-item small {display:flex;align-items:center;flex-wrap:wrap;gap:4px 6px;min-width:0;max-width:100%;white-space:normal;overflow-wrap:anywhere;line-height:1.4;}
 .request-formula-item .formula-order-tag {flex-shrink:0;}
+.request-section-tabs {display:flex;gap:4px;margin-bottom:20px;border-bottom:1px solid var(--border);overflow-x:auto;}
+.request-section-tabs button {padding:12px 16px;border:0;border-bottom:3px solid transparent;border-radius:8px 8px 0 0;background:transparent;white-space:nowrap;color:var(--text);font:inherit;cursor:pointer;}
+.request-section-tabs button[aria-selected="true"] {background:var(--button-secondary-bg);color:var(--button-secondary-text);font-weight:700;border-bottom-color:currentColor;}
+.request-tab-count {display:inline-block;margin-left:6px;padding:1px 7px;border-radius:12px;background:var(--surface-raised);font-size:0.85em;}
+.request-section-tabs button:focus-visible {outline:2px solid currentColor;outline-offset:3px;}
 .request-list-controls {margin-bottom:16px;gap:12px;}
 .request-list-controls label {display:flex;align-items:center;gap:8px;}
 .shipment-eta-cell small {white-space:normal;overflow:visible;text-overflow:clip;}

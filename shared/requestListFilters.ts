@@ -23,3 +23,9 @@ export function filterAndSortRequests(requests:RequestRecord[],delivery:Delivery
         return (shipmentListSummary(a,'').nextEta || '9999').localeCompare(shipmentListSummary(b,'').nextEta || '9999')||a.id-b.id;
     });
 }
+
+export type RequestListSection = 'active' | 'completed' | 'all';
+export function requestsInSection(requests: RequestRecord[], section: RequestListSection): RequestRecord[] {
+    if (section === 'all') return [...requests];
+    return requests.filter(request => (request.status === 'complete') === (section === 'completed'));
+}
