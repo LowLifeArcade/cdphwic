@@ -11,7 +11,7 @@ const emit = defineEmits<{ 'update:modelValue': [value: string] }>();
 
 <template>
     <label v-if="identity === 'admin' || identity === 'internal'" class="field-label">
-        Exact product
+        Exact Product
         <select class="form-input" :value="modelValue ?? ''" :disabled="disabled" @change="emit('update:modelValue', ($event.target as HTMLSelectElement).value)">
             <option value="">Select exact product</option>
             <option v-for="product in products" :key="product.productCode" :value="product.productCode">
