@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { variantKey, availableUnits, canAllocate, validateUnits, daysRemaining, localDate, surplusCatalogVariants, defaultSurplusCatalogOption } from '../shared/surplus';
+import { variantKey, availableUnits, canAllocate, validateUnits, daysRemaining, surplusDisposition, localDate, surplusCatalogVariants, defaultSurplusCatalogOption } from '../shared/surplus';
 describe('surplus rules', () => {
     it('identifies variants and excludes quarantine from availability', () => {
         const v = { formulaName: ' Fortini ', form: 'ready-to-feed', flavor: '', expirationDate: '2027-01-01' };
@@ -16,6 +16,15 @@ describe('surplus rules', () => {
         expect(daysRemaining('2026-12-25', '2026-10-26')).toBe(60);
         expect(daysRemaining('2026-12-24', '2026-10-26')).toBe(59);
         expect(daysRemaining('2026-10-25', '2026-10-26')).toBe(-1);
+    });
+    it.each([
+        ['2026-12-09', 'destruction'],
+        ['2026-12-10', 'donation'],
+        ['2026-12-25', 'donation'],
+        ['2026-12-26', undefined],
+        ['', undefined],
+    ])('classifies expiration %s consistently for inventory and notices', (expiry, expected) => {
+        expect(surplusDisposition(expiry, '2026-10-26')).toBe(expected);
     });
     it('allows allocation only when more than 60 days remain',()=>{
         expect(canAllocate({onHand:10,reserved:0,expiredUnits:0,expirationDate:'2026-12-25'},1,'2026-10-26')).toBe(false);

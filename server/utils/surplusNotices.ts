@@ -1,20 +1,18 @@
 import {unitLabel} from '../../shared/quantityLabels';
 import {requestNotices} from './requestNotices';
-import { localDate, daysRemaining, isReviewer } from '../../shared/surplus';
+import { localDate, surplusDisposition, isReviewer } from '../../shared/surplus';
 import type { SessionUser } from '../../shared/domain';
 import { expireSurplusLots } from './surplusStore';
 import {shipmentFormulaLabel} from '../../shared/shipmentFormulas';
+function hasNoticeStock(lot: { on_hand: number; reserved: number; expired_units: number }, kind: 'donation' | 'destruction') {
+    return kind === 'donation' ? lot.on_hand > 0 : lot.expired_units > 0 || lot.on_hand > lot.reserved;
+}
 export async function refreshSurplusNotices(db: D1Database, today = localDate()) {
     await expireSurplusLots(db, today);
     const lots = await db.prepare('SELECT * FROM surplus_lots WHERE on_hand>0 OR expired_units>0').all<any>();
     for (const lot of lots.results) {
-        const kind =
-            (lot.expired_units > 0 || lot.on_hand > lot.reserved) && daysRemaining(lot.expiration_date, today) < 45
-                ? 'destruction'
-                : lot.on_hand > 0 && daysRemaining(lot.expiration_date, today) >= 45 && daysRemaining(lot.expiration_date, today) <= 60
-                  ? 'donation'
-                  : undefined;
-        if (kind)
+        const kind = surplusDisposition(lot.expiration_date, today);
+        if (kind && hasNoticeStock(lot, kind))
             await db
                 .prepare(
                     'INSERT OR IGNORE INTO surplus_notices(id,agency_id,lot_id,kind,expiration_date) VALUES(?,?,?,?,?)',
@@ -33,9 +31,7 @@ export async function listSurplusNotices(db: D1Database, user: SessionUser) {
         .bind(user.id, isReviewer(user) ? 1 : 0, user.agencyId ?? -1)
         .all<any>();
     const notices = rows.results.filter((n) =>
-        n.kind === 'donation'
-            ? n.on_hand > 0 && daysRemaining(n.expiration_date, today) >= 45 && daysRemaining(n.expiration_date, today) <= 60
-            : (n.expired_units > 0 || n.on_hand > n.reserved) && daysRemaining(n.expiration_date, today) < 45,
+        n.kind === surplusDisposition(n.expiration_date, today) && hasNoticeStock(n, n.kind),
     );
     const forecasts = await db
         .prepare(

@@ -36,6 +36,14 @@ describe('Formula Surplus agency count and lot groups',()=>{
   expect(page).toContain('showHistory(selected)');
  });
 
+ it('shows a recorded date for each lot and warns agencies before saving short-dated surplus',()=>{
+  expect(page).toContain('<th>Date Recorded</th>');
+  expect(page).toContain('row.lot.recordedAt');
+  expect(page).toContain('v-if="recordedSurplusAction" role="status"');
+  expect(page).toContain("if (disposition === 'destruction') return 'Destruction required.");
+  expect(page).toContain("if (disposition === 'donation') return 'Donation required.");
+ });
+
  it('offers agencies audited donation and destruction actions only for eligible stock',()=>{
   expect(page).toContain("daysRemaining(selected.expirationDate,localDate())>=45");
   expect(page).toContain("daysRemaining(selected.expirationDate,localDate())<=60");
@@ -95,7 +103,11 @@ describe('Formula Surplus agency count and lot groups',()=>{
  it('does not report empty inventory while the inventory request is loading or failed',()=>{
   expect(page).toContain('status===\'pending\'&&!data');
   expect(page).toContain('Loading inventory…');
-  expect(page).toContain('Inventory could not be loaded. Refresh to try again.');
+  expect(page).toContain(`v-if="status === 'error' && !data"`);
+  expect(page).toContain(`v-else-if="status==='success'">No matching inventory.`);
+  expect(page).toContain('@click="refresh()">Retry</button>');
+  expect(page).toContain('retry: 2');
+  expect(page).toContain('HTTP {{ error.statusCode }}');
  });
 
  it('opens one role-aware inventory action popup instead of the More dropdown',()=>{

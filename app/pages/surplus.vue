@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import {unitLabel} from '~/../shared/quantityLabels';
 import {formatDisplayDate,formulaFormLabel} from '~/../shared/requestPresentation';
-import { isReviewer, availableUnits, localDate, daysRemaining, variantKey, surplusCatalogVariants } from '~/../shared/surplus';
+import { isReviewer, availableUnits, localDate, daysRemaining, surplusDisposition, variantKey, surplusCatalogVariants } from '~/../shared/surplus';
 import {surplusShipmentDraft} from '~/../shared/requestTransfers';
 import {formatClinic,type ClinicAddress,type ClinicRecord} from '~/../shared/shipping';
 import {groupSurplusLots} from '~/../shared/surplusInventoryGroups';
@@ -34,7 +34,13 @@ async function openShipment(){
 }
 const identity = useState<'admin' | 'agency' | 'internal'>('demo-identity', () => 'admin');
 const headers = computed(() => ({ 'x-demo-user': identity.value }));
-const { data, refresh, error, status } = await useFetch('/api/surplus', { headers, server: false, watch: [identity] });
+const { data, refresh, error, status } = await useFetch('/api/surplus', {
+    headers,
+    server: false,
+    watch: [identity],
+    retry: 2,
+    retryDelay: 500,
+});
 const {data:productData, error:productError}=await useFetch<{products:ProductRecord[]}>('/api/products');
 const surplusVariants=computed(()=>surplusCatalogVariants(productData.value?.products??[]));
 const surplusFormulaNames=computed(()=>[...new Map(surplusVariants.value.map(variant=>[variant.formulaName.toLowerCase(),variant.formulaName])).values()]);
@@ -88,7 +94,13 @@ const lots = computed(() =>
 );
 function inventoryLotIsArchived(lot:SurplusLot){return lot.onHand===0&&lot.expiredUnits===0;}
 const archivedLots=computed(()=>lots.value.filter(inventoryLotIsArchived).sort((a,b)=>b.expirationDate.localeCompare(a.expirationDate)||a.formulaName.localeCompare(b.formulaName)));
-const activeLots=computed(()=>lots.value.filter(lot=>!inventoryLotIsArchived(lot)));
+const dispositionLots = computed(() => lots.value.filter(lot => !inventoryLotIsArchived(lot)));
+const lotDisposition = (lot: SurplusLot) => surplusDisposition(lot.expirationDate, localDate());
+const activeLots = computed(() => dispositionLots.value.filter(lot => !lotDisposition(lot)));
+const dispositionSections = computed(() => [
+    { title: 'Donation', description: '45–60 days remaining. Arrange donation of surplus stock.', lots: dispositionLots.value.filter(lot => lotDisposition(lot) === 'donation') },
+    { title: 'Expired', description: 'Fewer than 45 days remaining. Destroy the stock and record verified destruction.', lots: dispositionLots.value.filter(lot => lotDisposition(lot) === 'destruction') },
+]);
 const expandedInventoryGroups=ref<Record<string,boolean>>({});
 const inventoryRows=computed(()=>groupSurplusLots(activeLots.value).flatMap(group=>group.lots.length===1
  ? [{kind:'lot' as const,key:`lot:${group.lots[0]!.id}`,group,lot:group.lots[0]!}]
@@ -285,6 +297,13 @@ async function run(work: () => Promise<unknown>) {
         busy.value = false;
     }
 }
+const recordedSurplusAction = computed(() => {
+    if (modal.value !== 'new' || reviewer.value || !input.expirationDate) return '';
+    const disposition = surplusDisposition(input.expirationDate, localDate());
+    if (disposition === 'destruction') return 'Destruction required. Destroy this formula, then record verified destruction.';
+    if (disposition === 'donation') return 'Donation required. Arrange donation of this formula and record the donation.';
+    return '';
+});
 async function submit() {
     await run(async () => {
         if(modal.value==='assign-clinic'){if(!selected.value||!input.clinicId)throw new Error('Select a clinic.');return $fetch(`/api/surplus/lots/${selected.value.id}/clinic`,{method:'POST',headers:headers.value,body:{clinicId:input.clinicId,expectedVersion:selected.value.version}});}
@@ -389,10 +408,11 @@ async function upload(kind: string, event: Event) {
             </div>
         </div>
         <p
-            v-if="error"
+            v-if="status === 'error' && !data"
             role="alert"
         >
-            Inventory could not be loaded. Please try again.
+            Inventory could not be loaded<span v-if="error?.statusCode"> (HTTP {{ error.statusCode }})</span>.
+            <button class="text-button" type="button" @click="refresh()">Retry</button>
         </p>
         <p
             v-if="message"
@@ -487,6 +507,7 @@ async function upload(kind: string, event: Event) {
                     <tr>
                         <th>Agency / Formula</th>
                         <th>Expiration</th>
+                        <th>Date Recorded</th>
                         <th>On Hand</th>
                         <th>Reserved</th>
                         <th>Available</th>
@@ -500,12 +521,13 @@ async function upload(kind: string, event: Event) {
                         <template v-if="row.kind==='group'">
                             <td class="inventory-product"><strong>{{row.group.formulaName}} {{row.group.form==='concentrate'?'Concentrate':formulaFormLabel(row.group.form)}}</strong><span v-if="row.group.flavor || row.group.packaging">{{[row.group.flavor,row.group.packaging].filter(Boolean).join(' · ')}}</span><span v-if="reviewer">{{agencyName(row.group.agencyId)}}</span><span>{{row.group.clinicName||'Clinic not specified'}}</span></td>
                             <td>{{row.group.lots.length}} lots · earliest <strong class="inventory-expiration">{{formatDisplayDate(row.group.earliestExpiration)}}</strong></td>
+                            <td>See lots</td>
                             <td><strong class="inventory-quantity">{{row.group.onHand}}</strong></td><td><strong class="inventory-quantity">{{row.group.reserved}}</strong></td><td class="inventory-available"><strong>{{row.group.available}}</strong></td><td><strong class="inventory-quantity">{{row.group.expiredUnits}}</strong></td><td><strong class="inventory-quantity">{{row.group.total}}</strong></td>
                             <td class="row-actions"><button class="button" type="button" :aria-expanded="!!expandedInventoryGroups[row.group.key]" @click="toggleInventoryGroup(row.group.key)">{{expandedInventoryGroups[row.group.key]?'Hide':'View'}} {{row.group.lots.length}} expiration lots</button></td>
                         </template>
                         <template v-else>
                             <td class="inventory-product"><template v-if="row.group.lots.length===1"><strong>{{row.group.formulaName}} {{row.group.form==='concentrate'?'Concentrate':formulaFormLabel(row.group.form)}}</strong><span v-if="row.group.flavor || row.group.packaging">{{[row.group.flavor,row.group.packaging].filter(Boolean).join(' · ')}}</span><span v-if="reviewer">{{agencyName(row.group.agencyId)}}</span><span>{{row.group.clinicName||'Clinic not specified'}}</span></template><span v-else class="inventory-lot-label">Expiration lot</span></td>
-                            <td><strong class="inventory-expiration">{{formatDisplayDate(row.lot.expirationDate)}}</strong></td><td><strong class="inventory-quantity">{{row.lot.onHand}}</strong></td><td><strong class="inventory-quantity">{{row.lot.reserved}}</strong></td><td class="inventory-available"><strong>{{availableUnits(row.lot)}}</strong></td><td><strong class="inventory-quantity">{{row.lot.expiredUnits}}</strong></td><td><strong class="inventory-quantity">{{row.lot.onHand+row.lot.expiredUnits}}</strong></td>
+                            <td><strong class="inventory-expiration">{{formatDisplayDate(row.lot.expirationDate)}}</strong></td><td>{{formatDisplayDate(row.lot.recordedAt?.slice(0, 10))}}</td><td><strong class="inventory-quantity">{{row.lot.onHand}}</strong></td><td><strong class="inventory-quantity">{{row.lot.reserved}}</strong></td><td class="inventory-available"><strong>{{availableUnits(row.lot)}}</strong></td><td><strong class="inventory-quantity">{{row.lot.expiredUnits}}</strong></td><td><strong class="inventory-quantity">{{row.lot.onHand+row.lot.expiredUnits}}</strong></td>
                             <td class="row-actions">
                                 <button v-if="reviewer && availableUnits(row.lot)>0 && !row.lot.expiredUnits && daysRemaining(row.lot.expirationDate,localDate())>60" class="button button-secondary" @click="useInRequest(row.lot)">Use in Request</button>
                                 <button class="text-button" type="button" @click="start('edit-inventory',row.lot)">Edit</button>
@@ -513,11 +535,29 @@ async function upload(kind: string, event: Event) {
                         </template>
                     </tr>
                     <tr v-if="!inventoryRows.length">
-                        <td colspan="8"><span v-if="status==='pending'&&!data">Loading inventory…</span><span v-else-if="error" role="alert">Inventory could not be loaded. Refresh to try again.</span><span v-else>No matching inventory.</span></td>
+                        <td colspan="9"><span v-if="status==='pending'&&!data">Loading inventory…</span><span v-else-if="status==='success'">No matching inventory.</span></td>
                     </tr>
                 </tbody>
             </table>
         </div>
+        <section v-for="section in dispositionSections" :key="section.title" class="inventory-archive">
+            <h2>{{ section.title }}</h2>
+            <p>{{ section.description }}</p>
+            <p v-if="status === 'success' && !section.lots.length">No matching lots.</p>
+            <article v-for="lot in section.lots" :key="lot.id" class="inventory-archive-row">
+                <div>
+                    <strong>{{ lot.formulaName }} {{ formulaFormLabel(lot.form) }}</strong>
+                    <small>{{ [lot.flavor, lot.packaging, reviewer ? agencyName(lot.agencyId) : '', lot.clinicName || 'Clinic not specified'].filter(Boolean).join(' · ') }}</small>
+                </div>
+                <div>Expiration <strong>{{ formatDisplayDate(lot.expirationDate) }}</strong></div>
+                <div>Date Recorded <strong>{{ formatDisplayDate(lot.recordedAt?.slice(0, 10)) }}</strong></div>
+                <div>Total <strong>{{ lot.onHand + lot.expiredUnits }}</strong></div>
+                <div v-if="lot.reserved">Reserved <strong>{{ lot.reserved }}</strong></div>
+                <div class="inventory-archive-actions">
+                    <button class="text-button" type="button" @click="start('edit-inventory',lot)">Edit</button>
+                </div>
+            </article>
+        </section>
         <details v-if="archivedLots.length" class="inventory-archive">
             <summary>Archived depleted lots ({{archivedLots.length}})</summary>
             <p class="muted-copy">These lots have no remaining physical stock. Open a lot’s history if you need to review its inventory changes.</p>
@@ -656,7 +696,7 @@ async function upload(kind: string, event: Event) {
                     <button v-if="reviewer && selected && availableUnits(selected)>0" class="button" type="button" @click="start('deduct',selected)">Deduct stock</button>
                     <button v-if="reviewer" class="button" type="button" @click="start('correct-expiry',selected)">Correct expiration</button>
                     <button v-if="!reviewer && selected && availableUnits(selected)>0 && daysRemaining(selected.expirationDate,localDate())>=45 && daysRemaining(selected.expirationDate,localDate())<=60" class="button" type="button" @click="start('donate',selected)">Record donation</button>
-                    <button v-if="selected && (selected.expiredUnits>0 || (availableUnits(selected)>0 && daysRemaining(selected.expirationDate,localDate())<45))" class="button" type="button" @click="start('destroy',selected)">Record destruction</button>
+                    <button v-if="selected && lotDisposition(selected)==='destruction' && (selected.expiredUnits>0 || availableUnits(selected)>0)" class="button" type="button" @click="start('destroy',selected)">Record destruction</button>
                     <div class="dialog-actions"><button class="button" type="button" @click="modal=''">Close</button></div>
                 </div>
                 <form v-else-if="modal==='use-request'" @submit.prevent="openShipment">
@@ -754,7 +794,9 @@ async function upload(kind: string, event: Event) {
                             :readonly="modal === 'review' && !!report?.expiration_date"
                             type="date"
                             required /></label
-                    ><label v-if="modal === 'forecast'"
+                    >
+                    <p v-if="recordedSurplusAction" role="status">{{ recordedSurplusAction }}</p>
+                    <label v-if="modal === 'forecast'"
                         >Agency confirmation due<input
                             v-model="input.dueDate"
                             type="date"

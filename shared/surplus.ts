@@ -9,6 +9,7 @@ export interface SurplusVariant {
     expirationDate: string;
 }
 export interface SurplusLot extends SurplusVariant {
+    recordedAt?: string | null;
     clinicName?:string;
     clinicAddress?:ClinicAddress;
     id: string;
@@ -95,6 +96,12 @@ export function daysRemaining(expiry: string, today: string) {
     return validDate(expiry) && validDate(today)
         ? Math.round((Date.parse(`${expiry}T00:00:00Z`) - Date.parse(`${today}T00:00:00Z`)) / 86400000)
         : NaN;
+}
+export function surplusDisposition(expiry: string, today: string) {
+    const days = daysRemaining(expiry, today);
+    if (days < 45) return 'destruction';
+    if (days <= 60) return 'donation';
+    return undefined;
 }
 export function canAllocate(
     lot: Pick<SurplusLot, 'onHand' | 'reserved' | 'expiredUnits' | 'expirationDate'>,

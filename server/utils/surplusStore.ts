@@ -406,6 +406,11 @@ export async function listSurplus(db: D1Database, user: SessionUser) {
         const s = db.prepare(`SELECT * FROM ${table} WHERE ${scope}`);
         return isReviewer(user) ? s : s.bind(user.agencyId ?? -1);
     };
+    const lotList = `SELECT ${columns}, recordedAt FROM surplus_lots
+        LEFT JOIN (
+            SELECT lot_id, MIN(created_at) AS recordedAt
+            FROM surplus_movements GROUP BY lot_id
+        ) recorded ON recorded.lot_id = surplus_lots.id`;
     return {
         movements: (
             await db
@@ -418,8 +423,8 @@ export async function listSurplus(db: D1Database, user: SessionUser) {
         lots: (
             await (
                 isReviewer(user)
-                    ? db.prepare(`SELECT ${columns} FROM surplus_lots`)
-                    : db.prepare(`SELECT ${columns} FROM surplus_lots WHERE agency_id=?`).bind(user.agencyId ?? -1)
+                    ? db.prepare(lotList)
+                    : db.prepare(`${lotList} WHERE agency_id=?`).bind(user.agencyId ?? -1)
             ).all<SurplusLot>()
         ).results.map(decodeSurplusLot),
         reports: (await query('surplus_reports').all<SurplusReport>()).results,
