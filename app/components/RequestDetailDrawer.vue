@@ -945,7 +945,7 @@ async function saveAgencyUpdate() {
                         <div v-else class="detail-field-wide"><span>{{shipment.shipmentSource==='agency'?'Tracking / Delivery Reference':'Tracking Numbers'}}</span><strong>{{shipment.trackingNumbers.join(', ') || 'N/A'}}</strong></div>
                         </template>
                     </div>
-                    <p v-if="canStaffEdit && shipment.transferId && shipment.transferStatus==='reserved'" role="status">{{shipment.transferStockConfirmedAt?'✓ Sending agency confirmed product availability. Provide the shipping labels and send shipping details.':'Awaiting confirmation that the sending Local Agency physically has the reserved product.'}}</p>
+                    <p v-if="canStaffEdit && shipment.transferId && shipment.transferStatus==='reserved'" :class="{ 'transfer-awaiting-confirmation': !shipment.transferStockConfirmedAt }" role="status">{{shipment.transferStockConfirmedAt?'✓ Sending agency confirmed product availability. Provide the shipping labels and send shipping details.':'Awaiting confirmation that the sending Local Agency physically has the reserved product.'}}</p>
                     <TransferShippingLabels v-if="shipment.transferId" :transfer-id="shipment.transferId" :can-upload="canStaffEdit" :allow-upload="shipment.transferStatus==='reserved' && !!shipment.transferStockConfirmedAt" @ready="transferLabelsReady[shipment.transferId!]= $event" />
                     <ShipmentReceiptPanel :key="`receipt-${request.id}-${index}`" v-if="requestShipments(request)[index]" :request="request" :shipment="requestShipments(request)[index]!" :index="index" :can-confirm="canRepEdit" @editing="value=>receiptEditors[index]=value" :catalog-units-per-case="shipmentCatalogSize(requestShipments(request)[index]!)" :disabled="saving" @updated="applyShipmentIssueResult" />
                     <ShipmentCasePanel :key="`cases-${request.id}-${index}`" v-if="shipmentFeatures.quantityTracking && requestShipments(request)[index] && (!canStaffEdit || shipmentReceiptKey(shipment)===shipmentReceiptKey(requestShipments(request)[index]!))" :request="request" :shipment="requestShipments(request)[index]!" :index="index" :can-manage="canStaffEdit" :disabled="saving" @updated="applyShipmentIssueResult" />
@@ -1125,6 +1125,10 @@ async function saveAgencyUpdate() {
 @media(max-width:700px){.surplus-entry-row{grid-template-columns:minmax(0,1fr) 80px;}.surplus-entry-row .icon-button{justify-self:end;}}
 .shipment-compact-row {border:1px solid var(--border);border-radius:8px;background:var(--surface-raised);}
 .shipment-compact-row + .shipment-compact-row {margin-top:8px;}
+.transfer-awaiting-confirmation {
+    color: light-dark(#774700, #ffcf7a);
+    font-weight: 650;
+}
 .transfer-quantity-summary {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr)) minmax(0, 1.8fr);
