@@ -88,6 +88,13 @@ describe('new request doctor fields', () => {
         expect(requestForm).not.toContain('v-model="form.doctorSignature"');
     });
 
+    it('offers optional unit UPC lookup without submitting the request on Enter', () => {
+        expect(requestForm).toContain('Unit UPC (optional)');
+        expect(requestForm).toContain('@keydown.enter.prevent="lookupSurplusUpc(entry)"');
+        expect(requestForm).toContain("match.field === 'unitUpc'");
+        expect(requestForm).toContain('entry.packaging = surplusProductPackaging(product)');
+    });
+
     it('shows only available surplus in the section heading', () => {
         expect(requestForm).toContain("useFetch('/api/surplus'");
         expect(requestForm).toContain('lot.agencyId===requestAgencyId.value');

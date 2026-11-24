@@ -121,6 +121,7 @@ describe('request operations UI', () => {
         expect(authorization).toContain('Total Units Approved');
         expect(drawer).toContain('Assign Units');
         expect(drawer).toContain('On Hand</h4>');
+        expect(drawer).toMatch(/class="authorization-formula"[\s\S]*?<RequestAuthorizationFields[\s\S]*?<RequestTransferAllocation[\s\S]*?@reserve="reserveIssuanceTransfer"[\s\S]*?<RequestSupplyPlan[\s\S]*?<\/fieldset>\s*<label[^>]*>\s*Next Steps/);
         expect(drawer).toContain('<RequestSupplyPlan');
         expect(drawer).not.toContain('Amount Approved');
         expect(drawer).not.toContain('Expected Surplus Unit');
@@ -136,7 +137,8 @@ describe('request operations UI', () => {
         expect(list).toContain(":status=\"agencyIssuancePending(request)?'pending':request.status\"");
         expect(drawer).toContain('showAuthorizationWorkspace=computed(()=>canCollapseReviewDetails.value&&(canStaffEdit.value||hasSavedIssuance.value))');
         expect(drawer).toContain("RequestIssuanceSummary v-if=\"identity==='agency' && hasSavedIssuance\"");
-        expect(drawer.indexOf('class="staff-save-action"')).toBeLessThan(drawer.indexOf('aria-label="Issuance supply plans"'));
+        expect(drawer.indexOf("<RequestSupplyPlan")).toBeLessThan(drawer.indexOf("class=\"staff-save-action\""));
+
         expect(drawer).toContain('v-if="canAccessShipping" ref="shippingSection"');
         expect(drawer).toContain('Save the issuance and supply plan before creating a shipment.');
         expect(drawer).toContain('Saving reserves those units; they remain in the On Hand balance');

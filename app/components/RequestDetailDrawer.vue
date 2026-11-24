@@ -773,7 +773,7 @@ async function saveAgencyUpdate() {
             <fieldset class="cdph-fields" :disabled="draft.status === 'denied'">
             <div :id="`issuance-${request.id}`" class="issuance-heading"><h3>Issuance</h3></div>
             <fieldset v-for="(authorization,formulaIndex) in draft.formulaAuthorizations" :key="`${authorization.productName}-${authorization.productForm}-${authorization.flavor}`" class="authorization-formula">
-                <legend v-if="(draft.formulaAuthorizations?.length??0)>1">Formula {{formulaIndex+1}}</legend>
+                <legend v-if="(draft.formulaAuthorizations?.length??0)>1">Formula {{ formulaIndex + 1 }} · {{ authorization.formulaName || authorization.productName }}</legend>
             <RequestAuthorizationFields
                 :draft="draft"
                 :request="request"
@@ -801,6 +801,13 @@ async function saveAgencyUpdate() {
                 <p class="muted-copy fulfillment-allocation-help">Standard and Special Order cases must total {{authorization.approvedCases??0}} cases to order.</p>
             </div>
             <RequestTransferAllocation v-if="otherAgencyLots(authorization).length" :lots="otherAgencyLots(authorization)" :selections="formulaTransferSelections(authorization)" :agencies="transferAgencies?.agencies??[]" :busy="saving" :loaded="!!transferStock" :load-error="!!transferStockError" :message="issuanceTransferMessage" @select="(lot,units)=>selectIssuanceTransfer(authorization,lot,units)" @reserve="reserveIssuanceTransfer" @remove="removeIssuanceTransfer" @refresh="refreshTransferStock" />
+            <RequestSupplyPlan
+                :published-shipments="requestShipments(request)"
+                :request="{ ...request, ...draft }"
+                :authorization="authorization"
+                :formula-description="authorizationProduct(authorization)?.formulaDescription"
+                :units-per-case="authorizationUnitsPerCase(authorization)"
+            />
             </fieldset>
             <label class="field-label">
                 Next Steps
@@ -826,10 +833,6 @@ async function saveAgencyUpdate() {
                 </span>
             </div>
             </fieldset>
-        </section>
-
-        <section v-if="canStaffEdit && draft.formulaAuthorizations?.length" class="detail-section issuance-supply-plans" aria-label="Issuance supply plans">
-            <RequestSupplyPlan v-for="(authorization,formulaIndex) in draft.formulaAuthorizations" :key="`supply-plan-${authorization.productName}-${formulaIndex}`" :published-shipments="requestShipments(request)" :request="{...request,...draft}" :authorization="authorization" :units-per-case="authorizationUnitsPerCase(authorization)" />
         </section>
 
         <McKessonOrderPanel v-if="canStaffEdit" :key="request.id" :request="request" :products="products ?? []" />

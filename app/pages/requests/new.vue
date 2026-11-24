@@ -22,7 +22,7 @@ import type { ProductForm, RequestRecord } from '~/../shared/domain';
 import { blankFormula, formulaEntryName, getFormulaFieldErrors, validateOtherFormulaName, validateFormulaEntry, validateFormulaSelection, type FormulaEntry } from '~/../shared/formulaEntries';
 import { validateAgencyFields, providerSignatureMessage } from '~/../shared/newRequestFields';
 import { formatPhoneNumber, normalizePhoneNumber } from '~/../shared/phone';
-import {availableUnits,daysRemaining,localDate,normalizeVariantText,surplusProductPackaging} from '#shared/surplus';
+import {availableUnits,daysRemaining,localDate,normalizeVariantText,surplusBarcodeMatches,surplusProductPackaging} from '#shared/surplus';
 
 const router = useRouter();
 const route = useRoute();
@@ -198,6 +198,33 @@ function initializeSurplus(entry: typeof surplusEntries.value[number]) {
     entry.flavor = match?.formulaFlavor ?? '';
     selectDefaultSurplusFlavor(entry);
 }
+const surplusUpcLookups = reactive(new WeakMap<typeof surplusEntries.value[number], { upc: string; message: string }>());
+function setSurplusUpc(entry: typeof surplusEntries.value[number], upc: string) {
+    surplusUpcLookups.set(entry, { upc, message: '' });
+}
+function lookupSurplusUpc(entry: typeof surplusEntries.value[number]) {
+    const upc = surplusUpcLookups.get(entry)?.upc ?? '';
+    if (!upc.trim()) return;
+    const matches = surplusBarcodeMatches(products.value, upc).filter(match => match.field === 'unitUpc');
+    const match = matches.length === 1 ? matches[0] : undefined;
+    const requestedName = match && requestedFormulaNames.value.find(name =>
+        normalizeVariantText(name) === normalizeVariantText(match.product.name),
+    );
+    if (!match || !requestedName) {
+        const message = matches.length > 1 ? 'More than one catalog product uses this UPC. Select the package manually.'
+            : match ? 'This UPC matches a formula that is not on this request.'
+            : 'Unit UPC not found. Select the formula and package manually.';
+        surplusUpcLookups.set(entry, { upc, message });
+        return;
+    }
+    const product = match.product;
+    entry.productName = requestedName;
+    entry.productForm = product.form as ProductForm;
+    entry.flavor = product.flavor?.trim() ?? '';
+    entry.packaging = surplusProductPackaging(product) || undefined;
+    surplusUpcLookups.set(entry, { upc, message: 'UPC matched. Formula and package details filled in.' });
+}
+
 function agencyAvailableSurplus(entry: typeof surplusEntries.value[number]) {
     const packageOptions = surplusPackages(entry);
     const selectedPackage = normalizeVariantText(entry.packaging ?? '');
@@ -811,6 +838,14 @@ async function submitRequest() {
             <p v-else-if="surplusInventoryError" class="surplus-stock-note" role="status">Current inventory could not be loaded. You can still enter the local agency’s surplus below.</p>
             <p v-if="storageClinicError" role="alert">Storage clinics could not be loaded. Try again before choosing a clinic.</p>
             <div v-for="(entry, index) in surplusEntries" :key="index" class="form-grid surplus-form-row">
+                <div class="form-field full">
+                    <label :for="`surplus-upc-${index}`">Unit UPC (optional)</label>
+                    <div class="request-surplus-upc-controls">
+                        <input :id="`surplus-upc-${index}`" :value="surplusUpcLookups.get(entry)?.upc" class="form-input" type="text" inputmode="numeric" autocomplete="off" placeholder="Scan or enter the individual package UPC" @input="setSurplusUpc(entry, ($event.target as HTMLInputElement).value)" @keydown.enter.prevent="lookupSurplusUpc(entry)" />
+                        <button class="button button-secondary" type="button" @click="lookupSurplusUpc(entry)">Look up UPC</button>
+                    </div>
+                    <small v-if="surplusUpcLookups.get(entry)?.message" role="status">{{ surplusUpcLookups.get(entry)?.message }}</small>
+                </div>
                 <div class="form-field">
                     <label :for="`surplus-formula-${index}`">Formula Name</label>
                     <select :id="`surplus-formula-${index}`" v-model="entry.productName" class="form-input" required @change="initializeSurplus(entry)">
@@ -925,6 +960,8 @@ async function submitRequest() {
 <style scoped>.correction-request-note{border-left:3px solid #902A92;padding:12px 16px;margin-bottom:16px;}.correction-request-note p{white-space:pre-wrap;overflow-wrap:anywhere;}</style>
 
 <style scoped>
+.request-surplus-upc-controls {display:flex;flex-wrap:wrap;align-items:center;gap:8px;}
+.request-surplus-upc-controls input {flex:1 1 220px;min-width:0;}
 .surplus-heading {justify-content:space-between; gap:12px;}
 .surplus-heading h2 {flex-shrink:0;}
 .surplus-inventory-link {margin-inline-start:6px;font-size:13px;}

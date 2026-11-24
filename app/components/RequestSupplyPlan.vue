@@ -3,14 +3,16 @@ import {unitLabel} from '~/../shared/quantityLabels';
 import type {RequestRecord} from '~/../shared/domain';
 import type {FormulaAuthorization} from '~/../shared/formulaAuthorizations';
 import {remainingSupplyOrder} from '~/../shared/issuanceSupply';
-const props=defineProps<{request:Partial<RequestRecord>;authorization:FormulaAuthorization;unitsPerCase?:number;publishedShipments?:RequestRecord['shipments']}>();
+const props=defineProps<{request:Partial<RequestRecord>;authorization:FormulaAuthorization;unitsPerCase?:number;formulaDescription?:string;publishedShipments?:RequestRecord['shipments']}>();
+const formulaLabel = computed(() => props.formulaDescription?.trim() || props.authorization.formulaName || props.authorization.productName);
 const plan=computed(()=>remainingSupplyOrder(props.request,props.authorization,props.unitsPerCase??props.authorization.unitsPerCase,props.publishedShipments));
 const sourceRows=computed(()=>plan.value.supply.rows.filter(row=>row.kind!=='surplus'));
 const surplusRows=computed(()=>[{key:'planned-surplus',kind:'surplus' as const,label:'Expected Surplus',units:plan.value.surplus}]);
 </script>
 <template>
-    <section class="supply-plan" aria-label="Live supply calculation">
+    <section class="supply-plan" :aria-label="`Supply Plan for ${formulaLabel}`">
         <h4>Supply Plan</h4>
+        <p class="supply-plan-formula">{{ formulaLabel }}</p>
         <p class="approved-total">{{plan.supply.total}} {{unitLabel(plan.supply.total)}} Approved</p>
         <RequestSupplySources :rows="sourceRows" />
         <div class="order-recommendation" aria-label="Recommended order" aria-live="polite">
@@ -33,6 +35,7 @@ const surplusRows=computed(()=>[{key:'planned-surplus',kind:'surplus' as const,l
 <style scoped>
 .supply-plan {margin-top:18px;padding:16px;border:2px solid light-dark(#002595,#75baff);border-radius:10px;background:var(--surface);}
 .supply-plan h4 {margin:0 0 4px;font-size:1rem;}
+.supply-plan-formula {margin:0 0 8px;font-size:1.15rem;font-weight:750;line-height:1.3;}
 .supply-plan .approved-total {margin:0 0 10px;color:light-dark(#002595,#75baff);font-size:1.15rem;font-weight:700;line-height:1.35;}
 .order-recommendation {margin:12px 0 6px;padding:12px;border-radius:6px;background:light-dark(#eef3ff,#172c46);}
 .order-recommendation h5 {margin:0 0 6px;font-size:.95rem;}

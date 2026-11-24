@@ -35,6 +35,7 @@ function earlierLocalIssuesComplete(row:FormulaAuthorization,month:string){let r
             <p v-else class="muted-copy">Issuance months have not been saved yet.</p>
             <section class="supply-breakdown" :aria-label="`Formula ${index+1} approved unit calculation`">
                 <h4>Supply Plan</h4>
+                <p class="supply-plan-formula">{{ product(authorization)?.formulaDescription?.trim() || authorization.formulaName || authorization.productName }}</p>
                 <p class="approved-supply-total">{{supplies[index]!.total}} {{unitLabel(supplies[index]!.total)}} Approved</p>
                 <RequestSupplySources :rows="supplies[index]!.rows" />
                 <p v-if="supplies[index]!.pending" class="muted-copy">Still to supply: {{supplies[index]!.pending}} {{unitLabel(supplies[index]!.pending)}}.</p>
@@ -49,6 +50,7 @@ function earlierLocalIssuesComplete(row:FormulaAuthorization,month:string){let r
 </template>
 
 <style scoped>
+.supply-plan-formula {margin:0 0 8px;font-size:1.15rem;font-weight:750;line-height:1.3;}
 .issuance-summary-months {width:100%;border-collapse:collapse;margin-top:14px;text-align:left;}
 .issuance-summary-months th {font-size:var(--form-label-size);font-weight:400;color:var(--muted);padding:0 12px 6px 0;}
 .issuance-summary-months td {padding:6px 12px 6px 0;font-size:1rem;font-weight:600;border-top:1px solid var(--line);}
