@@ -1,7 +1,7 @@
 import {unitLabel} from './quantityLabels';
 import type {RequestRecord} from './domain';
 import type {SurplusLot,SurplusTransfer} from './surplus';
-import {localDate,daysRemaining,normalizeVariantText} from './surplus';
+import {localDate,daysRemaining,normalizeVariantText,surplusProductPackaging} from './surplus';
 import {shipmentFormulaOptions} from './shipmentFormulas';
 import type {ProductRecord} from './domain';
 import type {RequestShipment} from './requestShipments';
@@ -32,7 +32,7 @@ export function matchingLocalSurplusLot(formula:import('./domain').RequestedForm
 }
 
 export function transferCatalogUnitsPerCase(lot:{formulaName:string;form:string;flavor?:string;packaging?:string},products:import('./domain').ProductRecord[]):number|undefined {
- const matches=products.filter(p=>normalizeVariantText(p.name)===normalizeVariantText(lot.formulaName)&&formKey(p.form)===formKey(lot.form)&&(!(p.flavor??p.genericFields?.flavor)||normalizeVariantText(p.flavor??p.genericFields?.flavor??'')===normalizeVariantText(lot.flavor??''))&&(!lot.packaging||normalizeVariantText(p.packaging??'')===normalizeVariantText(lot.packaging)));
+ const matches=products.filter(p=>normalizeVariantText(p.name)===normalizeVariantText(lot.formulaName)&&formKey(p.form)===formKey(lot.form)&&(!(p.flavor??p.genericFields?.flavor)||normalizeVariantText(p.flavor??p.genericFields?.flavor??'')===normalizeVariantText(lot.flavor??''))&&(!lot.packaging||normalizeVariantText(surplusProductPackaging(p))===normalizeVariantText(lot.packaging)));
  if(matches.some(product=>!Number.isSafeInteger(product.unitsPerCase)||!product.unitsPerCase||product.unitsPerCase<1))return undefined;
  const sizes=[...new Set(matches.map(p=>p.unitsPerCase).filter((n):n is number=>typeof n==='number'&&Number.isSafeInteger(n)&&n>0))];return sizes.length===1?sizes[0]:undefined;
 }

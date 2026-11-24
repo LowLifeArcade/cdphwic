@@ -44,6 +44,11 @@ export const isReviewer = (user: SessionUser) => user.role === 'admin' || user.m
 export const canSeeAgency = (user: SessionUser, agencyId: number) => isReviewer(user) || user.agencyId === agencyId;
 export const normalizeVariantText = (s: string) => s.trim().replace(/\s+/g, ' ').toLowerCase();
 export interface SurplusCatalogVariant {formulaName:string;form:ProductForm;flavor:string;packagings:string[]}
+export function surplusProductPackaging(product:Pick<ProductRecord,'packaging'|'yield'|'form'>):string{
+    const packaging=(product.packaging??'').trim().replace(/\s+/g,' ');
+    const size=product.form==='ready-to-feed'&&typeof product.yield==='number'&&Number.isFinite(product.yield)&&product.yield>0?`${product.yield} fl oz`:'';
+    return [size,packaging].filter(Boolean).join(' ');
+}
 export function surplusCatalogVariants(products:ProductRecord[]=[]):SurplusCatalogVariant[]{
     const variants=new Map<string,SurplusCatalogVariant>();
     for(const product of products){
@@ -51,7 +56,7 @@ export function surplusCatalogVariants(products:ProductRecord[]=[]):SurplusCatal
         const form=product.form;
         if(product.active===false||!formulaName||!['powder','concentrate','ready-to-feed'].includes(form))continue;
         const flavor=(product.flavor??'').trim().replace(/\s+/g,' ');
-        const packaging=(product.packaging??'').trim().replace(/\s+/g,' ');
+        const packaging=surplusProductPackaging(product);
         const key=JSON.stringify([normalizeVariantText(formulaName),form,normalizeVariantText(flavor)]);
         const existing=variants.get(key);
         if(existing){if(!existing.packagings.some(value=>normalizeVariantText(value)===normalizeVariantText(packaging)))existing.packagings.push(packaging);}

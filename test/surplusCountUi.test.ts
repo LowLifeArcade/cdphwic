@@ -13,6 +13,7 @@ describe('Formula Surplus agency count and lot groups',()=>{
   expect(page).toContain('v-model="input.clinicId"');
   expect(page).toContain('v-model="formulaSearch" class="form-input" type="search" placeholder="Search any part of a formula name"');
   expect(page).toContain('name.toLowerCase().includes(query)');
+  expect(page).toContain('v-if="!input.formulaName" class="surplus-formula-options"');
   expect(page).toContain('function selectSurplusFormula(name:string){input.formulaName=name;formulaSearch.value=name;input.form=\'\';input.flavor=\'\';input.packaging=\'\';');
   expect(page).toContain('v-model="input.form" class="form-input" required :disabled="!surplusAvailableForms.length" @change="selectSurplusForm"');
   expect(page).toContain('surplusCatalogVariants(productData.value?.products??[])');

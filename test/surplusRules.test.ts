@@ -35,9 +35,9 @@ describe('surplus rules', () => {
     });
     it('retains multiple package sizes on one formula and form variant',()=>{
         expect(surplusCatalogVariants([
-            {id:1,name:'Similac NeoSure',form:'ready-to-feed',flavor:'',packaging:'2 fl oz',active:true},
-            {id:2,name:'Similac NeoSure',form:'ready-to-feed',flavor:'',packaging:'32 fl oz',active:true},
-        ] as any)).toEqual([{formulaName:'Similac NeoSure',form:'ready-to-feed',flavor:'',packagings:['2 fl oz','32 fl oz']}]);
+            {id:1,name:'Similac NeoSure',form:'ready-to-feed',flavor:'Unflavored',packaging:'Bottle',yield:2,active:true},
+            {id:2,name:'Similac NeoSure',form:'ready-to-feed',flavor:'Unflavored',packaging:'Bottle',yield:32,active:true},
+        ] as any)).toEqual([{formulaName:'Similac NeoSure',form:'ready-to-feed',flavor:'Unflavored',packagings:['2 fl oz Bottle','32 fl oz Bottle']}]);
     });
     it('defaults a catalog choice only when there is exactly one option',()=>{
         expect(defaultSurplusCatalogOption(['powder'])).toBe('powder');
