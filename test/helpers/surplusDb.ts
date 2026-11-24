@@ -14,6 +14,7 @@ export function surplusDb() {
     sqlite.exec(readFileSync(new URL('../../db/migrations/0015_surplus_movement_corrections.sql', import.meta.url), 'utf8'));
     sqlite.exec(readFileSync(new URL('../../db/migrations/0016_transfer_requested_label_count.sql', import.meta.url), 'utf8'));
     sqlite.exec(readFileSync(new URL('../../db/migrations/0017_request_surplus_allocations.sql', import.meta.url), 'utf8'));
+    sqlite.exec(readFileSync(new URL('../../db/migrations/0021_surplus_packaging.sql', import.meta.url), 'utf8'));
     addProductTables(sqlite);
     const statement = (sql: string, values: unknown[] = []) => ({
         bind: (...params: unknown[]) => statement(sql, params),

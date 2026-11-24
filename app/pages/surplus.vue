@@ -6,7 +6,7 @@ import {surplusShipmentDraft} from '~/../shared/requestTransfers';
 import {formatClinic,type ClinicAddress,type ClinicRecord} from '~/../shared/shipping';
 import {groupSurplusLots} from '~/../shared/surplusInventoryGroups';
 import {surplusMovementReason} from '~/../shared/surplusMovement';
-import type {ProductForm,ProductRecord,RequestRecord} from '~/../shared/domain';
+import type {ProductRecord,RequestRecord} from '~/../shared/domain';
 import type { SurplusLot } from '~/../shared/surplus';
 function pickupAddress(json?:string|null){try{const value=JSON.parse(json??'null') as ClinicAddress|null;return value?formatClinic(value):'';}catch{return '';}}
 function dayAfter(date:string){return new Date(Date.parse(`${date}T00:00:00Z`)+86400000).toISOString().slice(0,10);}
@@ -38,19 +38,25 @@ const { data, refresh, error } = await useFetch('/api/surplus', { headers, serve
 const {data:productData, error:productError}=await useFetch<{products:ProductRecord[]}>('/api/products');
 const surplusVariants=computed(()=>surplusCatalogVariants(productData.value?.products??[]));
 const surplusFormulaNames=computed(()=>[...new Map(surplusVariants.value.map(variant=>[variant.formulaName.toLowerCase(),variant.formulaName])).values()]);
+const formulaSearch=ref('');
+const filteredSurplusFormulaNames=computed(()=>{const query=formulaSearch.value.trim().toLowerCase();return surplusFormulaNames.value.filter(name=>!query||name.toLowerCase().includes(query));});
 const surplusAvailableForms=computed(()=>[...new Set(surplusVariants.value.filter(variant=>variant.formulaName===input.formulaName).map(variant=>variant.form))]);
 const surplusAvailableFlavors=computed(()=>[...new Set(surplusVariants.value.filter(variant=>variant.formulaName===input.formulaName&&variant.form===input.form).map(variant=>variant.flavor))]);
+const surplusAvailablePackagings=computed(()=>[...new Set(surplusVariants.value.filter(variant=>variant.formulaName===input.formulaName&&variant.form===input.form&&variant.flavor===input.flavor).flatMap(variant=>variant.packagings).filter(Boolean))]);
+const selectedSurplusFlavor=ref('__unselected__');
 const correctedVariantSelection=ref('');
 function variantSelectionKey(variant:{formulaName:string;form:string;flavor:string}){return JSON.stringify([variant.formulaName,variant.form,variant.flavor]);}
 function selectCorrectedVariant(key:string){const variant=surplusVariants.value.find(item=>variantSelectionKey(item)===key);if(!variant)return;input.correctedFormulaName=variant.formulaName;input.correctedForm=variant.form;input.correctedFlavor=variant.flavor;}
-function selectSurplusFormula(){input.form=surplusAvailableForms.value[0]??'';input.flavor=surplusVariants.value.find(variant=>variant.formulaName===input.formulaName&&variant.form===input.form)?.flavor??'';}
-function selectSurplusForm(){input.flavor=surplusVariants.value.find(variant=>variant.formulaName===input.formulaName&&variant.form===input.form)?.flavor??'';}
+function selectSurplusFormula(name:string){input.formulaName=name;formulaSearch.value=name;input.form='';input.flavor='';input.packaging='';selectedSurplusFlavor.value='__unselected__';}
+function updateSurplusFormulaSearch(){input.formulaName='';input.form='';input.flavor='';input.packaging='';selectedSurplusFlavor.value='__unselected__';}
+function selectSurplusForm(){input.flavor='';input.packaging='';selectedSurplusFlavor.value='__unselected__';}
+function selectSurplusFlavor(value:string){input.flavor=value==='__unselected__'||value==='__unflavored__'?'':value;input.packaging=surplusAvailablePackagings.value.length===1?surplusAvailablePackagings.value[0]:'';}
 function initializeSurplusCatalogSelection(){
  const formula=surplusFormulaNames.value.find(name=>name.toLowerCase()===input.formulaName.trim().toLowerCase());
- if(!formula){input.formulaName='';input.form='';input.flavor='';return;}
+ if(!formula){input.formulaName='';formulaSearch.value='';input.form='';input.flavor='';input.packaging='';selectedSurplusFlavor.value='__unselected__';return;}
  input.formulaName=formula;
- if(!surplusAvailableForms.value.includes(input.form as ProductForm))input.form=surplusAvailableForms.value[0]??'';
- if(!surplusAvailableFlavors.value.includes(input.flavor))input.flavor=surplusAvailableFlavors.value[0]??'';
+ formulaSearch.value=formula;
+ input.form='';input.flavor='';input.packaging='';selectedSurplusFlavor.value='__unselected__';
 }
 async function refreshTransferState(){await refresh();await refreshNuxtData('pending-transfer-count');}
 const { data: agencyData } = await useFetch('/api/agencies');
@@ -77,7 +83,7 @@ const lots = computed(() =>
             (!agency.value || String(l.agencyId) === agency.value) &&
             (!clinic.value || (clinic.value==='unspecified'?!l.clinicId:l.clinicId===clinic.value)) &&
             (!search.value ||
-                `${l.formulaName} ${l.flavor} ${l.form}`.toLowerCase().includes(search.value.toLowerCase())),
+                `${l.formulaName} ${l.flavor} ${l.form} ${l.packaging??''}`.toLowerCase().includes(search.value.trim().toLowerCase())),
     ),
 );
 function inventoryLotIsArchived(lot:SurplusLot){return lot.onHand===0&&lot.expiredUnits===0;}
@@ -98,7 +104,7 @@ function moveSurplusTab(event:KeyboardEvent){
     nextTick(()=>document.getElementById(`${next}-tab`)?.focus());
 }
 const agencyName = (id: number) => agencyData.value?.agencies.find((a) => a.id === id)?.name ?? `Agency ${id}`;
-function transferFormulaDisplay(transfer:any){return [transfer.formula_name,transfer.form==='concentrate'?'Concentrate':formulaFormLabel(transfer.form),transfer.flavor].filter(Boolean).join(' ');}
+function transferFormulaDisplay(transfer:any){return [transfer.formula_name,transfer.form==='concentrate'?'Concentrate':formulaFormLabel(transfer.form),transfer.flavor,transfer.packaging].filter(Boolean).join(' ');}
 const transferRows=computed(()=>data.value?.transfers??[]);
 const sendingTransfers=computed(()=>transferRows.value.filter(t=>!['cancelled','received'].includes(t.status)&&(data.value?.user.memberType!=='agency'||t.source_agency_id===data.value?.user.agencyId)));
 const receivingTransfers=computed(()=>transferRows.value.filter(t=>!['cancelled','received'].includes(t.status)&&(data.value?.user.memberType!=='agency'||t.destination_agency_id===data.value?.user.agencyId)));
@@ -130,6 +136,7 @@ const input = reactive({
     correctedExpirationDate:'',
     form: 'powder',
     flavor: '',
+    packaging: '',
     agencyId: 10,
     dueDate: localDate(),
     trackingReference: '',
@@ -158,8 +165,10 @@ function start(kind: string, lot?: SurplusLot, item?: any) {
         formulaName: ['new','forecast'].includes(kind)?String(route.query.formula??''):input.formulaName,
         form: '',
         flavor: '',
+        packaging: '',
         trackingReference: '',
     });
+    selectedSurplusFlavor.value='__unselected__';
     if(['new','forecast'].includes(kind))initializeSurplusCatalogSelection();
     if(kind==='new'&&!reviewer.value)input.agencyId=data.value?.user.agencyId??0;
     if(kind==='donate')input.reason='Donation';
@@ -284,7 +293,7 @@ async function submit() {
             return $fetch('/api/surplus/commands',{method:'POST',headers:headers.value,body:{operationId:operationId.value,kind:'correct-entry',correctionOf:correctionTarget.value.id,lotId:selected.value.id,quantity:Number(input.quantity),correctedFormulaName:input.correctedFormulaName,correctedForm:input.correctedForm,correctedFlavor:input.correctedFlavor,correctedExpirationDate:input.correctedExpirationDate,reason:input.reason,confirmerName:input.confirmerName,date:input.date,expectedVersion:selected.value.version}});
         }
         if(modal.value==='new'&&!reviewer.value)
-            return $fetch('/api/surplus/counts',{method:'POST',headers:headers.value,body:{operationId:operationId.value,formulaName:input.formulaName,form:input.form,flavor:input.flavor,clinicId:input.clinicId||undefined,quantity:Number(input.quantity),expirationDate:input.expirationDate,date:input.date,confirmerName:input.confirmerName,reason:input.reason}});
+            return $fetch('/api/surplus/counts',{method:'POST',headers:headers.value,body:{operationId:operationId.value,formulaName:input.formulaName,form:input.form,flavor:input.flavor==='__unflavored__'?'':input.flavor,packaging:input.packaging,clinicId:input.clinicId||undefined,quantity:Number(input.quantity),expirationDate:input.expirationDate,date:input.date,confirmerName:input.confirmerName,reason:input.reason}});
         if (modal.value === 'forecast')
             return $fetch('/api/surplus/forecasts', {
                 method: 'POST',
@@ -309,6 +318,7 @@ async function submit() {
                           formulaName: report.value.formula_name,
                           form: report.value.form,
                           flavor: report.value.flavor,
+                          packaging: report.value.packaging??'',
                           expirationDate: input.expirationDate,
                       }
                     : { ...input, clinicId: input.clinicId || undefined, agencyId: Number(input.agencyId) },
@@ -488,13 +498,13 @@ async function upload(kind: string, event: Event) {
                 <tbody>
                     <tr v-for="row in inventoryRows" :key="row.key" :class="row.kind==='group'?'inventory-group-row':row.group.lots.length>1?'inventory-lot-detail':''">
                         <template v-if="row.kind==='group'">
-                            <td class="inventory-product"><strong>{{row.group.formulaName}} {{row.group.form==='concentrate'?'Concentrate':formulaFormLabel(row.group.form)}}</strong><span v-if="reviewer || row.group.flavor"><template v-if="row.group.flavor">{{row.group.flavor}}<template v-if="reviewer"> · </template></template><template v-if="reviewer">{{agencyName(row.group.agencyId)}}</template></span><span>{{row.group.clinicName||'Clinic not specified'}}</span></td>
+                            <td class="inventory-product"><strong>{{row.group.formulaName}} {{row.group.form==='concentrate'?'Concentrate':formulaFormLabel(row.group.form)}}</strong><span v-if="row.group.flavor || row.group.packaging">{{[row.group.flavor,row.group.packaging].filter(Boolean).join(' · ')}}</span><span v-if="reviewer">{{agencyName(row.group.agencyId)}}</span><span>{{row.group.clinicName||'Clinic not specified'}}</span></td>
                             <td>{{row.group.lots.length}} lots · earliest <strong class="inventory-expiration">{{formatDisplayDate(row.group.earliestExpiration)}}</strong></td>
                             <td><strong class="inventory-quantity">{{row.group.onHand}}</strong></td><td><strong class="inventory-quantity">{{row.group.reserved}}</strong></td><td class="inventory-available"><strong>{{row.group.available}}</strong></td><td><strong class="inventory-quantity">{{row.group.expiredUnits}}</strong></td><td><strong class="inventory-quantity">{{row.group.total}}</strong></td>
                             <td class="row-actions"><button class="button" type="button" :aria-expanded="!!expandedInventoryGroups[row.group.key]" @click="toggleInventoryGroup(row.group.key)">{{expandedInventoryGroups[row.group.key]?'Hide':'View'}} {{row.group.lots.length}} expiration lots</button></td>
                         </template>
                         <template v-else>
-                            <td class="inventory-product"><template v-if="row.group.lots.length===1"><strong>{{row.group.formulaName}} {{row.group.form==='concentrate'?'Concentrate':formulaFormLabel(row.group.form)}}</strong><span v-if="reviewer || row.group.flavor"><template v-if="row.group.flavor">{{row.group.flavor}}<template v-if="reviewer"> · </template></template><template v-if="reviewer">{{agencyName(row.group.agencyId)}}</template></span><span>{{row.group.clinicName||'Clinic not specified'}}</span></template><span v-else class="inventory-lot-label">Expiration lot</span></td>
+                            <td class="inventory-product"><template v-if="row.group.lots.length===1"><strong>{{row.group.formulaName}} {{row.group.form==='concentrate'?'Concentrate':formulaFormLabel(row.group.form)}}</strong><span v-if="row.group.flavor || row.group.packaging">{{[row.group.flavor,row.group.packaging].filter(Boolean).join(' · ')}}</span><span v-if="reviewer">{{agencyName(row.group.agencyId)}}</span><span>{{row.group.clinicName||'Clinic not specified'}}</span></template><span v-else class="inventory-lot-label">Expiration lot</span></td>
                             <td><strong class="inventory-expiration">{{formatDisplayDate(row.lot.expirationDate)}}</strong></td><td><strong class="inventory-quantity">{{row.lot.onHand}}</strong></td><td><strong class="inventory-quantity">{{row.lot.reserved}}</strong></td><td class="inventory-available"><strong>{{availableUnits(row.lot)}}</strong></td><td><strong class="inventory-quantity">{{row.lot.expiredUnits}}</strong></td><td><strong class="inventory-quantity">{{row.lot.onHand+row.lot.expiredUnits}}</strong></td>
                             <td class="row-actions">
                                 <button v-if="reviewer && availableUnits(row.lot)>0 && !row.lot.expiredUnits && daysRemaining(row.lot.expirationDate,localDate())>60" class="button button-secondary" @click="useInRequest(row.lot)">Use in Request</button>
@@ -512,7 +522,7 @@ async function upload(kind: string, event: Event) {
             <summary>Archived depleted lots ({{archivedLots.length}})</summary>
             <p class="muted-copy">These lots have no remaining physical stock. Open a lot’s history if you need to review its inventory changes.</p>
             <article v-for="lot in archivedLots" :key="lot.id" class="inventory-archive-row">
-                <div><strong>{{lot.formulaName}} {{lot.form==='concentrate'?'Concentrate':formulaFormLabel(lot.form)}}</strong><small v-if="lot.flavor">{{lot.flavor}}</small><small>{{lot.clinicName||'Clinic not specified'}}<template v-if="reviewer"> · {{agencyName(lot.agencyId)}}</template></small></div>
+                <div><strong>{{lot.formulaName}} {{lot.form==='concentrate'?'Concentrate':formulaFormLabel(lot.form)}}</strong><small v-if="lot.flavor || lot.packaging">{{[lot.flavor,lot.packaging].filter(Boolean).join(' · ')}}</small><small>{{lot.clinicName||'Clinic not specified'}}<template v-if="reviewer"> · {{agencyName(lot.agencyId)}}</template></small></div>
                 <div><span>Exp</span><strong>{{formatDisplayDate(lot.expirationDate)}}</strong></div>
                 <div><span>Total</span><strong>{{lot.onHand+lot.expiredUnits}}</strong></div>
                 <div class="inventory-archive-actions"><button class="text-button" type="button" @click="showHistory(lot)">History</button><button class="text-button" type="button" @click="start('edit-inventory',lot)">Edit</button></div>
@@ -532,7 +542,7 @@ async function upload(kind: string, event: Event) {
                 v-for="r in pendingAgencyCounts"
                 :key="r.id"
             >
-                <strong>{{ agencyName(r.agency_id) }} · {{ r.formula_name }}</strong> · {{ formulaFormLabel(r.form) }} {{ r.flavor }} ·
+                <strong>{{ agencyName(r.agency_id) }} · {{ r.formula_name }}</strong> · {{ formulaFormLabel(r.form) }} {{ r.flavor }}<template v-if="r.packaging"> · {{r.packaging}}</template> ·
                 {{ r.reported_units }} {{unitLabel(r.reported_units)}} · expires {{ formatDisplayDate(r.expiration_date) }}
                 <p>{{r.clinic_name || 'Clinic not specified'}}</p><p>Counted {{ formatDisplayDate(r.counted_at) }} by {{ r.confirmer_name }}. {{ r.reason }}</p>
                 <button
@@ -550,7 +560,7 @@ async function upload(kind: string, event: Event) {
                 v-for="f in data?.forecasts"
                 :key="f.id"
             >
-                <strong>{{ agencyName(f.agency_id) }} · {{ f.formula_name }}</strong> · {{ formulaFormLabel(f.form) }} {{ f.flavor }}
+                <strong>{{ agencyName(f.agency_id) }} · {{ f.formula_name }}</strong> · {{ formulaFormLabel(f.form) }} {{ f.flavor }}<template v-if="f.packaging"> · {{f.packaging}}</template>
                 <p>
                     {{f.clinic_name || 'Clinic not specified'}} · {{ f.expected_units }} anticipated {{unitLabel(f.expected_units)}} · confirmation due {{ formatDisplayDate(f.due_date) }} · {{ f.status }}
                     <span v-if="f.actual_units !== null"> · actual {{ f.actual_units }}</span>
@@ -594,7 +604,7 @@ async function upload(kind: string, event: Event) {
             >
                 <h2 id="surplus-dialog-title">{{modalTitle}}</h2>
                 <p v-if="selected && !['history','edit-inventory','use-request'].includes(modal)">
-                    {{ selected.formulaName }} · {{ selected.form }} {{ selected.flavor }} ·
+                    {{ selected.formulaName }} · {{ selected.form }} {{ selected.flavor }}<template v-if="selected.packaging"> · {{selected.packaging}}</template> ·
                     {{ agencyName(selected.agencyId) }} · {{selected.clinicName || 'Clinic not specified'}}
                 </p>
                 <p
@@ -605,7 +615,7 @@ async function upload(kind: string, event: Event) {
                 </p>
                 <div v-if="modal === 'history'">
                     <div v-if="selected" class="history-product">
-                        <strong>{{[selected.formulaName,formulaFormLabel(selected.form),selected.flavor].filter(Boolean).join(' ')}}</strong>
+                        <strong>{{[selected.formulaName,formulaFormLabel(selected.form),selected.flavor,selected.packaging].filter(Boolean).join(' ')}}</strong>
                         <span>{{agencyName(selected.agencyId)}} · {{selected.clinicName || 'Clinic not specified'}}</span>
                     </div>
                     <p v-if="!history.length" class="history-empty">No inventory history for this lot yet.</p>
@@ -637,7 +647,7 @@ async function upload(kind: string, event: Event) {
                 </div>
                 <div v-else-if="modal==='edit-inventory'" class="inventory-edit-actions">
                     <div v-if="selected" class="history-product">
-                        <strong>{{[selected.formulaName,formulaFormLabel(selected.form),selected.flavor].filter(Boolean).join(' ')}}</strong>
+                        <strong>{{[selected.formulaName,formulaFormLabel(selected.form),selected.flavor,selected.packaging].filter(Boolean).join(' ')}}</strong>
                         <span>{{agencyName(selected.agencyId)}} · {{selected.clinicName || 'Clinic not specified'}}</span>
                     </div>
                     <p>Select an inventory action for this lot.</p>
@@ -651,7 +661,7 @@ async function upload(kind: string, event: Event) {
                 </div>
                 <form v-else-if="modal==='use-request'" @submit.prevent="openShipment">
                     <div v-if="selected" class="history-product">
-                        <strong>{{[selected.formulaName,formulaFormLabel(selected.form),selected.flavor].filter(Boolean).join(' ')}}</strong>
+                        <strong>{{[selected.formulaName,formulaFormLabel(selected.form),selected.flavor,selected.packaging].filter(Boolean).join(' ')}}</strong>
                         <span>{{agencyName(selected.agencyId)}} · {{selected.clinicName || 'Clinic not specified'}}</span>
                     </div>
                     <p>Select a matching request. You’ll choose the quantity and reserve stock in its Shipment section.</p>
@@ -666,7 +676,7 @@ async function upload(kind: string, event: Event) {
                 </form>
                 <form v-else-if="modal==='correct-entry'" class="correction-form" @submit.prevent="submit">
                     <div v-if="selected" class="history-product">
-                        <strong>{{[selected.formulaName,formulaFormLabel(selected.form),selected.flavor].filter(Boolean).join(' ')}}</strong>
+                        <strong>{{[selected.formulaName,formulaFormLabel(selected.form),selected.flavor,selected.packaging].filter(Boolean).join(' ')}}</strong>
                         <span>{{agencyName(selected.agencyId)}} · {{selected.clinicName || 'Clinic not specified'}}</span>
                     </div>
                     <article v-if="correctionTarget" class="history-entry correction-original-entry">
@@ -708,10 +718,12 @@ async function upload(kind: string, event: Event) {
                                 </option>
                             </select></label
                         ><label
-                            >Formula Name<select v-model="input.formulaName" class="form-input" required @change="selectSurplusFormula"><option value="">Select a product formula</option><option v-for="name in surplusFormulaNames" :key="name" :value="name">{{name}}</option></select><small v-if="productError" role="alert">The product catalog could not be loaded. Close and try again.</small><small v-else-if="!surplusFormulaNames.length">No active formula products are available in the Products list.</small></label
+                            >Formula Name<div class="surplus-formula-picker"><input v-model="formulaSearch" class="form-input" type="search" placeholder="Search any part of a formula name" autocomplete="off" @input="updateSurplusFormulaSearch"/><div v-if="formulaSearch.trim() && !input.formulaName" class="surplus-formula-options" role="listbox" aria-label="Matching formula names"><button v-for="name in filteredSurplusFormulaNames" :key="name" type="button" role="option" @click="selectSurplusFormula(name)">{{name}}</button><small v-if="!filteredSurplusFormulaNames.length">No matching formulas.</small></div><small v-if="input.formulaName">Selected: {{input.formulaName}}</small></div><small v-if="productError" role="alert">The product catalog could not be loaded. Close and try again.</small><small v-else-if="!surplusFormulaNames.length">No active formula products are available in the Products list.</small></label
                         ><label
                             >Form<select v-model="input.form" class="form-input" required :disabled="!surplusAvailableForms.length" @change="selectSurplusForm"><option value="">Select a form</option><option v-for="form in surplusAvailableForms" :key="form" :value="form">{{formulaFormLabel(form)}}</option></select></label
-                        ><label>Flavor<select v-model="input.flavor" class="form-input" :disabled="!input.formulaName"><option v-for="flavor in surplusAvailableFlavors" :key="flavor||'unflavored'" :value="flavor">{{flavor||'Unflavored'}}</option></select></label
+                        ><label>Flavor<select v-model="selectedSurplusFlavor" class="form-input" required :disabled="!input.form" @change="selectSurplusFlavor(selectedSurplusFlavor)"><option value="__unselected__">Select a flavor</option><option v-for="flavor in surplusAvailableFlavors" :key="flavor||'unflavored'" :value="flavor||'__unflavored__'">{{flavor||'Unflavored'}}</option></select></label
+                        ><label v-if="surplusAvailablePackagings.length>1">Package size<select v-model="input.packaging" class="form-input" required><option value="">Select a package size</option><option v-for="packaging in surplusAvailablePackagings" :key="packaging" :value="packaging">{{packaging}}</option></select></label
+                        ><label v-else-if="surplusAvailablePackagings.length===1">Package size<input class="form-input" :value="surplusAvailablePackagings[0]" disabled/></label
                     ></template>
                     <label v-if="['new','forecast','review','confirm','assign-clinic'].includes(modal)">{{modal==='confirm'?'Actual storage clinic':'Storage clinic'}}<select v-model="input.clinicId" :required="modal==='assign-clinic'" :disabled="clinicStatus==='pending'"><option value="">Clinic not specified</option><option v-for="c in formClinics?.clinics" :key="c.id" :value="c.id">{{c.clinicName}}</option></select></label>
                     <p v-if="clinicError &amp;&amp; ['new','forecast','review','confirm','assign-clinic'].includes(modal)" role="alert">Clinics could not be loaded. Close and try again.</p>
@@ -954,6 +966,9 @@ async function upload(kind: string, event: Event) {
 .correction-original-entry {margin:8px 0 16px;padding:12px;border:1px solid var(--line);border-radius:8px;background:var(--surface-raised);}
 .correction-fields {display:grid;gap:8px;}
 .correction-fields label {margin:0;font-size:13px;font-weight:600;}
+.surplus-formula-options {display:grid;max-height:220px;overflow:auto;border:1px solid var(--line);border-radius:6px;background:var(--surface);}
+.surplus-formula-options button {padding:9px 10px;border:0;border-bottom:1px solid var(--line);background:transparent;color:var(--text);text-align:left;cursor:pointer;}
+.surplus-formula-options button:hover,.surplus-formula-options button:focus-visible {background:var(--surface-raised);}
 label {
     display: grid;
     gap: 6px;

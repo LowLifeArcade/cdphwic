@@ -5,6 +5,7 @@ export interface SurplusVariant {
     formulaName: string;
     form: string;
     flavor: string;
+    packaging?:string;
     expirationDate: string;
 }
 export interface SurplusLot extends SurplusVariant {
@@ -59,8 +60,11 @@ export function surplusCatalogVariants(products:ProductRecord[]=[]):SurplusCatal
     return [...variants.values()].sort((a,b)=>a.formulaName.localeCompare(b.formulaName)||a.form.localeCompare(b.form)||a.flavor.localeCompare(b.flavor));
 }
 export function defaultSurplusCatalogOption<T>(options:readonly T[]):T|undefined{return options.length===1?options[0]:undefined;}
-export const variantKey = (v: SurplusVariant) =>
-    JSON.stringify([normalizeVariantText(v.formulaName), v.form, normalizeVariantText(v.flavor), v.expirationDate]);
+export const variantKey = (v: SurplusVariant) => {
+    const base=[normalizeVariantText(v.formulaName),v.form,normalizeVariantText(v.flavor)];
+    const packaging=normalizeVariantText(v.packaging??'');
+    return JSON.stringify(packaging?[...base,packaging,v.expirationDate]:[...base,v.expirationDate]);
+};
 export const lotKey = (v: SurplusVariant) => v.clinicId
     ? JSON.stringify([...JSON.parse(variantKey(v)),v.clinicId]) : variantKey(v);
 export const availableUnits = (lot: Pick<SurplusLot, 'onHand' | 'reserved' | 'expiredUnits'>) =>
@@ -103,6 +107,7 @@ export interface SurplusReport {
     formula_name: string;
     form: string;
     flavor: string;
+    packaging?:string;
     expiration_date: string;
     reported_units: number;
     status: string;
@@ -121,6 +126,7 @@ export interface SurplusForecast {
     formula_name: string;
     form: string;
     flavor: string;
+    packaging?:string;
     expected_units: number;
     due_date: string;
     status: string;
@@ -153,6 +159,7 @@ export interface SurplusTransfer {
     formula_name: string;
     form: string;
     flavor: string;
+    packaging?:string;
     expiration_date: string;
     tracking_reference: string;
 }

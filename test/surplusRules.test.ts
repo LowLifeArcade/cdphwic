@@ -33,9 +33,21 @@ describe('surplus rules', () => {
             { formulaName: 'Fortini', form: 'ready-to-feed', flavor: 'Vanilla', packagings: [''] },
         ]);
     });
+    it('retains multiple package sizes on one formula and form variant',()=>{
+        expect(surplusCatalogVariants([
+            {id:1,name:'Similac NeoSure',form:'ready-to-feed',flavor:'',packaging:'2 fl oz',active:true},
+            {id:2,name:'Similac NeoSure',form:'ready-to-feed',flavor:'',packaging:'32 fl oz',active:true},
+        ] as any)).toEqual([{formulaName:'Similac NeoSure',form:'ready-to-feed',flavor:'',packagings:['2 fl oz','32 fl oz']}]);
+    });
     it('defaults a catalog choice only when there is exactly one option',()=>{
         expect(defaultSurplusCatalogOption(['powder'])).toBe('powder');
         expect(defaultSurplusCatalogOption(['powder','ready-to-feed'])).toBeUndefined();
         expect(defaultSurplusCatalogOption([])).toBeUndefined();
+    });
+    it('keeps package sizes as separate inventory identities while preserving legacy keys',()=>{
+        const base={formulaName:'Similac NeoSure',form:'ready-to-feed',flavor:'',expirationDate:'2027-01-01'};
+        expect(variantKey(base)).not.toBe(variantKey({...base,packaging:'2 fl oz'}));
+        expect(variantKey({...base,packaging:'2 fl oz'})).not.toBe(variantKey({...base,packaging:'32 fl oz'}));
+        expect(variantKey({...base,packaging:' 2   FL OZ '})).toBe(variantKey({...base,packaging:'2 fl oz'}));
     });
 });

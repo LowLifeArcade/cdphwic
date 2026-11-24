@@ -3,7 +3,7 @@ import type {ClinicAddress} from '../../shared/shipping';
 import {isReviewer,lotKey,type SurplusLot} from '../../shared/surplus';
 
 const fail=(statusCode:number,statusMessage:string)=>Object.assign(new Error(statusMessage),{statusCode,statusMessage});
-export const surplusLotColumns='id,agency_id AS agencyId,formula_name AS formulaName,form,flavor,expiration_date AS expirationDate,on_hand AS onHand,reserved,expired_units AS expiredUnits,version,clinic_id AS clinicId,clinic_name AS clinicName,clinic_address AS clinicAddress';
+export const surplusLotColumns='id,agency_id AS agencyId,formula_name AS formulaName,form,flavor,packaging,expiration_date AS expirationDate,on_hand AS onHand,reserved,expired_units AS expiredUnits,version,clinic_id AS clinicId,clinic_name AS clinicName,clinic_address AS clinicAddress';
 export function decodeSurplusLot(row:SurplusLot):SurplusLot {
  const {clinicId,clinicName,clinicAddress,...rest}=row;
  return {...rest,...(clinicId?{clinicId,clinicName:clinicName??'Clinic not specified',clinicAddress:typeof clinicAddress==='string'?JSON.parse(clinicAddress):clinicAddress}:{})};

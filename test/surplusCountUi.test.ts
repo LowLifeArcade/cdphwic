@@ -11,9 +11,16 @@ describe('Formula Surplus agency count and lot groups',()=>{
   expect(page).toContain('v-model="input.confirmerName"');
   expect(page).toContain('v-model="input.date"');
   expect(page).toContain('v-model="input.clinicId"');
-  expect(page).toContain('v-model="input.formulaName" class="form-input" required @change="selectSurplusFormula"');
+  expect(page).toContain('v-model="formulaSearch" class="form-input" type="search" placeholder="Search any part of a formula name"');
+  expect(page).toContain('name.toLowerCase().includes(query)');
+  expect(page).toContain('function selectSurplusFormula(name:string){input.formulaName=name;formulaSearch.value=name;input.form=\'\';input.flavor=\'\';input.packaging=\'\';');
   expect(page).toContain('v-model="input.form" class="form-input" required :disabled="!surplusAvailableForms.length" @change="selectSurplusForm"');
   expect(page).toContain('surplusCatalogVariants(productData.value?.products??[])');
+  expect(page).toContain('input.form=\'\';input.flavor=\'\';');
+  expect(page).toContain('Select a flavor');
+  expect(page).toContain('Package size');
+  expect(page).toContain('v-for="packaging in surplusAvailablePackagings"');
+  expect(page).toContain('packaging:input.packaging');
   expect(page).not.toContain('v-model="input.formulaName"\n');
   expect(page).toContain('surplusMovementReason(h.reason)');
  });
@@ -106,14 +113,13 @@ describe('Formula Surplus agency count and lot groups',()=>{
  });
 
  it('shows the agency name in inventory product details only for reviewer views',()=>{
-  expect(page).toContain('<span v-if="reviewer || row.group.flavor">');
-  expect(page).toContain('<template v-if="reviewer">{{agencyName(row.group.agencyId)}}</template>');
+  expect(page).toContain('<span v-if="reviewer">{{agencyName(row.group.agencyId)}}</span>');
   expect(page).toContain('row.group.clinicName');
  });
 
  it('formats inventory history dates and product details consistently',()=>{
   expect(page).toContain('{{formatDisplayDate(h.created_at)}}');
-  expect(page).toContain('[selected.formulaName,formulaFormLabel(selected.form),selected.flavor].filter(Boolean).join(\' \')');
+  expect(page).toContain('[selected.formulaName,formulaFormLabel(selected.form),selected.flavor,selected.packaging].filter(Boolean).join(\' \')');
   expect(page).toContain('function movementLabel');
   expect(page).toContain("reconcile:'Physical count'");
   expect(page).toContain('class="history-entry-heading"');

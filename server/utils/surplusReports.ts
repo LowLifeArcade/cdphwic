@@ -11,6 +11,7 @@ export interface AgencySurplusCountInput {
     formulaName:string;
     form:string;
     flavor?:string;
+    packaging?:string;
     clinicId?:string;
     quantity:number;
     expirationDate:string;
@@ -29,7 +30,7 @@ export async function submitAgencySurplusCount(db:D1Database,user:SessionUser,in
     if(input.reason!==undefined&&(typeof input.reason!=='string'||input.reason.length>2000))reject('Count reason must be 2,000 characters or fewer.');
     const clinic=await resolveSurplusClinic(db,user.agencyId!,input.clinicId);
     await expireSurplusLots(db,today);
-    const variant={formulaName:input.formulaName.trim().replace(/\s+/g,' '),form:input.form,flavor:(input.flavor??'').trim().replace(/\s+/g,' '),expirationDate:input.expirationDate,clinicId:clinic.clinicId};
+    const variant={formulaName:input.formulaName.trim().replace(/\s+/g,' '),form:input.form,flavor:(input.flavor??'').trim().replace(/\s+/g,' '),packaging:(input.packaging??'').trim().replace(/\s+/g,' '),expirationDate:input.expirationDate,clinicId:clinic.clinicId};
     const existing=await db.prepare('SELECT id FROM surplus_lots WHERE agency_id=? AND variant_key=?').bind(user.agencyId,lotKey(variant)).first<{id:string}>();
     const reason=input.reason?.trim()||'Agency-attested physical surplus count';
     const prior=await db.prepare('SELECT actor_id,payload,result FROM surplus_commands WHERE id=?').bind(input.operationId).first<{actor_id:number;payload:string;result:string}>();
@@ -80,7 +81,7 @@ export async function persistSurplusSubmission(
         steps.push(
             db
                 .prepare(
-                    `INSERT OR IGNORE INTO surplus_reports(id,submission_id,row_id,agency_id,formula_name,form,flavor,expiration_date,reported_units,request_ref,reporter_id,counted_at,confirmer_name,clinic_id,clinic_name,clinic_address) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+                    `INSERT OR IGNORE INTO surplus_reports(id,submission_id,row_id,agency_id,formula_name,form,flavor,packaging,expiration_date,reported_units,request_ref,reporter_id,counted_at,confirmer_name,clinic_id,clinic_name,clinic_address) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
                 )
                 .bind(
                     `${id}:${index}`,
@@ -90,6 +91,7 @@ export async function persistSurplusSubmission(
                     row.productName.trim().replace(/\s+/g, ' '),
                     row.productForm,
                     (row.flavor ?? '').trim().replace(/\s+/g, ' '),
+                    (row.packaging ?? '').trim().replace(/\s+/g, ' '),
                     row.expirationDate ?? '',
                     row.units,
                     id,
@@ -129,7 +131,7 @@ export async function createForecast(db: D1Database, user: SessionUser, b: any) 
     const id = crypto.randomUUID();
     await db
         .prepare(
-            'INSERT INTO surplus_forecasts(id,agency_id,request_ref,formula_name,form,flavor,expected_units,due_date,actor_id,clinic_id,clinic_name,clinic_address) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)',
+            'INSERT INTO surplus_forecasts(id,agency_id,request_ref,formula_name,form,flavor,packaging,expected_units,due_date,actor_id,clinic_id,clinic_name,clinic_address) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)',
         )
         .bind(
             id,
@@ -138,6 +140,7 @@ export async function createForecast(db: D1Database, user: SessionUser, b: any) 
             b.formulaName.trim().replace(/\s+/g, ' '),
             b.form,
             (b.flavor ?? '').trim().replace(/\s+/g, ' '),
+            (b.packaging ?? '').trim().replace(/\s+/g, ' '),
             b.expectedUnits,
             b.dueDate,
             user.id,
@@ -173,7 +176,7 @@ export async function confirmForecast(db: D1Database, user: SessionUser, b: any)
             .bind(f.id),
         db
             .prepare(
-                'INSERT INTO surplus_reports(id,row_id,agency_id,formula_name,form,flavor,expiration_date,reported_units,request_ref,reporter_id,counted_at,confirmer_name,reason,forecast_id,clinic_id,clinic_name,clinic_address) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
+                'INSERT INTO surplus_reports(id,row_id,agency_id,formula_name,form,flavor,packaging,expiration_date,reported_units,request_ref,reporter_id,counted_at,confirmer_name,reason,forecast_id,clinic_id,clinic_name,clinic_address) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
             )
             .bind(
                 id,
@@ -182,6 +185,7 @@ export async function confirmForecast(db: D1Database, user: SessionUser, b: any)
                 f.formula_name,
                 f.form,
                 f.flavor,
+                f.packaging??'',
                 b.expirationDate,
                 b.quantity,
                 f.request_ref,

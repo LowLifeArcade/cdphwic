@@ -24,6 +24,14 @@ describe('surplus reporting and notices', () => {
         expect((await listSurplus(db, agency)).lots).toHaveLength(1);
         expect((await listSurplus(db, agency)).lots[0]).toMatchObject({onHand:11,version:2});
     });
+    it('keeps package sizes as separate surplus lots',async()=>{
+        const {db}=surplusDb();
+        const base={operationId:'neosure-small',formulaName:'Similac NeoSure',form:'ready-to-feed',flavor:'',quantity:4,expirationDate:variant.expirationDate,date:localDate(),confirmerName:'Agency Staff'};
+        const small=await submitAgencySurplusCount(db,agency,{...base,packaging:'2 fl oz'});
+        const large=await submitAgencySurplusCount(db,agency,{...base,operationId:'neosure-large',packaging:'32 fl oz'});
+        expect(small.lotId).not.toBe(large.lotId);
+        expect((await listSurplus(db,agency)).lots).toEqual(expect.arrayContaining([expect.objectContaining({id:small.lotId,packaging:'2 fl oz'}),expect.objectContaining({id:large.lotId,packaging:'32 fl oz'})]));
+    });
 
     it('rejects invalid agency count values and clinics outside the agency', async () => {
         const { db } = surplusDb();

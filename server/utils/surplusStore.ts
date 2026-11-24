@@ -30,7 +30,7 @@ export async function ensureSurplusLot(db: D1Database, agencyId: number, v: Surp
     const clinic=await resolveSurplusClinic(db,agencyId,v.clinicId);
     await db
         .prepare(
-            'INSERT OR IGNORE INTO surplus_lots(id,agency_id,variant_key,formula_name,form,flavor,expiration_date,clinic_id,clinic_name,clinic_address) VALUES(?,?,?,?,?,?,?,?,?,?)',
+            'INSERT OR IGNORE INTO surplus_lots(id,agency_id,variant_key,formula_name,form,flavor,packaging,expiration_date,clinic_id,clinic_name,clinic_address) VALUES(?,?,?,?,?,?,?,?,?,?,?)',
         )
         .bind(
             crypto.randomUUID(),
@@ -39,6 +39,7 @@ export async function ensureSurplusLot(db: D1Database, agencyId: number, v: Surp
             v.formulaName.trim().replace(/\s+/g, ' '),
             v.form,
             v.flavor.trim().replace(/\s+/g, ' '),
+            v.packaging?.trim().replace(/\s+/g, ' ')??'',
             v.expirationDate,
             clinic.clinicId??null,clinic.clinicName??null,clinic.clinicAddress?JSON.stringify(clinic.clinicAddress):null,
         )
@@ -147,8 +148,8 @@ export async function executeSurplusCommand(
             const correctingClinic=c.clinicId!==undefined;
             if(correctingClinic && c.clinicId!==(lot.clinicId??''))fail('Select the same storage clinic as the inventory lot.');
             guard(
-                "EXISTS(SELECT 1 FROM surplus_reports WHERE id=? AND status='pending' AND agency_id=? AND reported_units=? AND lower(formula_name)=lower(?) AND form=? AND lower(flavor)=lower(?) AND (expiration_date=? OR expiration_date='') AND (COALESCE(clinic_id,'')=? OR ?=1))",
-                [c.reportId, lot!.agencyId, quantity, lot!.formulaName, lot!.form, lot!.flavor, lot!.expirationDate,lot.clinicId??'',correctingClinic?1:0],
+                "EXISTS(SELECT 1 FROM surplus_reports WHERE id=? AND status='pending' AND agency_id=? AND reported_units=? AND lower(formula_name)=lower(?) AND form=? AND lower(flavor)=lower(?) AND lower(packaging)=lower(?) AND (expiration_date=? OR expiration_date='') AND (COALESCE(clinic_id,'')=? OR ?=1))",
+                [c.reportId, lot!.agencyId, quantity, lot!.formulaName, lot!.form, lot!.flavor,lot!.packaging??'', lot!.expirationDate,lot.clinicId??'',correctingClinic?1:0],
             );
             if(correctingClinic)steps.push(db.prepare(`UPDATE surplus_reports SET clinic_id=?,clinic_name=?,clinic_address=? WHERE id=? AND ${pending}`).bind(lot.clinicId??null,lot.clinicName??null,lot.clinicAddress?JSON.stringify(lot.clinicAddress):null,c.reportId,c.operationId));
             steps.push(
@@ -203,7 +204,7 @@ export async function executeSurplusCommand(
         steps.push(
             db
                 .prepare(
-                    `INSERT INTO surplus_transfers(id,source_lot_id,source_agency_id,destination_agency_id,quantity,request_ref,formula_name,form,flavor,expiration_date,status) SELECT ?,?,?,?,?,?,?,?,?,?,'reserved' WHERE ${pending}`,
+                    `INSERT INTO surplus_transfers(id,source_lot_id,source_agency_id,destination_agency_id,quantity,request_ref,formula_name,form,flavor,packaging,expiration_date,status) SELECT ?,?,?,?,?,?,?,?,?,?,?,'reserved' WHERE ${pending}`,
                 )
                 .bind(
                     transferId,
@@ -215,6 +216,7 @@ export async function executeSurplusCommand(
                     lot!.formulaName,
                     lot!.form,
                     lot!.flavor,
+                        lot!.packaging??'',
                     lot!.expirationDate,
                     c.operationId,
                 ),
@@ -246,6 +248,7 @@ export async function executeSurplusCommand(
                 formulaName: t.formula_name,
                 form: t.form,
                 flavor: t.flavor,
+                packaging:t.packaging??'',
                 expirationDate: t.expiration_date,
             });
             movementLot = dest.id;
@@ -331,7 +334,7 @@ export async function executeSurplusCommand(
         const keyFields=metadata?',variant_key=?':'';
         const formulaArgs=correctedFormulaName?[correctedFormulaName,correctedForm,correctedFlavor]:[];
         const expiryArgs=correctedExpirationDate!==undefined?[correctedExpirationDate]:[];
-        const finalKey=lotKey({formulaName:correctedFormulaName??lot!.formulaName,form:(correctedForm??lot!.form) as any,flavor:correctedFormulaName?correctedFlavor:lot!.flavor,expirationDate:correctedExpiry,clinicId:lot!.clinicId});
+        const finalKey=lotKey({formulaName:correctedFormulaName??lot!.formulaName,form:(correctedForm??lot!.form) as any,flavor:correctedFormulaName?correctedFlavor:lot!.flavor,packaging:lot!.packaging,expirationDate:correctedExpiry,clinicId:lot!.clinicId});
         if(expired){
             guard('EXISTS(SELECT 1 FROM surplus_lots WHERE id=? AND expired_units+?>=0)',[lot!.id,balanceDelta]);
             update('expired_units=expired_units+?'+formulaFields+expiryFields+keyFields,[balanceDelta,...formulaArgs,...expiryArgs,...(metadata?[finalKey]:[])]);
