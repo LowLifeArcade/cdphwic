@@ -8,6 +8,9 @@ import {groupSurplusLots} from '~/../shared/surplusInventoryGroups';
 import {surplusMovementReason} from '~/../shared/surplusMovement';
 import type {ProductRecord,RequestRecord} from '~/../shared/domain';
 import type { SurplusLot } from '~/../shared/surplus';
+function formatInventoryDate(value?: string | null) {
+    return formatDisplayDate(value?.slice(0, 10)).replace(/^(\d{2}-\d{2}-)\d{2}(\d{2})$/, '$1$2');
+}
 function pickupAddress(json?:string|null){try{const value=JSON.parse(json??'null') as ClinicAddress|null;return value?formatClinic(value):'';}catch{return '';}}
 function dayAfter(date:string){return new Date(Date.parse(`${date}T00:00:00Z`)+86400000).toISOString().slice(0,10);}
 function movementLabel(kind:string){return ({reconcile:'Physical count','correct-entry':'Correction',deduct:'Stock adjustment',reserve:'Reservation',release:'Reservation released','request-issue':'Participant issue',ship:'Shipment',receive:'Receipt',cancel:'Cancellation',expire:'Expiration'} as Record<string,string>)[kind]??kind;}
@@ -503,6 +506,12 @@ async function upload(kind: string, event: Event) {
         </p>
         <div class="table-scroll inventory-table-wrap">
             <table class="inventory-table">
+                <colgroup>
+                    <col class="inventory-formula-column" />
+                    <col class="inventory-date-column" span="2" />
+                    <col class="inventory-count-column" span="4" />
+                    <col class="inventory-action-column" />
+                </colgroup>
                 <thead>
                     <tr>
                         <th>Agency / Formula</th>
@@ -511,7 +520,6 @@ async function upload(kind: string, event: Event) {
                         <th>On Hand</th>
                         <th>Reserved</th>
                         <th>Available</th>
-                        <th><abbr title="Expired / Quarantined Units">Expired /<br />Quarantined</abbr></th>
                         <th>Total</th>
                         <th>Actions</th>
                     </tr>
@@ -519,15 +527,18 @@ async function upload(kind: string, event: Event) {
                 <tbody>
                     <tr v-for="row in inventoryRows" :key="row.key" :class="row.kind==='group'?'inventory-group-row':row.group.lots.length>1?'inventory-lot-detail':''">
                         <template v-if="row.kind==='group'">
-                            <td class="inventory-product"><strong>{{row.group.formulaName}} {{row.group.form==='concentrate'?'Concentrate':formulaFormLabel(row.group.form)}}</strong><span v-if="row.group.flavor || row.group.packaging">{{[row.group.flavor,row.group.packaging].filter(Boolean).join(' · ')}}</span><span v-if="reviewer">{{agencyName(row.group.agencyId)}}</span><span>{{row.group.clinicName||'Clinic not specified'}}</span></td>
-                            <td>{{row.group.lots.length}} lots · earliest <strong class="inventory-expiration">{{formatDisplayDate(row.group.earliestExpiration)}}</strong></td>
+                            <td class="inventory-product"><strong>{{row.group.formulaName}} {{row.group.form==='concentrate'?'Concentrate':formulaFormLabel(row.group.form)}}</strong><span v-if="row.group.flavor || row.group.packaging">{{[row.group.flavor,row.group.packaging].filter(Boolean).join(' · ')}}</span><span v-if="reviewer">{{agencyName(row.group.agencyId)}}</span><span>{{row.group.clinicName||'Clinic not specified'}}</span><small v-if="row.group.expiredUnits" class="inventory-quarantine">Quarantined: {{ row.group.expiredUnits }}</small></td>
+                            <td>
+                                <strong class="inventory-expiration">{{ formatInventoryDate(row.group.earliestExpiration) }}</strong>
+                                <small class="inventory-expiration-summary">Earliest of {{ row.group.lots.length }}</small>
+                            </td>
                             <td>See lots</td>
-                            <td><strong class="inventory-quantity">{{row.group.onHand}}</strong></td><td><strong class="inventory-quantity">{{row.group.reserved}}</strong></td><td class="inventory-available"><strong>{{row.group.available}}</strong></td><td><strong class="inventory-quantity">{{row.group.expiredUnits}}</strong></td><td><strong class="inventory-quantity">{{row.group.total}}</strong></td>
+                            <td><strong class="inventory-quantity">{{row.group.onHand}}</strong></td><td><strong class="inventory-quantity">{{row.group.reserved}}</strong></td><td class="inventory-available"><strong>{{row.group.available}}</strong></td><td><strong class="inventory-quantity">{{row.group.total}}</strong></td>
                             <td class="row-actions"><button class="button" type="button" :aria-expanded="!!expandedInventoryGroups[row.group.key]" @click="toggleInventoryGroup(row.group.key)">{{expandedInventoryGroups[row.group.key]?'Hide':'View'}} {{row.group.lots.length}} expiration lots</button></td>
                         </template>
                         <template v-else>
-                            <td class="inventory-product"><template v-if="row.group.lots.length===1"><strong>{{row.group.formulaName}} {{row.group.form==='concentrate'?'Concentrate':formulaFormLabel(row.group.form)}}</strong><span v-if="row.group.flavor || row.group.packaging">{{[row.group.flavor,row.group.packaging].filter(Boolean).join(' · ')}}</span><span v-if="reviewer">{{agencyName(row.group.agencyId)}}</span><span>{{row.group.clinicName||'Clinic not specified'}}</span></template><span v-else class="inventory-lot-label">Expiration lot</span></td>
-                            <td><strong class="inventory-expiration">{{formatDisplayDate(row.lot.expirationDate)}}</strong></td><td>{{formatDisplayDate(row.lot.recordedAt?.slice(0, 10))}}</td><td><strong class="inventory-quantity">{{row.lot.onHand}}</strong></td><td><strong class="inventory-quantity">{{row.lot.reserved}}</strong></td><td class="inventory-available"><strong>{{availableUnits(row.lot)}}</strong></td><td><strong class="inventory-quantity">{{row.lot.expiredUnits}}</strong></td><td><strong class="inventory-quantity">{{row.lot.onHand+row.lot.expiredUnits}}</strong></td>
+                            <td class="inventory-product"><template v-if="row.group.lots.length===1"><strong>{{row.group.formulaName}} {{row.group.form==='concentrate'?'Concentrate':formulaFormLabel(row.group.form)}}</strong><span v-if="row.group.flavor || row.group.packaging">{{[row.group.flavor,row.group.packaging].filter(Boolean).join(' · ')}}</span><span v-if="reviewer">{{agencyName(row.group.agencyId)}}</span><span>{{row.group.clinicName||'Clinic not specified'}}</span></template><span v-else class="inventory-lot-label">Expiration lot</span><small v-if="row.lot.expiredUnits" class="inventory-quarantine">Quarantined: {{ row.lot.expiredUnits }}</small></td>
+                            <td><strong class="inventory-expiration">{{formatInventoryDate(row.lot.expirationDate)}}</strong></td><td>{{formatInventoryDate(row.lot.recordedAt)}}</td><td><strong class="inventory-quantity">{{row.lot.onHand}}</strong></td><td><strong class="inventory-quantity">{{row.lot.reserved}}</strong></td><td class="inventory-available"><strong>{{availableUnits(row.lot)}}</strong></td><td><strong class="inventory-quantity">{{row.lot.onHand+row.lot.expiredUnits}}</strong></td>
                             <td class="row-actions">
                                 <button v-if="reviewer && availableUnits(row.lot)>0 && !row.lot.expiredUnits && daysRemaining(row.lot.expirationDate,localDate())>60" class="button button-secondary" @click="useInRequest(row.lot)">Use in Request</button>
                                 <button class="text-button" type="button" @click="start('edit-inventory',row.lot)">Edit</button>
@@ -535,7 +546,7 @@ async function upload(kind: string, event: Event) {
                         </template>
                     </tr>
                     <tr v-if="!inventoryRows.length">
-                        <td colspan="9"><span v-if="status==='pending'&&!data">Loading inventory…</span><span v-else-if="status==='success'">No matching inventory.</span></td>
+                        <td colspan="8"><span v-if="status==='pending'&&!data">Loading inventory…</span><span v-else-if="status==='success'">No matching inventory.</span></td>
                     </tr>
                 </tbody>
             </table>
@@ -544,15 +555,15 @@ async function upload(kind: string, event: Event) {
             <h2>{{ section.title }}</h2>
             <p>{{ section.description }}</p>
             <p v-if="status === 'success' && !section.lots.length">No matching lots.</p>
-            <article v-for="lot in section.lots" :key="lot.id" class="inventory-archive-row">
+            <article v-for="lot in section.lots" :key="lot.id" class="inventory-archive-row inventory-disposition-row">
                 <div>
                     <strong>{{ lot.formulaName }} {{ formulaFormLabel(lot.form) }}</strong>
                     <small>{{ [lot.flavor, lot.packaging, reviewer ? agencyName(lot.agencyId) : '', lot.clinicName || 'Clinic not specified'].filter(Boolean).join(' · ') }}</small>
                 </div>
-                <div>Expiration <strong>{{ formatDisplayDate(lot.expirationDate) }}</strong></div>
-                <div>Date Recorded <strong>{{ formatDisplayDate(lot.recordedAt?.slice(0, 10)) }}</strong></div>
+                <div>Expiration <strong>{{ formatInventoryDate(lot.expirationDate) }}</strong></div>
+                <div>Date Recorded <strong>{{ formatInventoryDate(lot.recordedAt) }}</strong></div>
                 <div>Total <strong>{{ lot.onHand + lot.expiredUnits }}</strong></div>
-                <div v-if="lot.reserved">Reserved <strong>{{ lot.reserved }}</strong></div>
+                <div>Reserved <strong>{{ lot.reserved }}</strong></div>
                 <div class="inventory-archive-actions">
                     <button class="text-button" type="button" @click="start('edit-inventory',lot)">Edit</button>
                 </div>
@@ -563,7 +574,7 @@ async function upload(kind: string, event: Event) {
             <p class="muted-copy">These lots have no remaining physical stock. Open a lot’s history if you need to review its inventory changes.</p>
             <article v-for="lot in archivedLots" :key="lot.id" class="inventory-archive-row">
                 <div><strong>{{lot.formulaName}} {{lot.form==='concentrate'?'Concentrate':formulaFormLabel(lot.form)}}</strong><small v-if="lot.flavor || lot.packaging">{{[lot.flavor,lot.packaging].filter(Boolean).join(' · ')}}</small><small>{{lot.clinicName||'Clinic not specified'}}<template v-if="reviewer"> · {{agencyName(lot.agencyId)}}</template></small></div>
-                <div><span>Exp</span><strong>{{formatDisplayDate(lot.expirationDate)}}</strong></div>
+                <div><span>Exp</span><strong>{{formatInventoryDate(lot.expirationDate)}}</strong></div>
                 <div><span>Total</span><strong>{{lot.onHand+lot.expiredUnits}}</strong></div>
                 <div class="inventory-archive-actions"><button class="text-button" type="button" @click="showHistory(lot)">History</button><button class="text-button" type="button" @click="start('edit-inventory',lot)">Edit</button></div>
             </article>
@@ -970,23 +981,48 @@ async function upload(kind: string, event: Event) {
 .inventory-archive-row > div:first-child {display:grid;gap:3px;}
 .inventory-archive-row small,.inventory-archive-row > div > span {font-size:13px;color:var(--muted);}
 .inventory-archive-actions {display:flex;gap:12px;white-space:nowrap;}
-@media(max-width:650px){.inventory-archive-row{grid-template-columns:1fr 1fr;}.inventory-archive-row > div:first-child{grid-column:1/-1;}}
-.inventory-table {width:auto;min-width:880px;font-size:14px;}
-.inventory-table :is(th,td) {padding:10px 12px;vertical-align:middle;line-height:1.4;}
-.inventory-table th {font-size:14px;white-space:nowrap;line-height:1.3;}
-.inventory-table th abbr {text-decoration:none;}
+.inventory-disposition-row {
+    grid-template-columns: minmax(0, 1fr) repeat(2, 5.75rem) repeat(2, 3.75rem) max-content;
+    gap: 6px 12px;
+    padding-block: 7px;
+}
+.inventory-disposition-row > div:not(:first-child):not(:last-child) {
+    display: grid;
+    gap: 3px;
+    font-variant-numeric: tabular-nums;
+}
+.inventory-disposition-row strong {overflow-wrap:anywhere;}
+.inventory-disposition-row .inventory-archive-actions {justify-self:end;}
+@media (max-width: 850px) {
+    .inventory-archive-row {grid-template-columns:repeat(2, minmax(0, 1fr));}
+    .inventory-archive-row > div:first-child {grid-column:1 / -1;}
+    .inventory-disposition-row .inventory-archive-actions {grid-column:1 / -1;}
+}
+.inventory-table-wrap {overflow-x:auto;}
+.inventory-table {width:100%;max-width:50rem;min-width:45rem;table-layout:fixed;font-size:13px;}
+.inventory-date-column {width:5rem;}
+.inventory-count-column {width:4.35rem;}
+.inventory-action-column {width:9.5rem;}
+.inventory-table :is(th,td) {padding:6px 7px;vertical-align:middle;line-height:1.25;}
+.inventory-table th {font-size:12px;white-space:normal;overflow-wrap:anywhere;}
+.inventory-table :is(th,td):nth-child(2) {white-space:normal;}
+.inventory-expiration-summary {display:block;font-size:11px;color:var(--muted);}
 .inventory-table .inventory-group-row td {background:var(--surface-raised);font-weight:600;}
 .inventory-table .inventory-lot-detail td:first-child {padding-left:28px;}
 .inventory-table .inventory-lot-label {font-size:13px;color:var(--muted);}
-.inventory-table :is(th,td):nth-child(n+3):nth-child(-n+7) {text-align:right;font-variant-numeric:tabular-nums;}
-.inventory-table .inventory-product {min-width:230px;max-width:310px;}
+.inventory-table :is(th,td):nth-child(n+4):nth-child(-n+7) {text-align:right;font-variant-numeric:tabular-nums;}
+.inventory-table :is(th,td):nth-child(3) {white-space:nowrap;font-variant-numeric:tabular-nums;}
+.inventory-table :is(th,td):nth-child(8) {text-align:right;}
+.inventory-table .inventory-product {overflow-wrap:anywhere;}
 .inventory-product strong {display:block;font-size:14px;line-height:1.4;}
-.inventory-product span {display:block;color:var(--muted);font-size:13px;line-height:1.4;margin-top:4px;}
+.inventory-product span {display:inline;color:var(--muted);font-size:12px;line-height:1.3;}
+.inventory-product span + span::before {content:" · ";}
+.inventory-quarantine {display:block;color:var(--muted);font-size:12px;}
 .inventory-available {font-weight:700;}
 .inventory-table .inventory-expiration {font-size:14px;font-weight:700;white-space:nowrap;}
 .inventory-table .inventory-quantity {font-size:14px;font-weight:700;font-variant-numeric:tabular-nums;}
-.inventory-table .row-actions {min-width:165px;white-space:nowrap;}
-.inventory-table .row-actions .button {margin:0 8px 0 0;padding:6px 10px;font-size:14px;line-height:1.4;min-height:32px;}
+.inventory-table .row-actions {min-width:0;}
+.inventory-table .row-actions .button {max-width:100%;box-sizing:border-box;white-space:normal;overflow-wrap:anywhere;margin:0 5px 0 0;padding:4px 6px;font-size:12px;line-height:1.25;min-height:26px;}
 .inventory-table .inventory-actions {display:inline-block;margin:0;position:relative;font-size:13px;line-height:1.4;}
 .inventory-table .inventory-actions > div {min-width:150px;padding:10px 0 2px;white-space:normal;}
 .inventory-edit-actions {display:grid;justify-items:start;gap:10px;}
