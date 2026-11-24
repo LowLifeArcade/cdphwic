@@ -48,7 +48,17 @@ const {data:productData, error:productError}=await useFetch<{products:ProductRec
 const surplusVariants=computed(()=>surplusCatalogVariants(productData.value?.products??[]));
 const surplusFormulaNames=computed(()=>[...new Map(surplusVariants.value.map(variant=>[variant.formulaName.toLowerCase(),variant.formulaName])).values()]);
 const formulaSearch=ref('');
-const filteredSurplusFormulaNames=computed(()=>{const query=formulaSearch.value.trim().toLowerCase();return surplusFormulaNames.value.filter(name=>!query||name.toLowerCase().includes(query));});
+function surplusProductLabel(product: ProductRecord) {
+    return product.formulaDescription?.trim() ||
+        [product.name, formulaFormLabel(product.form), product.flavor, surplusProductPackaging(product)].filter(Boolean).join(' · ');
+}
+const filteredSurplusProducts = computed(() => {
+    const query = normalizeVariantText(formulaSearch.value);
+    return (productData.value?.products ?? []).filter(product =>
+        product.active !== false && ['powder', 'concentrate', 'ready-to-feed'].includes(product.form) &&
+        normalizeVariantText(`${product.name} ${surplusProductLabel(product)}`).includes(query),
+    ).sort((a, b) => surplusProductLabel(a).localeCompare(surplusProductLabel(b)));
+});
 const surplusAvailableForms=computed(()=>[...new Set(surplusVariants.value.filter(variant=>variant.formulaName===input.formulaName).map(variant=>variant.form))]);
 const surplusAvailableFlavors=computed(()=>[...new Set(surplusVariants.value.filter(variant=>variant.formulaName===input.formulaName&&variant.form===input.form).map(variant=>variant.flavor))]);
 const surplusAvailablePackagings=computed(()=>[...new Set(surplusVariants.value.filter(variant=>variant.formulaName===input.formulaName&&variant.form===input.form&&variant.flavor===input.flavor).flatMap(variant=>variant.packagings).filter(Boolean))]);
@@ -67,12 +77,23 @@ const selectedSurplusFlavor=ref('__unselected__');
 const correctedVariantSelection=ref('');
 function variantSelectionKey(variant:{formulaName:string;form:string;flavor:string}){return JSON.stringify([variant.formulaName,variant.form,variant.flavor]);}
 function selectCorrectedVariant(key:string){const variant=surplusVariants.value.find(item=>variantSelectionKey(item)===key);if(!variant)return;input.correctedFormulaName=variant.formulaName;input.correctedForm=variant.form;input.correctedFlavor=variant.flavor;}
-function selectSurplusFormula(name:string){input.formulaName=name;formulaSearch.value=name;input.form='';input.flavor='';input.packaging='';selectedSurplusFlavor.value='__unselected__';}
 function updateSurplusFormulaSearch(){input.formulaName='';input.form='';input.flavor='';input.packaging='';selectedSurplusFlavor.value='__unselected__';}
 function selectSurplusForm(){input.flavor='';input.packaging='';selectedSurplusFlavor.value='__unselected__';}
 function selectSurplusFlavor(value:string){input.flavor=value==='__unselected__'||value==='__unflavored__'?'':value;input.packaging=surplusAvailablePackagings.value.length===1?surplusAvailablePackagings.value[0]:'';}
 const barcodeInput = ref('');
 const barcodeMessage = ref('');
+function selectSurplusProduct(product: ProductRecord) {
+    const name = surplusFormulaNames.value.find(name => name.toLowerCase() === product.name.trim().replace(/\s+/g, ' ').toLowerCase());
+    if (!name) return false;
+    input.formulaName = name;
+    formulaSearch.value = surplusProductLabel(product);
+    input.form = product.form;
+    const flavor = (product.flavor ?? '').trim().replace(/\s+/g, ' ');
+    selectedSurplusFlavor.value = flavor || '__unflavored__';
+    selectSurplusFlavor(selectedSurplusFlavor.value);
+    input.packaging = surplusProductPackaging(product);
+    return true;
+}
 function lookupSurplusBarcode() {
     const matches = surplusBarcodeMatches(productData.value?.products ?? [], barcodeInput.value);
     if (matches.length !== 1) {
@@ -80,14 +101,7 @@ function lookupSurplusBarcode() {
         return;
     }
     const { product, field } = matches[0]!;
-    const name = surplusFormulaNames.value.find(name => name.toLowerCase() === product.name.trim().replace(/\s+/g, ' ').toLowerCase());
-    if (!name) return;
-    selectSurplusFormula(name);
-    input.form = product.form;
-    const flavor = (product.flavor ?? '').trim().replace(/\s+/g, ' ');
-    selectedSurplusFlavor.value = flavor || '__unflavored__';
-    selectSurplusFlavor(selectedSurplusFlavor.value);
-    input.packaging = surplusProductPackaging(product);
+    if (!selectSurplusProduct(product)) return;
     if (field === 'caseBarcode' && Number.isSafeInteger(product.unitsPerCase) && product.unitsPerCase! > 0) {
         input.quantity = product.unitsPerCase!;
         barcodeMessage.value = `Case matched. Units set to ${product.unitsPerCase} for one case. Adjust Units for the total you counted.`;
@@ -827,7 +841,7 @@ async function upload(kind: string, event: Event) {
                             <p v-if="barcodeMessage" role="status">{{ barcodeMessage }}</p>
                         </div>
                         <label
-                            >Formula Name<div class="surplus-formula-picker"><input v-model="formulaSearch" class="form-input" type="search" placeholder="Search any part of a formula name" autocomplete="off" @input="updateSurplusFormulaSearch"/><div v-if="!input.formulaName" class="surplus-formula-options" role="listbox" aria-label="Matching formula names"><button v-for="name in filteredSurplusFormulaNames" :key="name" type="button" role="option" @click="selectSurplusFormula(name)">{{name}}</button><small v-if="formulaSearch.trim() && !filteredSurplusFormulaNames.length">No matching formulas.</small></div><small v-if="input.formulaName">Selected: {{ selectedPackageDescriptions.get(input.packaging) || input.formulaName }}</small></div><small v-if="productError" role="alert">The product catalog could not be loaded. Close and try again.</small><small v-else-if="!surplusFormulaNames.length">No active formula products are available in the Products list.</small></label
+                            >Formula Description<div class="surplus-formula-picker"><input v-model="formulaSearch" class="form-input" type="search" placeholder="Search formula name or description" autocomplete="off" @input="updateSurplusFormulaSearch"/><div v-if="!input.formulaName" class="surplus-formula-options" role="listbox" aria-label="Matching formula descriptions"><button v-for="product in filteredSurplusProducts" :key="product.id" type="button" role="option" @click="selectSurplusProduct(product)">{{ surplusProductLabel(product) }}</button><small v-if="formulaSearch.trim() && !filteredSurplusProducts.length">No matching formulas.</small></div><small v-if="input.formulaName">Selected: {{ selectedPackageDescriptions.get(input.packaging) || input.formulaName }}</small></div><small v-if="productError" role="alert">The product catalog could not be loaded. Close and try again.</small><small v-else-if="!surplusFormulaNames.length">No active formula products are available in the Products list.</small></label
                         ><label
                             >Form<select v-model="input.form" class="form-input" required :disabled="!surplusAvailableForms.length" @change="selectSurplusForm"><option value="">Select a form</option><option v-for="form in surplusAvailableForms" :key="form" :value="form">{{formulaFormLabel(form)}}</option></select></label
                         ><label>Flavor<select v-model="selectedSurplusFlavor" class="form-input" required :disabled="!input.form" @change="selectSurplusFlavor(selectedSurplusFlavor)"><option value="__unselected__">Select a flavor</option><option v-for="flavor in surplusAvailableFlavors" :key="flavor||'unflavored'" :value="flavor||'__unflavored__'">{{flavor||'Unflavored'}}</option></select></label
@@ -1061,13 +1075,13 @@ async function upload(kind: string, event: Event) {
     .inventory-disposition-row .inventory-archive-actions {grid-column:1 / -1;}
 }
 .inventory-table-wrap {overflow-x:auto;}
-.inventory-table {width:100%;max-width:50rem;min-width:45rem;table-layout:fixed;font-size:13px;}
-.inventory-date-column {width:5rem;}
-.inventory-count-column {width:4.35rem;}
+.inventory-table {width:100%;max-width:58rem;min-width:54rem;table-layout:fixed;font-size:13px;}
+.inventory-date-column {width:7rem;}
+.inventory-count-column {width:5rem;}
 .inventory-action-column {width:9.5rem;}
 .inventory-table :is(th,td) {padding:6px 7px;vertical-align:middle;line-height:1.25;}
-.inventory-table th {font-size:12px;white-space:normal;overflow-wrap:anywhere;}
-.inventory-table :is(th,td):nth-child(2) {white-space:normal;}
+.inventory-table th {font-size:12px;white-space:nowrap;}
+.inventory-table td:nth-child(2) {white-space:normal;}
 .inventory-expiration-summary {display:block;font-size:11px;color:var(--muted);}
 .inventory-table .inventory-group-row td {background:var(--surface-raised);font-weight:600;}
 .inventory-table .inventory-lot-detail td:first-child {padding-left:28px;}
