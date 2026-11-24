@@ -769,6 +769,15 @@ select.form-input {
     color: light-dark(#AE5018, #EAAB33);
     background: color-mix(in srgb, #E2742F 16%, var(--surface));
 }
+.special-order-delivery-notice {
+    margin: 0;
+    padding: 10px 12px;
+    color: light-dark(#71380f, #ffe0a0);
+    background: color-mix(in srgb, #E2742F 16%, var(--surface));
+    border: 1px solid color-mix(in srgb, #E2742F 45%, var(--line));
+    border-radius: 8px;
+    font-size: 0.85rem;
+}
 .status-pending {
     color: var(--warning-text, #f5dca1);
     background: var(--warning-bg, #5a4828);

@@ -10,6 +10,11 @@ it('matches saved issuance to formula variants and clones month rows',()=>{
  const saved={...request,formulaAuthorizations:rows,requestedFormulas:[request.requestedFormulas![1]!,request.requestedFormulas![0]!]};
  const next=formulaAuthorizations(saved);expect(next[0]!.approvedCases).toBe(8);next[1]!.benefitIssuances![0]!.quantity=99;expect(rows[0]!.benefitIssuances![0]!.quantity).toBe(12);
 });
+it('restores the selected catalog flavor when the submitted formula omitted it',()=>{
+ const selected={...formulaAuthorizations(request)[0]!,flavor:'Vanilla',formulaName:'Fortini Vanilla'};
+ const saved={...request,requestedFormulas:[{productName:'First',productForm:'powder' as const}],formulaAuthorizations:[{...selected,productName:'First'}]};
+ expect(formulaAuthorizations(saved)[0]).toMatchObject({flavor:'Vanilla',formulaName:'Fortini Vanilla'});
+});
 it('formats abbreviated months and validates each formula separately',()=>{
  expect(formatIssuanceMonth('2026-09')).toBe('SEP 2026');const rows=formulaAuthorizations(request);rows[1]!.benefitIssuances=[{month:'2026-09',quantity:2}];expect(validateFormulaAuthorizations(rows)).toEqual([]);rows[1]!.approvedCases=-1;expect(validateFormulaAuthorizations(rows)[0]).toContain('Formula 2');
 });

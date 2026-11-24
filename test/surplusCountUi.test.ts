@@ -11,6 +11,10 @@ describe('Formula Surplus agency count and lot groups',()=>{
   expect(page).toContain('v-model="input.confirmerName"');
   expect(page).toContain('v-model="input.date"');
   expect(page).toContain('v-model="input.clinicId"');
+  expect(page).toContain('v-model="input.formulaName" class="form-input" required @change="selectSurplusFormula"');
+  expect(page).toContain('v-model="input.form" class="form-input" required :disabled="!surplusAvailableForms.length" @change="selectSurplusForm"');
+  expect(page).toContain('surplusCatalogVariants(productData.value?.products??[])');
+  expect(page).not.toContain('v-model="input.formulaName"\n');
   expect(page).toContain('surplusMovementReason(h.reason)');
  });
 
@@ -25,7 +29,7 @@ describe('Formula Surplus agency count and lot groups',()=>{
  });
 
  it('offers agencies audited donation and destruction actions only for eligible stock',()=>{
-  expect(page).toContain("daysRemaining(selected.expirationDate,localDate())>=30");
+  expect(page).toContain("daysRemaining(selected.expirationDate,localDate())>=45");
   expect(page).toContain("daysRemaining(selected.expirationDate,localDate())<=60");
   expect(page).toContain("start('donate',selected)");
   expect(page).toContain("start('destroy',selected)");
@@ -36,6 +40,8 @@ describe('Formula Surplus agency count and lot groups',()=>{
  it('allows corrections from history while leaving original movement rows visible',()=>{
   expect(page).toContain('h.correctable');
   expect(page).toContain("start('correct-entry',selected,h)");
+  expect(page).toContain('v-model="correctedVariantSelection"');
+  expect(page).toContain('v-model="input.correctedExpirationDate"');
   expect(page).toContain('h.effective_quantity');
   expect(page).toContain('h.actor_name');
   expect(page).toContain('h.correction_target');

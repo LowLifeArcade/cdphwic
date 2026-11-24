@@ -26,8 +26,8 @@ describe('atomic surplus inventory', () => {
         await expect(executeSurplusCommand(db,agencyActor,{kind:'deduct',operationId:'unauthorized-expiry-trigger',lotId:expiredLot.id,quantity:1,reason:'Inventory correction',requestRef:'x'},'2026-10-26')).rejects.toThrow();
         expect(await db.prepare('SELECT on_hand,expired_units FROM surplus_lots WHERE id=?').bind(expiredLot.id).first()).toEqual({on_hand:5,expired_units:0});
     });
-    it('allows agency donations only 30 through 60 days before expiry, inclusive', async () => {
-        for (const [daysUntilExpiry, allowed] of [[29, false], [30, true], [60, true], [61, false]] as const) {
+    it('allows agency donations only 45 through 60 days before expiry, inclusive', async () => {
+        for (const [daysUntilExpiry, allowed] of [[44, false], [45, true], [60, true], [61, false]] as const) {
             const { db } = surplusDb();
             const expiry = new Date(Date.UTC(2026, 9, 26 + daysUntilExpiry)).toISOString().slice(0, 10);
             const lot = await ensureSurplusLot(db, 10, { ...variant, formulaName: `Donation ${daysUntilExpiry}`, expirationDate: expiry });
@@ -58,7 +58,7 @@ describe('atomic surplus inventory', () => {
     });
     it('keeps non-adjustment agency commands and destruction of unexpired stock prohibited', async () => {
         const { db } = surplusDb();
-        const lot = await ensureSurplusLot(db, 10, { ...variant, formulaName: 'Unexpired stock', expirationDate: '2026-11-25' });
+        const lot = await ensureSurplusLot(db, 10, { ...variant, formulaName: 'Unexpired stock', expirationDate: '2027-01-15' });
         await executeSurplusCommand(db, actor, { kind: 'reconcile', operationId: 'unexpired-agency-count', lotId: lot.id, quantity: 10, expectedVersion: 0, reason: 'Count' }, '2026-10-26');
 
         await expect(executeSurplusCommand(db, agencyActor, { kind: 'reserve', operationId: 'agency-still-cannot-reserve', lotId: lot.id, quantity: 1, destinationAgencyId: 11, requestRef: 'request' }, '2026-10-26')).rejects.toThrow();
@@ -73,7 +73,7 @@ describe('atomic surplus inventory', () => {
 
         await expect(executeSurplusCommand(db, agencyActor, { ...destruction, operationId: 'agency-destruction-no-attestation', confirmerName: '' }, '2026-10-26')).rejects.toThrow();
         await expect(executeSurplusCommand(db, agencyActor, { ...destruction, operationId: 'agency-destruction-no-date', date: undefined }, '2026-10-26')).rejects.toThrow();
-        await expect(executeSurplusCommand(db, agencyActor, { ...destruction, operationId: 'agency-destruction-before-expiry', date: '2026-10-25' }, '2026-10-26')).rejects.toThrow();
+        await expect(executeSurplusCommand(db, agencyActor, { ...destruction, operationId: 'agency-destruction-future-date', date: '2026-10-27' }, '2026-10-26')).rejects.toThrow();
         await executeSurplusCommand(db, agencyActor, destruction, '2026-10-26');
 
         expect(await db.prepare('SELECT expired_units FROM surplus_lots WHERE id=?').bind(lot.id).first('expired_units')).toBe(6);
@@ -135,7 +135,7 @@ describe('atomic surplus inventory', () => {
     });
     it('quarantines all expired stock and blocks transfers, then destroys once', async () => {
         const { db } = surplusDb();
-        const lot = await ensureSurplusLot(db, 10, { ...variant, expirationDate: '2026-10-26' });
+        const lot = await ensureSurplusLot(db, 10, { ...variant, expirationDate: '2027-01-15' });
         await executeSurplusCommand(
             db,
             actor,
@@ -162,8 +162,8 @@ describe('atomic surplus inventory', () => {
             },
             '2026-10-26',
         );
-        await expireSurplusLots(db, '2026-10-27');
-        await expireSurplusLots(db, '2026-10-27');
+        await expireSurplusLots(db, '2027-01-16');
+        await expireSurplusLots(db, '2027-01-16');
         expect(
             await db.prepare('SELECT on_hand,reserved,expired_units FROM surplus_lots WHERE id=?').bind(lot.id).first(),
         ).toEqual({ on_hand: 0, reserved: 0, expired_units: 10 });
@@ -172,7 +172,7 @@ describe('atomic surplus inventory', () => {
                 db,
                 actor,
                 { kind: 'ship', operationId: 'ship', lotId: lot.id, transferId: r.transferId },
-                '2026-10-27',
+                '2027-01-16',
             ),
         ).rejects.toThrow();
         const destroy = {
@@ -183,10 +183,10 @@ describe('atomic surplus inventory', () => {
             requestRef: 'r',
             reason: 'Destruction',
             confirmerName: 'Agency Staff',
-            date: '2026-10-27',
+            date: '2027-01-16',
         };
-        await executeSurplusCommand(db, actor, destroy, '2026-10-27');
-        await executeSurplusCommand(db, actor, destroy, '2026-10-27');
+        await executeSurplusCommand(db, actor, destroy, '2027-01-16');
+        await executeSurplusCommand(db, actor, destroy, '2027-01-16');
         expect(
             await db.prepare('SELECT expired_units FROM surplus_lots WHERE id=?').bind(lot.id).first('expired_units'),
         ).toBe(6);
@@ -194,7 +194,7 @@ describe('atomic surplus inventory', () => {
 });
 it('keeps shipped expiration immutable after a source correction', async () => {
     const { db } = surplusDb();
-    const lot = await ensureSurplusLot(db, 10, { ...variant, expirationDate: '2026-10-26' });
+    const lot = await ensureSurplusLot(db, 10, { ...variant, expirationDate: '2027-01-15' });
     await executeSurplusCommand(
         db,
         actor,
@@ -234,7 +234,7 @@ it('keeps shipped expiration immutable after a source correction', async () => {
     );
     expect(
         await db.prepare('SELECT on_hand,expired_units,expiration_date FROM surplus_lots WHERE agency_id=11').first(),
-    ).toEqual({ on_hand: 0, expired_units: 3, expiration_date: '2026-10-26' });
+    ).toEqual({ on_hand: 3, expired_units: 0, expiration_date: '2027-01-15' });
 });
 
 describe('agency surplus entry corrections', () => {
@@ -274,9 +274,20 @@ describe('agency surplus entry corrections', () => {
         expect(await db.prepare('SELECT corrected_quantity FROM surplus_movements WHERE corrects_movement_id=? ORDER BY rowid DESC LIMIT 1').bind(originalId).first('corrected_quantity')).toBe(6);
     });
 
+    it('corrects an own-agency formula name, form and flavor without changing the inventory balance', async()=>{
+        const {db}=surplusDb();
+        const lot=await ensureSurplusLot(db,10,{...variant,formulaName:'Incorrect formula',form:'powder',flavor:'',expirationDate:'2027-01-01'});
+        await executeSurplusCommand(db,agencyActor,{kind:'reconcile',operationId:'formula-correction-count',lotId:lot.id,quantity:10,expectedVersion:0,reason:'Opening count',confirmerName:'Agency Staff',date:'2026-10-26'},'2026-10-26');
+        const originalId=await movementId(db,'formula-correction-count');
+        await executeSurplusCommand(db,agencyActor,{kind:'correct-entry',operationId:'formula-metadata-correction',lotId:lot.id,correctionOf:originalId,quantity:10,correctedFormulaName:'Correct Formula',correctedForm:'ready-to-feed',correctedFlavor:'Vanilla',correctedExpirationDate:'2027-02-01',expectedVersion:await version(db,lot.id),reason:'Correcting the formula details',confirmerName:'Agency Staff',date:'2026-10-26'},'2026-10-26');
+        expect(await db.prepare('SELECT formula_name,form,flavor,expiration_date,on_hand,reserved FROM surplus_lots WHERE id=?').bind(lot.id).first()).toEqual({formula_name:'Correct Formula',form:'ready-to-feed',flavor:'Vanilla',expiration_date:'2027-02-01',on_hand:10,reserved:0});
+        expect(await db.prepare('SELECT reason FROM surplus_movements WHERE corrects_movement_id=?').bind(originalId).first<string>('reason')).toContain('Correct Formula');
+        expect(await db.prepare('SELECT id FROM surplus_lots WHERE agency_id=? AND variant_key=?').bind(10,JSON.stringify(['correct formula','ready-to-feed','vanilla','2027-02-01'])).first('id')).toBe(lot.id);
+    });
+
     it('corrects a donation quantity against the current unexpired balance', async () => {
         const { db } = surplusDb();
-        const lot = await ensureSurplusLot(db, 10, { ...variant, formulaName: 'Donation correction', expirationDate: '2026-11-25' });
+        const lot = await ensureSurplusLot(db, 10, { ...variant, formulaName: 'Donation correction', expirationDate: '2026-12-15' });
         await executeSurplusCommand(db, agencyActor, { kind: 'reconcile', operationId: 'donation-correction-count', lotId: lot.id, quantity: 10, expectedVersion: 0, reason: 'Opening count',confirmerName:'Agency Staff',date:'2026-10-26' }, '2026-10-26');
         await executeSurplusCommand(db, agencyActor, { kind: 'deduct', operationId: 'donation-to-correct', lotId: lot.id, quantity: 3, reason: 'Donation',confirmerName:'Agency Staff',date:'2026-10-26' }, '2026-10-26');
         const originalId = await movementId(db, 'donation-to-correct');

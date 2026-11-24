@@ -32,6 +32,20 @@ it('identifies the formula portion in ETA notices and shows the special-order ba
  const notice=(await requestNotices(db,getDemoUser('agency'))).find(row=>row.kind==='request-eta');
  expect(notice?.title).toContain('Standard');expect(notice?.notes).toContain('Nutramigen');expect(notice?.notes).toContain('3 Special Order cases still pending');
 });
+it('notifies the request agency of special order delivery timing from the saved issuance date',async()=>{
+ const {requestNotices}=await import('../server/utils/requestNotices');
+ const {db}=surplusDb();
+ await ensureSubmittedRequest(db,{id:9940,submissionId:'special-order-notice',submissionDate:'2026-10-12',agencyId:10,agencyMemberId:100,participantName:'Synthetic',requestedFormulas:[{productName:'Nutramigen',productForm:'ready-to-feed'}],formulaAuthorizations:[{productName:'Nutramigen',productForm:'ready-to-feed',approvedCases:5,standardCases:2,specialOrderCases:3,specialOrderSavedAt:'2026-11-01T12:00:00.000Z',benefitIssuances:[]}],status:'in_progress'});
+ const agencyNotices=await requestNotices(db,getDemoUser('agency'));
+ const notice=agencyNotices.find(row=>row.kind==='request-special-order');
+ expect(notice).toMatchObject({formula_label:'Nutramigen RTF',anticipated_eta:'2026-11-22',is_read:0});
+ expect(notice?.notes).toBe('Product will take up to 3+ weeks for delivery.');
+ expect(await requestNotices(db,getDemoUser('internal'))).toHaveLength(0);
+ await ensureSubmittedRequest(db,{id:9941,submissionId:'special-order-shipped-notice',submissionDate:'2026-10-12',agencyId:10,agencyMemberId:100,participantName:'Synthetic',requestedFormulas:[{productName:'Nutramigen',productForm:'ready-to-feed'}],formulaAuthorizations:[{productName:'Nutramigen',productForm:'ready-to-feed',approvedCases:5,standardCases:2,specialOrderCases:3,specialOrderSavedAt:'2026-11-01T12:00:00.000Z',benefitIssuances:[]}],shipments:[{shipmentFormula:{productName:'Nutramigen',productForm:'ready-to-feed'},fulfillmentType:'special',eta:'2026-11-25',etaSentAt:'2026-11-20',dispatched:true,casesShipped:3,carrier:'ups',trackingNumbers:['TRACK']}],status:'in_progress'});
+ const shippedNotice=(await requestNotices(db,getDemoUser('agency'))).find(row=>row.request_id===9941&&row.kind==='request-special-order');
+ expect(shippedNotice).toMatchObject({actual_eta:'2026-11-25'});
+ expect(shippedNotice?.anticipated_eta).toBeUndefined();expect(shippedNotice?.notes).toBeUndefined();
+});
 it('allows reviewers to edit or withdraw unread notes with revision checks',async()=>{
  const {editMoreInfoNote}=await import('../server/utils/submittedRequests');
  const {requestNotices}=await import('../server/utils/requestNotices');

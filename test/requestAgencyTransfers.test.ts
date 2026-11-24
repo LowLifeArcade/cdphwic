@@ -6,6 +6,7 @@ import {ensureSubmittedRequest,updateSubmittedShipmentReceipt} from '../server/u
 import {authorizeRequestTransfer,shipRequestTransfer,saveRequestTransferEta,confirmRequestTransferStock} from '../server/utils/requestTransfers';
 import {shipmentReceiptKey} from '../shared/shipmentReceipts';
 import {receiptQuantityKey} from '../shared/shipmentQuantities';
+import {syncRequestLocalSurplus} from '../server/utils/requestLocalSurplus';
 
 it('notifies the source immediately on reservation, before any shipping details exist',async()=>{
  const {listSurplusNotices}=await import('../server/utils/surplusNotices');const f=await fixture();
@@ -14,6 +15,51 @@ it('notifies the source immediately on reservation, before any shipping details 
  const notice=(await listSurplusNotices(f.db,source)).find(n=>n.id===`transfer-stock:${id}`);
  expect(notice).toMatchObject({kind:'transfer-stock',transfer_id:id,quantity:12,is_read:0});
  for(const user of [f.admin,getDemoUser('internal'),getDemoUser('agency'),{...source,agencyId:12}])expect((await listSurplusNotices(f.db,user)).some(n=>n.id===`transfer-stock:${id}`)).toBe(false);
+});
+it('allows assigning the exact catalog variant when the submitted request omitted its flavor',async()=>{
+ const {db,sqlite}=surplusDb();const admin=getDemoUser('admin');
+ const lot=await ensureSurplusLot(db,10,{formulaName:'Kate Farms Pediatric Std 1.2',form:'ready-to-feed',flavor:'Vanilla',expirationDate:'2027-12-23'});
+ await executeSurplusCommand(db,admin,{kind:'reconcile',operationId:crypto.randomUUID(),lotId:lot.id,quantity:24,expectedVersion:0,reason:'Verified count',confirmerName:'Example'});
+ sqlite.prepare("UPDATE products SET name=?,form='ready-to-feed',flavor='Vanilla',active=1 WHERE product_code=?").run('Kate Farms Pediatric Std 1.2','851823006997');
+ if(!sqlite.prepare('SELECT 1 FROM products WHERE product_code=?').get('851823006997'))sqlite.prepare("INSERT INTO products(product_id,product_code,name,form,category,active,flavor) VALUES('test','851823006997','Kate Farms Pediatric Std 1.2','ready-to-feed','standard',1,'Vanilla')").run();
+ const request={...await ensureSubmittedRequest(db,{id:1000003,submissionId:'request-1000003',agencyId:10,agencyMemberId:100,participantName:'Participant',productName:'Kate Farms Pediatric Std 1.2',productForm:'ready-to-feed',status:'in_progress'}),requestedFormulas:[{productName:'Kate Farms Pediatric Std 1.2',productForm:'ready-to-feed' as const,ouncesPrescribed:0,flavor:''}]};
+ const authorization={productName:'Kate Farms Pediatric Std 1.2',productForm:'ready-to-feed' as const,productCode:'851823006997',benefitIssuances:[{month:'2026-11',quantity:12}],localSurplusAllocations:[{lotId:lot.id,units:8}]};
+ await expect(syncRequestLocalSurplus(db,request,[authorization],admin)).resolves.toBeUndefined();
+ expect(sqlite.prepare('SELECT reserved,on_hand FROM surplus_lots WHERE id=?').get(lot.id)).toMatchObject({reserved:8,on_hand:24});
+ await expect(syncRequestLocalSurplus(db,request,[{...authorization,productCode:'not-this-product'}],admin)).rejects.toMatchObject({statusCode:400});
+ const wrongFlavor=await ensureSurplusLot(db,10,{formulaName:'Kate Farms Pediatric Std 1.2',form:'ready-to-feed',flavor:'Chocolate',expirationDate:'2027-12-23'});
+ await executeSurplusCommand(db,admin,{kind:'reconcile',operationId:crypto.randomUUID(),lotId:wrongFlavor.id,quantity:6,expectedVersion:0,reason:'Verified count',confirmerName:'Example'});
+ await expect(syncRequestLocalSurplus(db,request,[{...authorization,localSurplusAllocations:[{lotId:wrongFlavor.id,units:4}]}],admin)).rejects.toMatchObject({statusCode:400});
+});
+it('accepts blank surplus flavor for a catalog product marked Unflavored when saving issuance',async()=>{
+ const {db}=surplusDb();const admin=getDemoUser('admin');
+ const lot=await ensureSurplusLot(db,10,{formulaName:'Nutramigen',form:'ready-to-feed',flavor:'',expirationDate:'2027-12-30'});
+ await executeSurplusCommand(db,admin,{kind:'reconcile',operationId:'unflavored-surplus-count',lotId:lot.id,quantity:10,expectedVersion:0,reason:'Verified count'});
+ const request=await ensureSubmittedRequest(db,{id:1000099,submissionId:'unflavored-surplus-request',agencyId:10,agencyMemberId:100,participantName:'Participant',productName:'Nutramigen',productForm:'ready-to-feed',status:'in_progress',requestedFormulas:[{productName:'Nutramigen',productForm:'ready-to-feed',ouncesPrescribed:0}]});
+ const authorization={productName:'Nutramigen',productForm:'ready-to-feed' as const,productCode:'898202',benefitIssuances:[{month:'2026-12',quantity:6}],localSurplusAllocations:[{lotId:lot.id,units:4}]};
+ await expect(syncRequestLocalSurplus(db,request,[authorization],admin)).resolves.toBeUndefined();
+});
+it('reserves other-agency stock using the selected catalog variant for a request alias',async()=>{
+ const {db,sqlite}=surplusDb();const admin=getDemoUser('admin');
+ const lot=await ensureSurplusLot(db,11,{formulaName:'Kate Farms Pediatric Std 1.2',form:'ready-to-feed',flavor:'Vanilla',expirationDate:'2027-12-23'});
+ await executeSurplusCommand(db,admin,{kind:'reconcile',operationId:crypto.randomUUID(),lotId:lot.id,quantity:24,expectedVersion:0,reason:'Verified count',confirmerName:'Example'});
+ const request=await ensureSubmittedRequest(db,{id:1000005,submissionId:'request-1000005',agencyId:10,agencyMemberId:100,participantName:'Participant',productName:'Kate Farms Pediatric Std 1.2 Cal',productForm:'ready-to-feed',requestedFormulas:[{productName:'Kate Farms Pediatric Std 1.2 Cal',productForm:'ready-to-feed',ouncesPrescribed:0}],formulaAuthorizations:[{productName:'Kate Farms Pediatric Std 1.2 Cal',formulaName:'Kate Farms Pediatric Std 1.2',productForm:'ready-to-feed',flavor:'Vanilla',benefitIssuances:[{month:'2026-11',quantity:12}]}],status:'in_progress'});
+ const {shipmentFormulaOptions}=await import('../shared/shipmentFormulas');
+ const row={shipmentSource:'agency' as const,sourceAgencyId:11,sourceLotId:lot.id,shipmentFormula:shipmentFormulaOptions(request)[0],unitsPerCase:6,casesShipped:1,looseUnitsShipped:0,unitsToTransfer:6,eta:'',carrier:'gso' as const,trackingNumbers:[]};
+ const saved=await authorizeRequestTransfer(db,request,[row],0,admin);
+ expect(saved.shipments?.[0]).toMatchObject({transferId:expect.any(String),transferQuantity:6});
+ expect(sqlite.prepare('SELECT reserved,on_hand FROM surplus_lots WHERE id=?').get(lot.id)).toMatchObject({reserved:6,on_hand:24});
+});
+it('assigns a local surplus lot named for the selected catalog product when the request has an alias',async()=>{
+ const {db,sqlite}=surplusDb();const admin=getDemoUser('admin');
+ const lot=await ensureSurplusLot(db,10,{formulaName:'Kate Farms Pediatric Std 1.2',form:'ready-to-feed',flavor:'Vanilla',expirationDate:'2027-12-23'});
+ await executeSurplusCommand(db,admin,{kind:'reconcile',operationId:crypto.randomUUID(),lotId:lot.id,quantity:24,expectedVersion:0,reason:'Verified count',confirmerName:'Example'});
+ sqlite.prepare("UPDATE products SET name=?,form='ready-to-feed',flavor='Vanilla',active=1,formula_description=? WHERE product_code=?").run('Kate Farms Pediatric Std 1.2','Kate Farms Pediatric Standard 1.2 Cal, 8.45 fl oz RTF, Vanilla','851823006997');
+ if(!sqlite.prepare('SELECT 1 FROM products WHERE product_code=?').get('851823006997'))sqlite.prepare("INSERT INTO products(product_id,product_code,name,form,category,active,flavor,formula_description) VALUES('test','851823006997','Kate Farms Pediatric Std 1.2','ready-to-feed','standard',1,'Vanilla','Kate Farms Pediatric Standard 1.2 Cal, 8.45 fl oz RTF, Vanilla')").run();
+ const request={...await ensureSubmittedRequest(db,{id:1000004,submissionId:'request-1000004',agencyId:10,agencyMemberId:100,participantName:'Participant',productName:'Kate Farms Pediatric Std 1.2 Cal',productForm:'ready-to-feed',status:'in_progress'}),requestedFormulas:[{productName:'Kate Farms Pediatric Std 1.2 Cal',productForm:'ready-to-feed' as const,ouncesPrescribed:0,flavor:'Vanilla'}]};
+ const authorization={productName:'Kate Farms Pediatric Std 1.2 Cal',productForm:'ready-to-feed' as const,productCode:'851823006997',benefitIssuances:[{month:'2026-11',quantity:12}],localSurplusAllocations:[{lotId:lot.id,units:8}]};
+ await expect(syncRequestLocalSurplus(db,request,[authorization],admin)).resolves.toBeUndefined();
+ expect(sqlite.prepare('SELECT reserved,on_hand FROM surplus_lots WHERE id=?').get(lot.id)).toMatchObject({reserved:8,on_hand:24});
 });
 it('records physical stock confirmation only from the sending agency without deducting inventory',async()=>{
  const {confirmRequestTransferStock}=await import('../server/utils/requestTransfers');const f=await fixture();

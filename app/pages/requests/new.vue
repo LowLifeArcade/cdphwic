@@ -21,7 +21,7 @@ import type { ProductForm, RequestRecord } from '~/../shared/domain';
 import { blankFormula, formulaEntryName, getFormulaFieldErrors, validateOtherFormulaName, validateFormulaEntry, validateFormulaSelection, type FormulaEntry } from '~/../shared/formulaEntries';
 import { validateAgencyFields, providerSignatureMessage } from '~/../shared/newRequestFields';
 import { formatPhoneNumber, normalizePhoneNumber } from '~/../shared/phone';
-import {availableUnits,normalizeVariantText} from '~/../shared/surplus';
+import {availableUnits,daysRemaining,localDate,normalizeVariantText} from '~/../shared/surplus';
 
 const router = useRouter();
 const route = useRoute();
@@ -144,6 +144,8 @@ function initializeSurplus(entry: typeof surplusEntries.value[number]) {
 function agencySurplusStock(entry:typeof surplusEntries.value[number]){
     const lots=(surplusInventory.value?.lots??[]).filter((lot:any)=>
         lot.agencyId===requestAgencyId.value&&
+        daysRemaining(lot.expirationDate,localDate())>60&&
+        !lot.expiredUnits&&
         normalizeVariantText(lot.formulaName)===normalizeVariantText(entry.productName)&&
         lot.form===entry.productForm&&
         normalizeVariantText(lot.flavor??'')===normalizeVariantText(entry.flavor??''),

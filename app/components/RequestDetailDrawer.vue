@@ -14,10 +14,10 @@ import type {Directive} from 'vue';
 import {formatClinic,type ClinicRecord,blankClinicAddress,validateShipping} from '~/../shared/shipping';
 const vTrackingSize:Directive<HTMLTextAreaElement>={mounted:fitTrackingNumbers,updated:fitTrackingNumbers};
 function fitTrackingNumbers(input:HTMLTextAreaElement){input.style.height='auto';input.style.height=`${input.scrollHeight+input.offsetHeight-input.clientHeight}px`;}
-import {formulaOrders,allFormulasSpecialOrder} from '~/../shared/formulaOrders';
+import {formulaOrders,allFormulasSpecialOrder,hasSpecialOrder} from '~/../shared/formulaOrders';
 import {formulaAuthorizations,formatIssuanceMonth,validateFormulaAuthorizations,type FormulaAuthorization} from '~/../shared/formulaAuthorizations';
-import {transferAuthorizationError,transferEntryQuantity,transferCatalogUnitsPerCase,matchingTransferLot,surplusShipmentDraft,transferLotFormulaLabel} from '~/../shared/requestTransfers';
-import {localDate,type SurplusLot} from '~/../shared/surplus';
+import {transferAuthorizationError,transferEntryQuantity,transferCatalogUnitsPerCase,matchingTransferLot,matchingLocalSurplusLot,surplusShipmentDraft,transferLotFormulaLabel} from '~/../shared/requestTransfers';
+import {localDate,daysRemaining,type SurplusLot} from '~/../shared/surplus';
 import {canDeleteShipment,storedShipmentRows} from '~/../shared/shipmentDeletion';
 import {shipmentFeatureFlags} from '~/../shared/featureFlags';
 import {compactShipmentSummary} from '~/../shared/shipmentSummary';
@@ -139,6 +139,10 @@ const { queueMessageRead, start: startConversationSync } = useRequestConversatio
 onMounted(startConversationSync);
 
 const canCollapseReviewDetails=computed(()=>props.request?.approved===true || props.request?.status==='approved');
+const hasSavedIssuance=computed(()=>!!props.request?.formulaAuthorizations?.length);
+const showAuthorizationWorkspace=computed(()=>canCollapseReviewDetails.value&&(canStaffEdit.value||hasSavedIssuance.value));
+const hasExistingShipments=computed(()=>!!props.request&&(!!props.request.shipmentDrafts?.length||!!props.request.eta||!!props.request.trackingNumbers?.length||!!props.request.shipments?.some(row=>!!(row.shipmentFormula||row.shipmentSource||row.sourceLotId||row.transferId||row.supplier||row.distributorId||row.eta||row.trackingNumbers.length||row.casesShipped||row.receivedAt||row.receiptConfirmed))));
+const canAccessShipping=computed(()=>hasSavedIssuance.value||hasExistingShipments.value);
 const reviewDetailsExpanded=ref(true);
 watch([()=>props.request?.id,canCollapseReviewDetails],()=>{reviewDetailsExpanded.value=!canCollapseReviewDetails.value;},{immediate:true});
 async function sendMoreInfoReply(noteId:string){const notes=moreInfoReplies.value[noteId]?.trim();if(!notes)return;await save({moreInfoReply:{noteId,notes}} as Partial<RequestRecord>);if(!error.value){moreInfoReplies.value[noteId]='';moreInfoNotice.value=canStaffEdit.value?'Response sent to Local Agency.':'Response sent to CDPH/WIC.';}}
@@ -168,13 +172,13 @@ const anticipatedSurplusRows=computed(()=>{
  return (anticipatedSurplusData.value?.forecasts??[]).filter(item=>item.agency_id===request.agencyId&&refs.has(String(item.request_ref)));
 });
 const {data:surplusClinics,error:surplusClinicError}=await useFetch<{clinics:ClinicRecord[]}>(()=>`/api/agencies/${props.request?.agencyId??0}/clinics`,{headers:computed(()=>({'x-demo-user':identity.value})),server:false});
-const shipmentFormulaChoices=computed(()=>props.request?shipmentFormulaOptions(props.request):[]);
-function shipmentFormula(row:RequestShipment){return row.shipmentFormula??(props.request?resolveShipmentFormula(props.request,row):undefined);}
-function shipmentRequest(row:RequestShipment):Partial<RequestRecord>{const formula=props.request?resolveShipmentFormula(props.request,row):undefined;return formula?{...props.request,requestedFormulas:[{...formula,productForm:formula.productForm!,ouncesPrescribed:0}]}:props.request??{};}
+const shipmentFormulaChoices=computed(()=>props.request?shipmentFormulaOptions({...props.request,formulaAuthorizations:draft.formulaAuthorizations}):[]);
+function shipmentFormula(row:RequestShipment){const request=props.request?{...props.request,formulaAuthorizations:draft.formulaAuthorizations}:undefined;return row.shipmentFormula??(request?resolveShipmentFormula(request,row):undefined);}
+function shipmentRequest(row:RequestShipment):Partial<RequestRecord>{const formula=props.request?resolveShipmentFormula(props.request,row):undefined;return formula?{...props.request,formulaAuthorizations:draft.formulaAuthorizations,requestedFormulas:[{...formula,productForm:formula.productForm!,ouncesPrescribed:0}]}:{...props.request,formulaAuthorizations:draft.formulaAuthorizations};}
 function shipmentCatalogSize(row:RequestShipment){const formula=shipmentFormula(row);return formula?transferCatalogUnitsPerCase({formulaName:formula.productName,form:formula.productForm??'',flavor:formula.flavor},props.products??[])??((props.request?.requestedFormulas?.length??1)<=1?selectedProduct.value?.unitsPerCase:undefined):undefined;}
 function hasTransferLabelRequest(row:RequestShipment){return row.shipmentSource!=='agency'||!!row.transferStockConfirmedAt&&Number.isSafeInteger(row.transferLabelCount)&&Number(row.transferLabelCount)>0;}
 function selectShipmentFormula(row:RequestShipment,key:string){const formula=shipmentFormulaChoices.value.find(f=>shipmentFormulaKey(f)===key);row.shipmentFormula=formula?{...formula}:undefined;row.sourceLotId=undefined;row.unitsPerCase=shipmentCatalogSize(row);syncTransferQuantity(row);}
-function transferLots(row:RequestShipment){return (transferStock.value?.lots??[]).filter(lot=>props.request&&lot.agencyId===row.sourceAgencyId&&matchingTransferLot(shipmentRequest(row),lot)&&lot.expirationDate>=localDate()&&!lot.expiredUnits&&lot.onHand>lot.reserved);}
+function transferLots(row:RequestShipment){return (transferStock.value?.lots??[]).filter(lot=>props.request&&lot.agencyId===row.sourceAgencyId&&matchingTransferLot(shipmentRequest(row),lot)&&daysRemaining(lot.expirationDate,localDate())>60&&!lot.expiredUnits&&lot.onHand>lot.reserved);}
 function changeShipmentSource(row:RequestShipment,value:string){row.shipmentSource=value==='agency'?'agency':'distributor';row.sourceAgencyId=undefined;row.sourceClinicId=undefined;row.sourceClinicName=undefined;row.sourceClinicAddress=undefined;row.sourceLotId=undefined;row.distributorId=undefined;row.supplier=undefined;row.unitsToTransfer=undefined;row.casesShipped=0;row.looseUnitsShipped=0;if(value==='agency')row.carrier='gso';}
 function selectTransferLot(row:RequestShipment){const lot=transferLots(row).find(l=>l.id===row.sourceLotId);if(lot){row.sourceClinicId=lot.clinicId;row.sourceClinicName=lot.clinicName;row.sourceClinicAddress=lot.clinicAddress;}if(lot&&props.request)row.shipmentFormula=requireShipmentFormula(props.request,{transferFormulaName:lot.formulaName,transferForm:lot.form,transferFlavor:lot.flavor});row.unitsPerCase=lot?transferCatalogUnitsPerCase(lot,props.products??[]):undefined;syncTransferQuantity(row);}
 let transferSelectionGroupSequence=0;
@@ -216,11 +220,11 @@ async function reserveShipmentTransfer(index:number){
     transferAuthorizationIndex.value=null;await refreshTransferStock();
 }
 const issuanceTransferMessage=ref('');
-function formulaTransferSelections(authorization:FormulaAuthorization){return (draft.shipments??[]).map((row,index)=>({row,index})).filter(({row})=>row.shipmentSource==='agency'&&row.replacementFor===undefined&&shipmentFormulaKey(shipmentFormula(row))===shipmentFormulaKey(authorization));}
-function otherAgencyLots(authorization:FormulaAuthorization){return props.request?issuanceTransferLots(props.request,authorization,transferStock.value?.lots??[],localDate()):[];}
+function formulaTransferSelections(authorization:FormulaAuthorization){const formulaIndex=draft.formulaAuthorizations?.indexOf(authorization)??-1;const selected=shipmentFormulaChoices.value[formulaIndex]??authorization;return (draft.shipments??[]).map((row,index)=>({row,index})).filter(({row})=>row.shipmentSource==='agency'&&row.replacementFor===undefined&&shipmentFormulaKey(shipmentFormula(row))===shipmentFormulaKey(selected));}
+function otherAgencyLots(authorization:FormulaAuthorization){return props.request?issuanceTransferLots({...props.request,formulaAuthorizations:draft.formulaAuthorizations},authorization,transferStock.value?.lots??[],localDate()):[];}
 function selectIssuanceTransfer(authorization:FormulaAuthorization,lot:SurplusLot,units:number){
  issuanceTransferMessage.value='';
- try{draft.shipments=setIssuanceTransferUnits(draft.shipments??[],authorization,lot,units,transferCatalogUnitsPerCase(lot,props.products??[])??authorizationUnitsPerCase(authorization));for(const row of draft.shipments)if(row.sourceLotId===lot.id&&!row.sourceAgencyName)row.sourceAgencyName=transferAgencies.value?.agencies.find(agency=>agency.id===lot.agencyId)?.name;}
+ try{const formulaIndex=draft.formulaAuthorizations?.indexOf(authorization)??-1;const formula=shipmentFormulaChoices.value[formulaIndex]??authorization;draft.shipments=setIssuanceTransferUnits(draft.shipments??[],formula,lot,units,transferCatalogUnitsPerCase(lot,props.products??[])??authorizationUnitsPerCase(authorization));for(const row of draft.shipments)if(row.sourceLotId===lot.id&&!row.sourceAgencyName)row.sourceAgencyName=transferAgencies.value?.agencies.find(agency=>agency.id===lot.agencyId)?.name;}
  catch(error){issuanceTransferMessage.value=(error as Error).message;}
 }
 function removeIssuanceTransfer(index:number){if(!draft.shipments?.[index]?.transferId)draft.shipments?.splice(index,1);}
@@ -245,7 +249,7 @@ const { authorizationProduct, authorizationUnitsPerCase, assignedUnits, setLocal
 
 function savedLocalSurplusUnits(index:number,lotId:string){return props.request?formulaAuthorizations(props.request)[index]?.localSurplusAllocations?.find(row=>row.lotId===lotId)?.units??0:0;}
 function localSurplusAvailable(lot:SurplusLot,index:number){return Math.max(0,lot.onHand-lot.reserved+savedLocalSurplusUnits(index,lot.id));}
-function localAgencySurplusLots(authorization:FormulaAuthorization,index:number){const formula=requestFormulas(props.request??{})[index];if(!formula)return [];const name=(formula.otherFormulaName||formula.productName).trim().toLowerCase();return (transferStock.value?.lots??[]).filter(lot=>lot.agencyId===props.request?.agencyId&&lot.form===formula.productForm&&lot.formulaName.trim().toLowerCase()===name&&(lot.flavor??'').trim().toLowerCase()===(formula.flavor??'').trim().toLowerCase()&&lot.expirationDate>=localDate()&&!lot.expiredUnits&&(lot.onHand>lot.reserved||savedLocalSurplusUnits(index,lot.id)>0));}
+function localAgencySurplusLots(authorization:FormulaAuthorization,index:number){const formula=requestFormulas(props.request??{})[index];if(!formula||!props.request)return [];const catalogProduct=props.products?.find(product=>product.productCode===authorization.productCode);const name=catalogProduct?.name||formula.otherFormulaName||formula.productName;const flavor=catalogProduct?.flavor||formula.flavor||authorization.flavor||'';return (transferStock.value?.lots??[]).filter(lot=>matchingLocalSurplusLot(formula,lot,props.request!.agencyId,flavor,name)&&daysRemaining(lot.expirationDate,localDate())>60&&!lot.expiredUnits&&(lot.onHand>lot.reserved||savedLocalSurplusUnits(index,lot.id)>0));}
 
 function copyRequest(request: RequestRecord): Partial<RequestRecord> {
     const requestedMonths = normalizeRequestedMonths(request.benefitMonthsRequested);
@@ -310,9 +314,10 @@ watch(
     { immediate: true },
 );
 
-watch([()=>props.request?.id,()=>transferRoute.query.surplusLot,()=>transferStock.value?.lots,()=>props.products],async()=>{
+watch([()=>props.request?.id,()=>transferRoute.query.surplusLot,()=>transferStock.value?.lots,()=>props.products,hasSavedIssuance],async()=>{
  const request=props.request;const lotId=typeof transferRoute.query.surplusLot==='string'?transferRoute.query.surplusLot:'';
  if(!request||!canStaffEdit.value||String(transferRoute.query.request)!==String(request.id)||!lotId||!transferStock.value?.lots||!props.products)return;
+ if(!hasSavedIssuance.value){shortcutNotice.value='Save the issuance and supply plan before creating a shipment.';return;}
  const key=`${request.id}:${lotId}`;if(shortcutApplied.value===key)return;
  const lot=transferStock.value.lots.find(l=>l.id===lotId);
  const row=lot?surplusShipmentDraft(request,lot,props.products):undefined;
@@ -344,7 +349,7 @@ async function save(updates: Partial<RequestRecord> & {reserveTransferIndex?:num
         window.dispatchEvent(new Event('request-messages-changed'));
         if (props.request?.id===savingRequest.id) Object.assign(draft, copyRequest(result.request));
     } catch (requestError) {
-        error.value = (requestError as {data?:{statusMessage?:string};statusMessage?:string}).data?.statusMessage ?? (requestError as {statusMessage?:string}).statusMessage ?? 'Request could not be updated.';
+        error.value = (requestError as {data?:{statusMessage?:string;message?:string};statusMessage?:string;message?:string}).data?.statusMessage ?? (requestError as {data?:{message?:string}}).data?.message ?? (requestError as {statusMessage?:string}).statusMessage ?? (requestError as {message?:string}).message ?? 'Request could not be updated.';
     } finally {
         saving.value = false;
     }
@@ -698,6 +703,7 @@ async function saveAgencyUpdate() {
                     class="request-tag"
                 >Approved</span>
             </div>
+            <p v-if="identity==='agency' && hasSpecialOrder(request)" class="special-order-delivery-notice" role="status"><strong>Special Order</strong> · Product will take up to 3+ weeks for delivery.</p>
             <span>Submitted {{ formatDisplayDate(request.submissionDate) }}</span>
         </div>
         <RequestHistory :key="request.id" :family-id="String(request.participantFamilyId ?? '')" :individual-id="request.wicIndividualId ?? ''" :name="request.participantName" :dob="request.participantDob ?? ''" :current-id="request.id" context="review" :suspended="documentOpen" @preview="historyOpen=$event; if($event) documentOpen=false" />
@@ -744,7 +750,7 @@ async function saveAgencyUpdate() {
         </section>
         <section v-if="canStaffEdit || request.status==='denied' || identity==='agency'" ref="reviewDecisionSection" class="detail-section review-decision-section" tabindex="-1">
             <div class="section-heading"><h3>Review Decision</h3><button v-if="canStaffEdit && hasSavedReviewDecision && !editingReviewDecision" type="button" class="text-button review-decision-edit" aria-label="Edit review decision" :disabled="saving" @click="editingReviewDecision=true">Edit</button><button v-else-if="canStaffEdit && editingReviewDecision" type="button" class="text-button review-decision-edit" :disabled="saving" @click="cancelReviewDecisionEdit">Cancel</button></div>
-            <p v-if="canCollapseReviewDetails && request.status!=='denied'" class="review-approved"><strong>{{request.status==='needs_info'?'Request More Info':'Approved'}}</strong></p>
+            <p v-if="canCollapseReviewDetails && request.status!=='denied'" class="review-approved"><strong>{{request.status==='needs_info'?'Request More Info':identity==='agency'&&!hasSavedIssuance?'Pending':'Approved'}}</strong></p>
             <p v-else-if="identity==='agency' && request.status!=='denied'" class="review-approved"><strong>{{request.status==='needs_info'?'Request More Info':'Awaiting CDPH/WIC Decision'}}</strong></p>
             <template v-if="request.status==='denied'">
                 <p class="review-denied"><strong>Denied</strong></p>
@@ -757,8 +763,8 @@ async function saveAgencyUpdate() {
                 <button v-if="hasSavedReviewDecision" class="button button-ghost" type="button" :disabled="saving" @click="chooseReviewDecision('clear')">Clear decision</button>
             </div>
         </section>
-        <hr v-if="canCollapseReviewDetails && request.status!=='denied'" class="cdph-section-divider" />
-        <section v-if="canCollapseReviewDetails && request.status!=='denied'" ref="authorizationSection" class="cdph-workspace" aria-label="State-Issued Formula Authorization" tabindex="-1">
+        <hr v-if="showAuthorizationWorkspace && request.status!=='denied'" class="cdph-section-divider" />
+        <section v-if="showAuthorizationWorkspace && request.status!=='denied'" ref="authorizationSection" class="cdph-workspace" aria-label="State-Issued Formula Authorization" tabindex="-1">
             <header class="cdph-workspace-header"><h3>State-Issued Formula Authorization</h3></header>
         <section
             v-if="canStaffEdit"
@@ -781,7 +787,7 @@ async function saveAgencyUpdate() {
             />
             <fieldset v-if="localAgencySurplusLots(authorization,formulaIndex).length || assignedUnits(authorization)>0" class="local-surplus-assignment">
                 <div class="transfer-heading"><h4>On Hand</h4></div>
-                <p class="muted-copy">Available units are shown for each lot. Enter the number to assign to this request, then save the issuance changes.</p>
+                <p class="muted-copy">Available units are shown for each lot. Enter the number to assign, then save. Saving reserves those units; they remain in the On Hand balance until the Local Agency records an issue.</p>
                 <div v-if="localAgencySurplusLots(authorization,formulaIndex).length" class="local-surplus-lots">
                     <div v-for="lot in localAgencySurplusLots(authorization,formulaIndex)" :key="lot.id" class="local-surplus-lot">
                         <div class="surplus-lot-info"><strong>{{transferLotFormulaLabel(lot)}}</strong><small>{{lot.clinicName||'Clinic not specified'}}</small><small>Exp {{formatDisplayDate(lot.expirationDate)}}</small><span>{{localSurplusAvailable(lot,formulaIndex)}} {{unitLabel(localSurplusAvailable(lot,formulaIndex))}} available</span></div>
@@ -794,13 +800,13 @@ async function saveAgencyUpdate() {
                 <label class="field-label">Special Order Cases<input v-model.number="authorization.specialOrderCases" class="form-input authorization-number" type="number" inputmode="numeric" min="0" step="1" :aria-label="`Formula ${formulaIndex+1} Special Order Cases`" :disabled="saving" /></label>
                 <p class="muted-copy fulfillment-allocation-help">Standard and Special Order cases must total {{authorization.approvedCases??0}} cases to order.</p>
             </div>
-            <RequestTransferAllocation :lots="otherAgencyLots(authorization)" :selections="formulaTransferSelections(authorization)" :agencies="transferAgencies?.agencies??[]" :busy="saving" :loaded="!!transferStock" :load-error="!!transferStockError" :message="issuanceTransferMessage" @select="(lot,units)=>selectIssuanceTransfer(authorization,lot,units)" @reserve="reserveIssuanceTransfer" @remove="removeIssuanceTransfer" @refresh="refreshTransferStock" />
-            <RequestSupplyPlan :published-shipments="requestShipments(request)" :request="{...request,...draft}" :authorization="authorization" :units-per-case="authorizationUnitsPerCase(authorization)" />
+            <RequestTransferAllocation v-if="otherAgencyLots(authorization).length" :lots="otherAgencyLots(authorization)" :selections="formulaTransferSelections(authorization)" :agencies="transferAgencies?.agencies??[]" :busy="saving" :loaded="!!transferStock" :load-error="!!transferStockError" :message="issuanceTransferMessage" @select="(lot,units)=>selectIssuanceTransfer(authorization,lot,units)" @reserve="reserveIssuanceTransfer" @remove="removeIssuanceTransfer" @refresh="refreshTransferStock" />
             </fieldset>
             <label class="field-label">
                 Next Steps
                 <textarea v-model="draft.nextSteps" class="form-textarea" placeholder="Add instructions or follow-up notes." />
             </label>
+            <p v-if="error" class="form-error" role="alert">{{error}}</p>
             <div class="staff-save-action">
                 <button
                     class="button button-secondary"
@@ -816,16 +822,20 @@ async function saveAgencyUpdate() {
                     :class="`save-feedback-${staffSaveStatus}`"
                     role="status"
                 >
-                    {{ staffSaveStatus === 'saving' ? 'Saving…' : staffSaveStatus === 'saved' ? 'Saved' : 'Save failed' }}
+                    {{ staffSaveStatus === 'saving' ? 'Saving…' : staffSaveStatus === 'saved' ? 'Saved' : `Save failed: ${error || 'Request could not be updated.'}` }}
                 </span>
             </div>
             </fieldset>
         </section>
 
-        <McKessonOrderPanel v-if="canStaffEdit" :key="request.id" :request="request" :products="products ?? []" />
-        <RequestIssuanceSummary v-if="identity==='agency'" :request="request" :products="products" @record-issue="recordLocalSurplusIssue" />
+        <section v-if="canStaffEdit && draft.formulaAuthorizations?.length" class="detail-section issuance-supply-plans" aria-label="Issuance supply plans">
+            <RequestSupplyPlan v-for="(authorization,formulaIndex) in draft.formulaAuthorizations" :key="`supply-plan-${authorization.productName}-${formulaIndex}`" :published-shipments="requestShipments(request)" :request="{...request,...draft}" :authorization="authorization" :units-per-case="authorizationUnitsPerCase(authorization)" />
+        </section>
 
-        <section ref="shippingSection" :id="`shipments-${request.id}`" class="detail-section" tabindex="-1">
+        <McKessonOrderPanel v-if="canStaffEdit" :key="request.id" :request="request" :products="products ?? []" />
+        <RequestIssuanceSummary v-if="identity==='agency' && hasSavedIssuance" :request="request" :products="products" @record-issue="recordLocalSurplusIssue" />
+
+        <section v-if="canAccessShipping" ref="shippingSection" :id="`shipments-${request.id}`" class="detail-section" tabindex="-1">
             <div class="section-heading"><h3>Shipping</h3><button v-if="canStaffEdit && request.status!=='denied' && editingSection!=='shipping'" class="text-button" type="button" @click="startEditing('shipping')">Edit</button></div>
             <form v-if="editingSection==='shipping' && draft.shipping" class="shipping-detail-editor" @submit.prevent="saveFormSection">
                 <div class="form-grid compact-form-grid">

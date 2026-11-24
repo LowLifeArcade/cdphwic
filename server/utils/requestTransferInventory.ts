@@ -4,7 +4,7 @@ import {listProducts} from './productRepository';
 import type {RequestRecord} from '../../shared/domain';
 import type {RequestShipment} from '../../shared/requestShipments';
 import {transferCatalogUnitsPerCase,matchingTransferLot,type RequestAgencyTransfer} from '../../shared/requestTransfers';
-import {localDate,type SurplusLot} from '../../shared/surplus';
+import {localDate,daysRemaining,type SurplusLot} from '../../shared/surplus';
 import {shipmentQuantities} from '../../shared/shipmentQuantities';
 import {SEED_AGENCIES} from '../data/seed';
 export const transferError=(message:string,statusCode=409)=>Object.assign(new Error(message),{statusCode,statusMessage:message});
@@ -19,12 +19,13 @@ export async function reserveTransferInventory(db:D1Database,request:RequestReco
  const lot=stored?decodeSurplusLot(stored):null;
  if(lot && row.unitsPerCase===undefined)row={...row,unitsPerCase:transferCatalogUnitsPerCase(lot,await listProducts(db))};
  const quantity=row.unitsToTransfer??row.casesShipped*(row.unitsPerCase??0)+(row.looseUnitsShipped??0);
- if(!lot||row.sourceAgencyId!==lot.agencyId||!matchingTransferLot(request,lot)||lot.expirationDate<localDate()||lot.expiredUnits>0||!Number.isSafeInteger(quantity)||quantity<=0||!Number.isSafeInteger(row.unitsPerCase)||row.unitsPerCase!<1||lot.onHand-lot.reserved<quantity)throw transferError('Select matching, unexpired agency surplus and a quantity within the available balance.');
+ if(!lot||row.sourceAgencyId!==lot.agencyId||!matchingTransferLot(request,lot)||daysRemaining(lot.expirationDate,localDate())<=60||lot.expiredUnits>0||!Number.isSafeInteger(quantity)||quantity<=0||!Number.isSafeInteger(row.unitsPerCase)||row.unitsPerCase!<1||lot.onHand-lot.reserved<quantity)throw transferError('Select matching agency surplus with more than 60 days before expiration and a quantity within the available balance.');
  const formula=requireShipmentFormula(request,{transferFormulaName:lot.formulaName,transferForm:lot.form,transferFlavor:lot.flavor});
  if(row.shipmentFormula && shipmentFormulaKey(formula)!==shipmentFormulaKey(row.shipmentFormula))throw transferError('Selected surplus does not match the shipment formula.');
  const id=crypto.randomUUID();
  const trusted:RequestShipment={...row,shipmentFormula:formula,carrier:'gso',unitsToTransfer:quantity,casesShipped:Math.floor(quantity/row.unitsPerCase!),looseUnitsShipped:quantity%row.unitsPerCase!,shipmentSource:'agency',sourceAgencyId:lot.agencyId,sourceClinicId:lot.clinicId,sourceClinicName:lot.clinicName,sourceClinicAddress:lot.clinicAddress,sourceAgencyName:SEED_AGENCIES.find(a=>a.id===lot.agencyId)!.name,sourceLotId:lot.id,transferId:id,transferStatus:'reserved',transferQuantity:quantity,transferFormulaName:lot.formulaName,transferForm:lot.form,transferFlavor:lot.flavor,transferExpiration:lot.expirationDate,distributorId:undefined,distributorPolicy:undefined,supplier:undefined,eta:'',etaSentAt:undefined,dispatched:false,trackingNumbers:[]};
- const steps=[guard(db,'EXISTS(SELECT 1 FROM surplus_lots WHERE id=? AND version=? AND expiration_date>=? AND on_hand-reserved>=?)',[lot.id,lot.version,localDate(),quantity]),
+ const eligibleDate=new Date(Date.parse(localDate()+'T00:00:00Z')+61*86400000).toISOString().slice(0,10);
+ const steps=[guard(db,'EXISTS(SELECT 1 FROM surplus_lots WHERE id=? AND version=? AND expiration_date>=? AND on_hand-reserved>=?)',[lot.id,lot.version,eligibleDate,quantity]),
  db.prepare('UPDATE surplus_lots SET reserved=reserved+?,version=version+1 WHERE id=?').bind(quantity,lot.id),
  db.prepare("INSERT INTO surplus_transfers(id,source_lot_id,source_agency_id,destination_agency_id,formula_name,form,flavor,expiration_date,quantity,request_ref,status,request_id,units_per_case,destination_shipping,source_clinic_id,source_clinic_name,source_clinic_address) VALUES(?,?,?,?,?,?,?,?,?,?,'reserved',?,?,?,?,?,?)").bind(id,lot.id,lot.agencyId,request.agencyId,lot.formulaName,lot.form,lot.flavor,lot.expirationDate,quantity,String(request.id),request.id,row.unitsPerCase,JSON.stringify(request.shipping??null),lot.clinicId??null,lot.clinicName??null,lot.clinicAddress?JSON.stringify(lot.clinicAddress):null),
  ...audit(db,lot.id,request.id,actor,'reserve',quantity)];

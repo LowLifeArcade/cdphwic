@@ -20,3 +20,9 @@ it('uses participant names and concise summaries in request notifications',()=>{
  expect(inbox).not.toContain('class="notice-new"');
  expect(inbox).not.toContain("'Extension'");
 });
+
+it('shows an anticipated special-order ETA until shipment dispatch, then the actual ETA',()=>{
+ expect(inbox).toContain("'request-special-order':'Special Order Delivery Update'");
+ expect(inbox).toContain('Anticipated ETA: {{formatDisplayDate(n.anticipated_eta)}}');
+ expect(inbox).toContain('Actual ETA: {{formatDisplayDate(n.actual_eta)}}');
+});

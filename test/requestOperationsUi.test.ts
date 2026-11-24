@@ -21,6 +21,11 @@ describe('request operations UI', () => {
         expect(list).toContain('v-if="allFormulasSpecialOrder(request) && request.status!==\'complete\'"');
     });
 
+    it('shows Local Agencies the special-order delivery notice when any formula is special order', () => {
+        expect(drawer).toContain("identity==='agency' && hasSpecialOrder(request)");
+        expect(drawer).toContain('Product will take up to 3+ weeks for delivery.');
+    });
+
     it('lets Local Agencies reply while keeping issue resolution with CDPH/WIC', () => {
         const issuePanel=readFileSync(new URL('../app/components/ShipmentIssuePanel.vue', import.meta.url), 'utf8');
         expect(issuePanel).toContain("identity.value==='admin' || identity.value==='internal'");
@@ -83,7 +88,7 @@ describe('request operations UI', () => {
         expect(medical.indexOf('<h3>Participant</h3>')).toBeLessThan(medical.indexOf('>Prescription</h3>'));
         expect(medical.indexOf('>Prescription</h3>')).toBeLessThan(medical.indexOf('<h3>WIC Food Restrictions</h3>'));
         expect(medical.indexOf('<h3>WIC Food Restrictions</h3>')).toBeLessThan(medical.indexOf('<h3>Health Care Provider</h3>'));
-        expect(drawer.slice(drawer.indexOf('<section ref="shippingSection"'))).toContain('rep?.email');
+        expect(drawer.slice(drawer.indexOf('ref="shippingSection"'))).toContain('rep?.email');
     });
 
     it('keeps CDPH decisions and shipment together', () => {
@@ -124,5 +129,17 @@ describe('request operations UI', () => {
         expect(drawer).toContain('>Issuance</h3>');
         expect(drawer.indexOf('Issuance')).toBeLessThan(drawer.indexOf('<RequestAuthorizationFields'));
         expect(drawer.indexOf('Issuance')).toBeLessThan(drawer.indexOf('Next Steps'));
+    });
+
+    it('keeps approval pending for agencies until issuance is saved and hides the unfinished authorization',()=>{
+        expect(list).toContain("function agencyIssuancePending(request:RequestRecord)");
+        expect(list).toContain(":status=\"agencyIssuancePending(request)?'pending':request.status\"");
+        expect(drawer).toContain('showAuthorizationWorkspace=computed(()=>canCollapseReviewDetails.value&&(canStaffEdit.value||hasSavedIssuance.value))');
+        expect(drawer).toContain("RequestIssuanceSummary v-if=\"identity==='agency' && hasSavedIssuance\"");
+        expect(drawer.indexOf('class="staff-save-action"')).toBeLessThan(drawer.indexOf('aria-label="Issuance supply plans"'));
+        expect(drawer).toContain('v-if="canAccessShipping" ref="shippingSection"');
+        expect(drawer).toContain('Save the issuance and supply plan before creating a shipment.');
+        expect(drawer).toContain('Saving reserves those units; they remain in the On Hand balance');
+        expect(drawer.indexOf('v-if="error" class="form-error" role="alert">{{error}}</p>')).toBeLessThan(drawer.indexOf('class="staff-save-action"'));
     });
 });

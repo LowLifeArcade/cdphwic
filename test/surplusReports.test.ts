@@ -94,7 +94,7 @@ describe('surplus reporting and notices', () => {
     });
     it('deduplicates donation/destruction notices at the calendar boundary, including reservations', async () => {
         const { db } = surplusDb();
-        const lot = await ensureSurplusLot(db, agency.agencyId!, { ...variant, expirationDate: '2026-12-25' });
+        const lot = await ensureSurplusLot(db, agency.agencyId!, { ...variant, expirationDate: '2027-01-15' });
         await executeSurplusCommand(
             db,
             admin,
@@ -121,12 +121,12 @@ describe('surplus reporting and notices', () => {
             },
             '2026-10-26',
         );
-        await refreshSurplusNotices(db, '2026-10-26');
-        await refreshSurplusNotices(db, '2026-10-26');
+        await refreshSurplusNotices(db, '2026-11-16');
+        await refreshSurplusNotices(db, '2026-11-16');
         expect(await db.prepare("SELECT COUNT(*) FROM surplus_notices WHERE kind='donation'").first('COUNT(*)')).toBe(
             1,
         );
-        await refreshSurplusNotices(db, '2026-12-26');
+        await refreshSurplusNotices(db, '2027-01-16');
         expect(
             await db.prepare("SELECT COUNT(*) FROM surplus_notices WHERE kind='destruction'").first('COUNT(*)'),
         ).toBe(1);
@@ -134,7 +134,7 @@ describe('surplus reporting and notices', () => {
             await db.prepare('SELECT on_hand,expired_units FROM surplus_lots WHERE id=?').bind(lot.id).first(),
         ).toEqual({ on_hand: 0, expired_units: 8 });
     });
-    it('rejects stale counts and donations outside the 30-to-60-day window', async () => {
+    it('rejects stale counts and donations outside the 45-to-60-day window', async () => {
         const { db } = surplusDb();
         const lot = await ensureSurplusLot(db, 10, { ...variant, expirationDate: '2026-11-24' });
         await executeSurplusCommand(

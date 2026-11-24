@@ -1,4 +1,4 @@
-import type { SessionUser } from './domain';
+import type { ProductForm, ProductRecord, SessionUser } from './domain';
 import type {ClinicAddress} from './shipping';
 export interface SurplusVariant {
     clinicId?:string;
@@ -23,6 +23,10 @@ export interface SurplusCommand {
     kind: 'reconcile' | 'deduct' | 'reserve' | 'ship' | 'receive' | 'cancel' | 'expire' | 'correct-expiry' | 'correct-entry';
     lotId: string;
     correctionOf?: string;
+    correctedFormulaName?:string;
+    correctedForm?:ProductForm;
+    correctedFlavor?:string;
+    correctedExpirationDate?:string;
     quantity?: number;
     destinationAgencyId?: number;
     transferId?: string;
@@ -38,6 +42,23 @@ export interface SurplusCommand {
 export const isReviewer = (user: SessionUser) => user.role === 'admin' || user.memberType === 'internal';
 export const canSeeAgency = (user: SessionUser, agencyId: number) => isReviewer(user) || user.agencyId === agencyId;
 export const normalizeVariantText = (s: string) => s.trim().replace(/\s+/g, ' ').toLowerCase();
+export interface SurplusCatalogVariant {formulaName:string;form:ProductForm;flavor:string;packagings:string[]}
+export function surplusCatalogVariants(products:ProductRecord[]=[]):SurplusCatalogVariant[]{
+    const variants=new Map<string,SurplusCatalogVariant>();
+    for(const product of products){
+        const formulaName=product.name.trim().replace(/\s+/g,' ');
+        const form=product.form;
+        if(product.active===false||!formulaName||!['powder','concentrate','ready-to-feed'].includes(form))continue;
+        const flavor=(product.flavor??'').trim().replace(/\s+/g,' ');
+        const packaging=(product.packaging??'').trim().replace(/\s+/g,' ');
+        const key=JSON.stringify([normalizeVariantText(formulaName),form,normalizeVariantText(flavor)]);
+        const existing=variants.get(key);
+        if(existing){if(!existing.packagings.some(value=>normalizeVariantText(value)===normalizeVariantText(packaging)))existing.packagings.push(packaging);}
+        else variants.set(key,{formulaName,form:form as ProductForm,flavor,packagings:[packaging]});
+    }
+    return [...variants.values()].sort((a,b)=>a.formulaName.localeCompare(b.formulaName)||a.form.localeCompare(b.form)||a.flavor.localeCompare(b.flavor));
+}
+export function defaultSurplusCatalogOption<T>(options:readonly T[]):T|undefined{return options.length===1?options[0]:undefined;}
 export const variantKey = (v: SurplusVariant) =>
     JSON.stringify([normalizeVariantText(v.formulaName), v.form, normalizeVariantText(v.flavor), v.expirationDate]);
 export const lotKey = (v: SurplusVariant) => v.clinicId
@@ -71,7 +92,7 @@ export function canAllocate(
     quantity: number,
     today: string,
 ) {
-    return !validateUnits(quantity) && daysRemaining(lot.expirationDate, today) >= 0 && availableUnits(lot) >= quantity;
+    return !validateUnits(quantity) && daysRemaining(lot.expirationDate, today) > 60 && availableUnits(lot) >= quantity;
 }
 export interface SurplusReport {
     clinic_id?:string;

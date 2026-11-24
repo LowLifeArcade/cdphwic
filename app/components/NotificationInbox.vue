@@ -20,7 +20,7 @@ onBeforeUnmount(()=>window.removeEventListener('keydown',closeOnEscape));
 const unread = computed(() => data.value?.notices.filter((n) => !n.is_read).length ?? 0);
 function openMessage(requestId:number){open.value=false;(document.activeElement as HTMLElement|null)?.blur();window.dispatchEvent(new CustomEvent('open-request-message',{detail:requestId}));}
 function notificationTitle(n:any){const formula=String(n.formula_label??'').replaceAll(' · ',' ');return [n.participant_name,formula].filter(Boolean).join(' | ')||formula||'Formula Surplus';}
-function notificationNature(n:any){return ({'request-info':'Request More Info','request-response':'Response to Request More Info','request-eta':'Shipment Update','transfer-stock':'Transfer Request','transfer-ready':'Transfer Labels Ready','transfer-confirmed':'Stock Confirmed','transfer-pickup':'Transfer Pickup',forecast:'Anticipated Surplus',donation:'Donation Reminder',destruction:'Expired Stock'} as Record<string,string>)[n.kind]??'Inventory Update';}
+function notificationNature(n:any){return ({'request-info':'Request More Info','request-response':'Response to Request More Info','request-eta':'Shipment Update','request-special-order':'Special Order Delivery Update','transfer-stock':'Transfer Request','transfer-ready':'Transfer Labels Ready','transfer-confirmed':'Stock Confirmed','transfer-pickup':'Transfer Pickup',forecast:'Anticipated Surplus',donation:'Donation Reminder',destruction:'Destruction Required'} as Record<string,string>)[n.kind]??'Inventory Update';}
 async function toggleNotices(){
  if(open.value){open.value=false;return;}
  if(noticeLoading.value)return;
@@ -84,7 +84,7 @@ async function download(kind: string) {
                 :key="n.id"
                 :class="{'notice-unread':!n.is_read}"
             >
-                <strong v-if="['request-info','request-eta','request-response','transfer-pickup','transfer-confirmed','transfer-stock','transfer-ready'].includes(n.kind)" class="notice-title">{{notificationTitle(n)}}</strong>
+                <strong v-if="['request-info','request-eta','request-special-order','request-response','transfer-pickup','transfer-confirmed','transfer-stock','transfer-ready'].includes(n.kind)" class="notice-title">{{notificationTitle(n)}}</strong>
                 <strong v-else>{{
                     n.title
                         ? n.title
@@ -92,19 +92,20 @@ async function download(kind: string) {
                         ? 'Confirm anticipated surplus'
                         : n.kind === 'donation'
                           ? 'Formula available for donation'
-                          : 'Expired formula — destruction required'
+                          : 'Formula under 45 days — destruction required'
                 }}</strong>
                 <p v-if="n.request_id" class="notice-submitted">Submitted {{ formatDisplayDate(n.submission_date) }}</p>
-                <p v-if="['request-info','request-eta','request-response','transfer-pickup','transfer-confirmed','transfer-stock','transfer-ready'].includes(n.kind)" class="notice-kind">{{notificationNature(n)}}</p>
-                <template v-if="n.kind==='request-info' || n.kind==='request-eta' || n.kind==='request-response' || n.kind==='transfer-pickup' || n.kind==='transfer-confirmed'">
+                <p v-if="['request-info','request-eta','request-special-order','request-response','transfer-pickup','transfer-confirmed','transfer-stock','transfer-ready'].includes(n.kind)" class="notice-kind">{{notificationNature(n)}}</p>
+                <template v-if="n.kind==='request-info' || n.kind==='request-eta' || n.kind==='request-special-order' || n.kind==='request-response' || n.kind==='transfer-pickup' || n.kind==='transfer-confirmed'">
                     <p v-if="n.kind==='request-info' || n.kind==='request-response'" class="request-notice-notes">{{n.notes}}</p>
                     <p v-else-if="n.kind==='request-eta'" class="notice-summary">Shipment details and authorization are ready.</p>
+                    <template v-else-if="n.kind==='request-special-order'"><p v-if="n.actual_eta" class="notice-summary">Actual ETA: {{formatDisplayDate(n.actual_eta)}}</p><p v-else class="notice-summary">{{n.notes}} Anticipated ETA: {{formatDisplayDate(n.anticipated_eta)}}.</p><NuxtLink class="button button-secondary" :to="{path:'/requests',query:{request:n.request_id}}" @click="open=false">View Request</NuxtLink></template>
                     <p v-else-if="n.kind==='transfer-pickup'" class="notice-summary">The sending agency confirmed GSO pickup.</p>
                     <p v-else class="notice-summary">The sending agency confirmed the reserved stock.</p>
                     <NuxtLink v-if="n.kind==='request-info'" class="button button-secondary" :to="{path:'/requests',query:{request:n.request_id},hash:`#more-info-${n.request_id}`}" @click="openMessage(n.request_id)">View Message</NuxtLink>
                     <NuxtLink v-else-if="n.kind==='transfer-pickup' || n.kind==='transfer-confirmed'" class="button button-secondary" :to="{path:'/requests',query:{request:n.request_id},hash:`#shipments-${n.request_id}`}" @click="open=false">View Shipment</NuxtLink>
                     <NuxtLink v-else-if="n.kind==='request-response'" class="button button-secondary" :to="{path:'/requests',query:{request:n.request_id},hash:`#more-info-${n.request_id}`}" @click="openMessage(n.request_id)">View Message</NuxtLink>
-                    <template v-else><NuxtLink class="button button-secondary" :to="{path:'/requests',query:{request:n.request_id}}" @click="open=false">View Shipment</NuxtLink><a class="button button-secondary" :href="`/api/requests/${n.request_id}/authorization-form.pdf?version=${n.version_id}`" target="_blank" rel="noopener">Print / Download Authorization</a></template>
+                    <template v-else-if="n.kind==='request-eta'"><NuxtLink class="button button-secondary" :to="{path:'/requests',query:{request:n.request_id}}" @click="open=false">View Shipment</NuxtLink><a class="button button-secondary" :href="`/api/requests/${n.request_id}/authorization-form.pdf?version=${n.version_id}`" target="_blank" rel="noopener">Print / Download Authorization</a></template>
                 </template>
                 <template v-else-if="n.kind==='transfer-stock' || n.kind==='transfer-ready'">
                     <p class="notice-summary">{{n.quantity}} reserved {{unitLabel(n.quantity)}} · {{n.source_clinic_name || 'Clinic not specified'}}</p>
@@ -118,13 +119,13 @@ async function download(kind: string) {
                 <p v-else>
                     Agency {{ n.agency_id }} · {{n.clinic_name || 'Clinic not specified'}}<br />{{ n.formula_name }} · {{ formulaFormLabel(n.form) }} {{ n.flavor }}<br />Expires
                     {{ formatDisplayDate(n.expiration_date) }} ·
-                    {{ n.kind === 'donation' ? n.on_hand - n.reserved : n.expired_units }} {{unitLabel(n.kind === 'donation' ? n.on_hand - n.reserved : n.expired_units)}}
+                    {{ n.kind === 'donation' ? n.on_hand - n.reserved : (n.expired_units || n.on_hand - n.reserved) }} {{unitLabel(n.kind === 'donation' ? n.on_hand - n.reserved : (n.expired_units || n.on_hand - n.reserved))}}
                 </p>
                 <p v-if="n.kind === 'donation' || n.kind === 'destruction'">
                     {{
                         n.kind === 'donation'
-                            ? 'At least 60 calendar days remain. Arrange donation of surplus. Coordinate with Admin/FPU before donating reserved Units.'
-                            : 'Keep these Units quarantined. Complete the destruction form and record verified destruction.'
+                            ? '45–60 calendar days remain. Arrange donation of surplus. Coordinate with Admin/FPU before donating reserved Units.'
+                            : 'Fewer than 45 calendar days remain. Destroy these Units, complete the destruction form, and record verified destruction.'
                     }}
                 </p>
                 <button

@@ -1,12 +1,12 @@
 <script setup lang="ts">
 import {unitLabel} from '~/../shared/quantityLabels';
 import {formatDisplayDate,formulaFormLabel} from '~/../shared/requestPresentation';
-import { isReviewer, availableUnits, localDate, daysRemaining, variantKey } from '~/../shared/surplus';
+import { isReviewer, availableUnits, localDate, daysRemaining, variantKey, surplusCatalogVariants } from '~/../shared/surplus';
 import {surplusShipmentDraft} from '~/../shared/requestTransfers';
 import {formatClinic,type ClinicAddress,type ClinicRecord} from '~/../shared/shipping';
 import {groupSurplusLots} from '~/../shared/surplusInventoryGroups';
 import {surplusMovementReason} from '~/../shared/surplusMovement';
-import type {RequestRecord} from '~/../shared/domain';
+import type {ProductForm,ProductRecord,RequestRecord} from '~/../shared/domain';
 import type { SurplusLot } from '~/../shared/surplus';
 function pickupAddress(json?:string|null){try{const value=JSON.parse(json??'null') as ClinicAddress|null;return value?formatClinic(value):'';}catch{return '';}}
 function dayAfter(date:string){return new Date(Date.parse(`${date}T00:00:00Z`)+86400000).toISOString().slice(0,10);}
@@ -35,6 +35,23 @@ async function openShipment(){
 const identity = useState<'admin' | 'agency' | 'internal'>('demo-identity', () => 'admin');
 const headers = computed(() => ({ 'x-demo-user': identity.value }));
 const { data, refresh, error } = await useFetch('/api/surplus', { headers, server: false, watch: [identity] });
+const {data:productData, error:productError}=await useFetch<{products:ProductRecord[]}>('/api/products');
+const surplusVariants=computed(()=>surplusCatalogVariants(productData.value?.products??[]));
+const surplusFormulaNames=computed(()=>[...new Map(surplusVariants.value.map(variant=>[variant.formulaName.toLowerCase(),variant.formulaName])).values()]);
+const surplusAvailableForms=computed(()=>[...new Set(surplusVariants.value.filter(variant=>variant.formulaName===input.formulaName).map(variant=>variant.form))]);
+const surplusAvailableFlavors=computed(()=>[...new Set(surplusVariants.value.filter(variant=>variant.formulaName===input.formulaName&&variant.form===input.form).map(variant=>variant.flavor))]);
+const correctedVariantSelection=ref('');
+function variantSelectionKey(variant:{formulaName:string;form:string;flavor:string}){return JSON.stringify([variant.formulaName,variant.form,variant.flavor]);}
+function selectCorrectedVariant(key:string){const variant=surplusVariants.value.find(item=>variantSelectionKey(item)===key);if(!variant)return;input.correctedFormulaName=variant.formulaName;input.correctedForm=variant.form;input.correctedFlavor=variant.flavor;}
+function selectSurplusFormula(){input.form=surplusAvailableForms.value[0]??'';input.flavor=surplusVariants.value.find(variant=>variant.formulaName===input.formulaName&&variant.form===input.form)?.flavor??'';}
+function selectSurplusForm(){input.flavor=surplusVariants.value.find(variant=>variant.formulaName===input.formulaName&&variant.form===input.form)?.flavor??'';}
+function initializeSurplusCatalogSelection(){
+ const formula=surplusFormulaNames.value.find(name=>name.toLowerCase()===input.formulaName.trim().toLowerCase());
+ if(!formula){input.formulaName='';input.form='';input.flavor='';return;}
+ input.formulaName=formula;
+ if(!surplusAvailableForms.value.includes(input.form as ProductForm))input.form=surplusAvailableForms.value[0]??'';
+ if(!surplusAvailableFlavors.value.includes(input.flavor))input.flavor=surplusAvailableFlavors.value[0]??'';
+}
 async function refreshTransferState(){await refresh();await refreshNuxtData('pending-transfer-count');}
 const { data: agencyData } = await useFetch('/api/agencies');
 watch([()=>route.query.transfer,()=>data.value?.transfers],async([selected])=>{
@@ -107,6 +124,10 @@ const input = reactive({
     date: localDate(),
     expirationDate: '',
     formulaName: String(route.query.formula ?? ''),
+    correctedFormulaName:'',
+    correctedForm:'',
+    correctedFlavor:'',
+    correctedExpirationDate:'',
     form: 'powder',
     flavor: '',
     agencyId: 10,
@@ -134,13 +155,23 @@ function start(kind: string, lot?: SurplusLot, item?: any) {
         confirmerName: '',
         date: localDate(),
         expirationDate: lot?.expirationDate ?? '',
+        formulaName: ['new','forecast'].includes(kind)?String(route.query.formula??''):input.formulaName,
+        form: '',
+        flavor: '',
         trackingReference: '',
     });
+    if(['new','forecast'].includes(kind))initializeSurplusCatalogSelection();
     if(kind==='new'&&!reviewer.value)input.agencyId=data.value?.user.agencyId??0;
     if(kind==='donate')input.reason='Donation';
     if(kind==='correct-entry'){
         correctionTarget.value=item;
+        const match=surplusVariants.value.find(variant=>variant.formulaName.toLowerCase()===String(lot?.formulaName??'').toLowerCase()&&variant.form===lot?.form&&(variant.flavor??'').toLowerCase()===(lot?.flavor??'').toLowerCase());
+        correctedVariantSelection.value=match?variantSelectionKey(match):'';
         input.quantity=item?.effective_quantity??item?.quantity??0;
+        input.correctedFormulaName=lot?.formulaName??'';
+        input.correctedForm=lot?.form??'';
+        input.correctedFlavor=lot?.flavor??'';
+        input.correctedExpirationDate=lot?.expirationDate??'';
     }
     if (kind === 'review') {
         report.value = item;
@@ -250,7 +281,7 @@ async function submit() {
         if(modal.value==='assign-clinic'){if(!selected.value||!input.clinicId)throw new Error('Select a clinic.');return $fetch(`/api/surplus/lots/${selected.value.id}/clinic`,{method:'POST',headers:headers.value,body:{clinicId:input.clinicId,expectedVersion:selected.value.version}});}
         if(modal.value==='correct-entry'){
             if(!selected.value||!correctionTarget.value)throw new Error('Select a history entry to correct.');
-            return $fetch('/api/surplus/commands',{method:'POST',headers:headers.value,body:{operationId:operationId.value,kind:'correct-entry',correctionOf:correctionTarget.value.id,lotId:selected.value.id,quantity:Number(input.quantity),reason:input.reason,confirmerName:input.confirmerName,date:input.date,expectedVersion:selected.value.version}});
+            return $fetch('/api/surplus/commands',{method:'POST',headers:headers.value,body:{operationId:operationId.value,kind:'correct-entry',correctionOf:correctionTarget.value.id,lotId:selected.value.id,quantity:Number(input.quantity),correctedFormulaName:input.correctedFormulaName,correctedForm:input.correctedForm,correctedFlavor:input.correctedFlavor,correctedExpirationDate:input.correctedExpirationDate,reason:input.reason,confirmerName:input.confirmerName,date:input.date,expectedVersion:selected.value.version}});
         }
         if(modal.value==='new'&&!reviewer.value)
             return $fetch('/api/surplus/counts',{method:'POST',headers:headers.value,body:{operationId:operationId.value,formulaName:input.formulaName,form:input.form,flavor:input.flavor,clinicId:input.clinicId||undefined,quantity:Number(input.quantity),expirationDate:input.expirationDate,date:input.date,confirmerName:input.confirmerName,reason:input.reason}});
@@ -466,7 +497,7 @@ async function upload(kind: string, event: Event) {
                             <td class="inventory-product"><template v-if="row.group.lots.length===1"><strong>{{row.group.formulaName}} {{row.group.form==='concentrate'?'Concentrate':formulaFormLabel(row.group.form)}}</strong><span v-if="reviewer || row.group.flavor"><template v-if="row.group.flavor">{{row.group.flavor}}<template v-if="reviewer"> · </template></template><template v-if="reviewer">{{agencyName(row.group.agencyId)}}</template></span><span>{{row.group.clinicName||'Clinic not specified'}}</span></template><span v-else class="inventory-lot-label">Expiration lot</span></td>
                             <td><strong class="inventory-expiration">{{formatDisplayDate(row.lot.expirationDate)}}</strong></td><td><strong class="inventory-quantity">{{row.lot.onHand}}</strong></td><td><strong class="inventory-quantity">{{row.lot.reserved}}</strong></td><td class="inventory-available"><strong>{{availableUnits(row.lot)}}</strong></td><td><strong class="inventory-quantity">{{row.lot.expiredUnits}}</strong></td><td><strong class="inventory-quantity">{{row.lot.onHand+row.lot.expiredUnits}}</strong></td>
                             <td class="row-actions">
-                                <button v-if="reviewer && availableUnits(row.lot)>0 && !row.lot.expiredUnits && row.lot.expirationDate>=localDate()" class="button button-secondary" @click="useInRequest(row.lot)">Use in Request</button>
+                                <button v-if="reviewer && availableUnits(row.lot)>0 && !row.lot.expiredUnits && daysRemaining(row.lot.expirationDate,localDate())>60" class="button button-secondary" @click="useInRequest(row.lot)">Use in Request</button>
                                 <button class="text-button" type="button" @click="start('edit-inventory',row.lot)">Edit</button>
                             </td>
                         </template>
@@ -594,6 +625,7 @@ async function upload(kind: string, event: Event) {
                         <p v-if="h.effective_quantity!==undefined && h.effective_quantity!==h.quantity" class="history-correction-note">Updated to {{ h.effective_quantity }} {{unitLabel(h.effective_quantity)}}. Original entry remains in history.</p>
                         <p v-if="h.corrects_movement_id && h.correction_target" class="history-correction-note">Corrects {{movementLabel(h.correction_target.kind).toLowerCase()}} from {{formatDisplayDate(h.correction_target.created_at)}} (original {{h.correction_target.quantity}} {{unitLabel(h.correction_target.quantity)}}).</p>
                         <p v-else-if="h.corrects_movement_id" class="history-correction-note">Corrects an earlier inventory entry; updated quantity {{h.corrected_quantity}} {{unitLabel(h.corrected_quantity)}}.</p>
+                        <p v-if="h.corrected_formula_details" class="history-correction-note">Formula details corrected to {{[h.corrected_formula_details.formulaName,formulaFormLabel(h.corrected_formula_details.form),h.corrected_formula_details.flavor].filter(Boolean).join(' ')}}.</p>
                         <button v-if="h.correctable" class="text-button" type="button" @click="start('correct-entry',selected,h)">Correct entry</button>
                     </article>
                     <button
@@ -613,8 +645,8 @@ async function upload(kind: string, event: Event) {
                     <button v-if="reviewer && !selected?.clinicId && !selected?.reserved" class="button" type="button" @click="start('assign-clinic',selected)">Assign Clinic</button>
                     <button v-if="reviewer && selected && availableUnits(selected)>0" class="button" type="button" @click="start('deduct',selected)">Deduct stock</button>
                     <button v-if="reviewer" class="button" type="button" @click="start('correct-expiry',selected)">Correct expiration</button>
-                    <button v-if="!reviewer && selected && availableUnits(selected)>0 && daysRemaining(selected.expirationDate,localDate())>=30 && daysRemaining(selected.expirationDate,localDate())<=60" class="button" type="button" @click="start('donate',selected)">Record donation</button>
-                    <button v-if="selected?.expiredUnits>0" class="button" type="button" @click="start('destroy',selected)">Record destruction</button>
+                    <button v-if="!reviewer && selected && availableUnits(selected)>0 && daysRemaining(selected.expirationDate,localDate())>=45 && daysRemaining(selected.expirationDate,localDate())<=60" class="button" type="button" @click="start('donate',selected)">Record donation</button>
+                    <button v-if="selected && (selected.expiredUnits>0 || (availableUnits(selected)>0 && daysRemaining(selected.expirationDate,localDate())<45))" class="button" type="button" @click="start('destroy',selected)">Record destruction</button>
                     <div class="dialog-actions"><button class="button" type="button" @click="modal=''">Close</button></div>
                 </div>
                 <form v-else-if="modal==='use-request'" @submit.prevent="openShipment">
@@ -645,6 +677,8 @@ async function upload(kind: string, event: Event) {
                         <p class="history-balance">Original entry: {{correctionTarget.quantity}} {{unitLabel(correctionTarget.quantity)}}. The original record stays in history; this correction is added as a separate entry.</p>
                     </article>
                     <div class="correction-fields">
+                        <label>Corrected Formula<select v-model="correctedVariantSelection" required @change="selectCorrectedVariant(correctedVariantSelection)"><option value="">Select a catalog formula</option><option v-for="variant in surplusVariants" :key="variantSelectionKey(variant)" :value="variantSelectionKey(variant)">{{variant.formulaName}} · {{formulaFormLabel(variant.form)}}{{variant.flavor?' · '+variant.flavor:''}}</option></select></label>
+                        <label>Corrected expiration date<input v-model="input.correctedExpirationDate" type="date" :min="localDate()" required /></label>
                         <label>Corrected Units<input v-model.number="input.quantity" type="number" min="0" step="1" required /></label>
                         <label>Correction explanation<textarea v-model="input.reason" rows="2" required></textarea></label>
                         <label>Correcting staff name<input v-model="input.confirmerName" required /></label>
@@ -674,16 +708,10 @@ async function upload(kind: string, event: Event) {
                                 </option>
                             </select></label
                         ><label
-                            >Formula Name<input
-                                v-model="input.formulaName"
-                                required /></label
+                            >Formula Name<select v-model="input.formulaName" class="form-input" required @change="selectSurplusFormula"><option value="">Select a product formula</option><option v-for="name in surplusFormulaNames" :key="name" :value="name">{{name}}</option></select><small v-if="productError" role="alert">The product catalog could not be loaded. Close and try again.</small><small v-else-if="!surplusFormulaNames.length">No active formula products are available in the Products list.</small></label
                         ><label
-                            >Form<select v-model="input.form">
-                                <option value="powder">Powder</option>
-                                <option value="concentrate">Liquid Concentrate</option>
-                                <option value="ready-to-feed">Ready-to-Feed</option>
-                            </select></label
-                        ><label>Flavor (if applicable)<input v-model="input.flavor" /></label
+                            >Form<select v-model="input.form" class="form-input" required :disabled="!surplusAvailableForms.length" @change="selectSurplusForm"><option value="">Select a form</option><option v-for="form in surplusAvailableForms" :key="form" :value="form">{{formulaFormLabel(form)}}</option></select></label
+                        ><label>Flavor<select v-model="input.flavor" class="form-input" :disabled="!input.formulaName"><option v-for="flavor in surplusAvailableFlavors" :key="flavor||'unflavored'" :value="flavor">{{flavor||'Unflavored'}}</option></select></label
                     ></template>
                     <label v-if="['new','forecast','review','confirm','assign-clinic'].includes(modal)">{{modal==='confirm'?'Actual storage clinic':'Storage clinic'}}<select v-model="input.clinicId" :required="modal==='assign-clinic'" :disabled="clinicStatus==='pending'"><option value="">Clinic not specified</option><option v-for="c in formClinics?.clinics" :key="c.id" :value="c.id">{{c.clinicName}}</option></select></label>
                     <p v-if="clinicError &amp;&amp; ['new','forecast','review','confirm','assign-clinic'].includes(modal)" role="alert">Clinics could not be loaded. Close and try again.</p>
@@ -736,7 +764,7 @@ async function upload(kind: string, event: Event) {
                             <option value="">Select reason</option>
                             <option value="Request fulfillment">Request fulfillment</option>
                             <option
-                                v-if="selected && daysRemaining(selected.expirationDate, localDate()) >= 30 && daysRemaining(selected.expirationDate, localDate()) <= 60"
+                                v-if="selected && daysRemaining(selected.expirationDate, localDate()) >= 45 && daysRemaining(selected.expirationDate, localDate()) <= 60"
                                 value="Donation"
                             >
                                 Donation
@@ -759,11 +787,10 @@ async function upload(kind: string, event: Event) {
                             }}<input
                                 v-model="input.date"
                                 type="date"
-                                :min="modal === 'destroy' && selected ? dayAfter(selected.expirationDate) : undefined"
                                 :max="localDate()"
                                 required /></label></template
                     >
-                    <p v-if="modal === 'donate'">Record formula donated while it is 30–60 days from expiration. Only unreserved Units can be donated.</p>
+                    <p v-if="modal === 'donate'">Record formula donated while it is 45–60 days from expiration. Only unreserved Units can be donated.</p>
                     <p v-if="modal === 'destroy'">
                         Confirm these Units have been physically destroyed and the Formula Destruction Form completed.
                     </p>

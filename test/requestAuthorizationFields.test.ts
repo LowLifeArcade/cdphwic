@@ -22,6 +22,7 @@ it('renders catalog fields and issuance quantities using the selected authorizat
     app.component('ProductVariantSelect', { render: () => h('select', { 'aria-label': 'Product' }) });
     const html = await renderToString(app);
     expect(html).toContain('Product Number'); expect(html).toContain('Units Per Case'); expect(html).toContain('Yield (fl oz)');
+    expect(html).toContain('If the exact product is not listed');expect(html).toContain('to="/products/new"');
     expect(html).toContain('Formula 1 issuance quantity 1'); expect(html).toContain('value="8"');
     expect(html).toContain('Add issuance month'); expect(html).toContain('Total Units Approved');
 });

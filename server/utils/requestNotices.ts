@@ -1,19 +1,22 @@
 import {unitLabel} from '../../shared/quantityLabels';
 import {formatDisplayDate} from '../../shared/requestPresentation';
 import type {SessionUser,RequestRecord} from '../../shared/domain';
-import {isReviewer,canSeeAgency} from '../../shared/surplus';
-import {resolveShipmentFormula,shipmentFormulaLabel} from '../../shared/shipmentFormulas';
+import {isReviewer,canSeeAgency,localDate} from '../../shared/surplus';
+import {resolveShipmentFormula,shipmentFormulaLabel,shipmentFormulaKey} from '../../shared/shipmentFormulas';
 import {requestFormulas} from '../../shared/requestPresentation';
+import {formulaOrders} from '../../shared/formulaOrders';
 import {fulfillmentProgress,shipmentFulfillmentType} from '../../shared/fulfillmentAllocations';
 import {shipmentQuantities,formatShipmentUnits} from '../../shared/shipmentQuantities';
 import {requestShipments} from '../../shared/requestShipments';
+import {shipmentDispatched} from '../../shared/shipmentReceipts';
+function anticipatedEta(savedAt:string){const savedDate=new Date(savedAt);if(!Number.isFinite(savedDate.getTime()))return undefined;const date=new Date(`${localDate(savedDate)}T00:00:00.000Z`);date.setUTCDate(date.getUTCDate()+21);return date.toISOString().slice(0,10);}
 export async function requestNotices(db:D1Database,user:SessionUser){
  const reviewer=isReviewer(user);
  if(!reviewer&&(user.memberType!=='agency'||!user.agencyId))return [];
  const records=await (reviewer?db.prepare('SELECT request_json FROM surplus_submissions'):db.prepare('SELECT request_json FROM surplus_submissions WHERE agency_id=?').bind(user.agencyId)).all<{request_json:string}>();
  const reads=await db.prepare('SELECT notice_id FROM surplus_notice_reads WHERE user_id=?').bind(user.id).all<{notice_id:string}>();
  const seen=new Set(reads.results.map(row=>row.notice_id));
- const notices:Array<{id:string;kind:string;title:string;request_id:number;participant_name:string;submission_date?:string;formula_label?:string;notes:string;version_id?:string;transfer_id?:string;is_read:number}>=[];
+ const notices:Array<{id:string;kind:string;title:string;request_id:number;participant_name:string;submission_date?:string;formula_label?:string;anticipated_eta?:string;actual_eta?:string;notes:string;version_id?:string;transfer_id?:string;is_read:number}>=[];
  for(const row of records.results){
   const request=JSON.parse(row.request_json) as RequestRecord;
   if(!canSeeAgency(user,request.agencyId))continue;
@@ -25,6 +28,15 @@ export async function requestNotices(db:D1Database,user:SessionUser){
   for(const note of request.moreInfoRequests??[])if(!note.deletedAt)for(const response of note.responses??[])if(response.respondedAs==='reviewer'){const id=`followup-response:${response.id}`;notices.push({id,kind:'request-response',title:'CDPH/WIC Response — Request More Info',request_id:request.id,participant_name:request.participantName,submission_date:request.submissionDate,formula_label:formulaLabel,notes:response.notes,is_read:seen.has(id)?1:0});}
   const followup=request.moreInfoRequests?.findLast(entry=>!entry.deletedAt&&(!entry.resubmittedAt||entry.resubmissionOpen)&&!entry.resolvedAt);
   if(request.status==='needs_info'&&followup){const id=followup.resubmissionOpen?`followup:${followup.id}:reopen:${followup.resubmissionOpenedAt}`:`followup:${followup.id}`;notices.push({id,kind:'request-info',title:followup.resubmissionOpen?'Request Reopened for Resubmission':'Request More Info — Pending LA',request_id:request.id,participant_name:request.participantName,submission_date:request.submissionDate,formula_label:formulaLabel,notes:followup.notes,is_read:seen.has(id)?1:0});}
+  for(const formula of formulaOrders(request).filter(row=>row.specialOrder)){
+   const authorization=request.formulaAuthorizations?.find(row=>shipmentFormulaKey(row)===shipmentFormulaKey(formula));
+   const savedAt=authorization?.specialOrderSavedAt;
+   const eta=savedAt?anticipatedEta(savedAt):undefined;
+   if(!savedAt||!eta)continue;
+   const shipped=requestShipments(request).find(row=>shipmentDispatched(request,row)&&shipmentFormulaKey(resolveShipmentFormula(request,row))===shipmentFormulaKey(formula));
+   const id=`special-order:${request.id}:${shipmentFormulaKey(formula)}:${savedAt}`;
+   notices.push({id,kind:'request-special-order',title:'Special Order Delivery Update',request_id:request.id,participant_name:request.participantName,submission_date:request.submissionDate,formula_label:shipmentFormulaLabel(formula),...(shipped?.eta?{actual_eta:shipped.eta}:{anticipated_eta:eta,notes:'Product will take up to 3+ weeks for delivery.'}),is_read:seen.has(id)?1:0});
+  }
   for(const version of request.authorizationVersions??[]){
    const id=`authorization:${version.id}`;const record=version.record;const shipment=requestShipments(record)[version.shipmentIndex];
    const formula=shipment?resolveShipmentFormula(record,shipment):undefined;const orderType=shipment?shipmentFulfillmentType(record,shipment):undefined;

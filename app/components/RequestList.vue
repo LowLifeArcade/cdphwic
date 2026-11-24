@@ -17,6 +17,7 @@ const route=useRoute();
 const openError=ref('');
 const listToday=ref(localDate());
 function shippingSummary(request:RequestRecord) {return shipmentListSummary(request,listToday.value);}
+function agencyIssuancePending(request:RequestRecord){return identity.value==='agency'&&(request.approved===true||request.status==='approved')&&!request.formulaAuthorizations?.length;}
 function specialOrderLabel(formula:ReturnType<typeof formulaOrders>[number]){return formula.specialOrderCases!==undefined&&formula.standardCases!==undefined&&formula.standardCases>0?`${formula.specialOrderCases} Special Order ${formula.specialOrderCases===1?'case':'cases'}`:'Special Order';}
 function etaLabel(request:RequestRecord){
     const summary=shippingSummary(request);
@@ -135,7 +136,7 @@ watch([()=>route.query.request,()=>props.requests],async([id],[previousId])=>{co
             </span>
             <span
                 ><span class="request-status-tags">
-                    <StatusBadge v-if="!hasPendingMoreInfo(request) && !(allFormulasSpecialOrder(request) && request.status==='in_progress')" :status="request.status" />
+                    <StatusBadge v-if="!hasPendingMoreInfo(request) && !(allFormulasSpecialOrder(request) && request.status==='in_progress')" :status="agencyIssuancePending(request)?'pending':request.status" />
                 <span v-if="hasPendingMoreInfo(request)" class="request-tag more-info-status" title="Returned to Local Agency for more information" role="status">Pending More Info</span>
                     <span v-if="identity!=='agency' && needsCaseReview(request)" class="request-tag shipping-issue-tag">Case Count Review</span>
                     <span v-if="deliveryCategory(request) === 'issue'" class="request-tag shipping-issue-tag">Shipping Issue</span>
@@ -144,7 +145,7 @@ watch([()=>route.query.request,()=>props.requests],async([id],[previousId])=>{co
                         class="status-badge status-special-order"
                     >Special Order</span>
                     <span
-                        v-if="request.approved && request.status!=='complete'"
+                        v-if="request.approved && request.status!=='complete' && !agencyIssuancePending(request)"
                         class="request-tag"
                     >Approved</span>
                 </span><small v-if="shippingSummary(request).total">{{shippingSummary(request).received}} of {{shippingSummary(request).total}} fully received<template v-if="shippingSummary(request).replaced"> · {{shippingSummary(request).replaced}} replaced</template></small><small>Submitted {{ formatDisplayDate(request.submissionDate) }}</small></span

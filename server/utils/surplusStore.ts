@@ -6,6 +6,7 @@ import {
     canSeeAgency,
     isReviewer,
     localDate,
+    daysRemaining,
     validDate,
     lotKey,
     type SurplusCommand,
@@ -95,8 +96,6 @@ export async function executeSurplusCommand(
             throw Object.assign(new Error('Enter the adjustment date and staff name attesting to the inventory change.'),{statusCode:400});
         if(c.kind==='correct-entry'&&(!c.reason?.trim()||!c.confirmerName?.trim()||!validDate(c.date??'')||c.date!>today||!Number.isInteger(c.expectedVersion)))
             throw Object.assign(new Error('Enter the corrected quantity, explanation, correcting staff name and correction date.'),{statusCode:400});
-        if (c.kind === 'deduct' && c.reason === 'Destruction' && c.date! <= initialLot.expirationDate)
-            throw Object.assign(new Error('Destruction date must be after the lot expiration date.'),{statusCode:400});
     }
     if (c.kind !== 'expire') await expireSurplusLots(db, today);
     const stored = await db.prepare(`SELECT ${columns} FROM surplus_lots WHERE id=?`).bind(c.lotId).first<SurplusLot>();
@@ -170,16 +169,14 @@ export async function executeSurplusCommand(
         if (c.reason === 'Destruction') {
             if (!c.confirmerName?.trim() || !c.date || !validDate(c.date) || c.date > today)
                 fail('Verified destruction date and staff name are required.');
-            if (c.date <= lot!.expirationDate) fail('Destruction date must be after the lot expiration date.');
-            guard('EXISTS(SELECT 1 FROM surplus_lots WHERE id=? AND expiration_date<? AND expired_units>=?)', [
-                lot!.id,
-                today,
-                quantity,
-            ]);
-            update('expired_units=expired_units-?', [quantity]);
+            if (daysRemaining(lot!.expirationDate,today)>=45) fail('Only surplus with fewer than 45 days before expiration or expired stock can be destroyed.');
+            const expiredStock=lot!.expirationDate<today;
+            guard(expiredStock?'EXISTS(SELECT 1 FROM surplus_lots WHERE id=? AND expired_units>=?)':'EXISTS(SELECT 1 FROM surplus_lots WHERE id=? AND on_hand-reserved>=?)',[lot!.id,quantity]);
+            update(expiredStock?'expired_units=expired_units-?':'on_hand=on_hand-?',[quantity]);
         } else {
-            const donationWindowStart = new Date(Date.parse(today + 'T00:00:00Z') + 30 * 86400000).toISOString().slice(0, 10);
+            const donationWindowStart = new Date(Date.parse(today + 'T00:00:00Z') + 45 * 86400000).toISOString().slice(0, 10);
             const donationWindowEnd = new Date(Date.parse(today + 'T00:00:00Z') + 60 * 86400000).toISOString().slice(0, 10);
+            if(c.reason==='Request fulfillment'&&daysRemaining(lot!.expirationDate,today)<=60)fail('Only surplus with more than 60 days before expiration can be used for a request.');
             guard('EXISTS(SELECT 1 FROM surplus_lots WHERE id=? AND expiration_date>=? AND on_hand-reserved>=?)', [
                 lot!.id, c.reason === 'Donation' ? donationWindowStart : today, quantity,
             ]);
@@ -195,9 +192,10 @@ export async function executeSurplusCommand(
             !c.requestRef?.trim()
         )
             fail('A different destination agency and request reference are required.');
+        const transferEligibilityDate=new Date(Date.parse(today+'T00:00:00Z')+61*86400000).toISOString().slice(0,10);
         guard('EXISTS(SELECT 1 FROM surplus_lots WHERE id=? AND expiration_date>=? AND on_hand-reserved>=?)', [
             lot!.id,
-            today,
+            transferEligibilityDate,
             quantity,
         ]);
         update('reserved=reserved+?', [quantity]);
@@ -312,18 +310,35 @@ export async function executeSurplusCommand(
     } else if(c.kind==='correct-entry') {
         if(!Number.isSafeInteger(c.quantity)||c.quantity!<0||!c.reason?.trim()||!c.confirmerName?.trim()||!validDate(c.date??'')||c.date!>today||!Number.isInteger(c.expectedVersion))
             fail('A corrected whole-unit quantity, explanation, staff name, date and current inventory version are required.');
+        const correctedFormulaName=c.correctedFormulaName?.trim().replace(/\s+/g,' ');
+        const correctedForm=c.correctedForm;
+        const correctedFlavor=c.correctedFlavor?.trim().replace(/\s+/g,' ')??'';
+        const correctedExpirationDate=c.correctedExpirationDate;
+        if((c.correctedFormulaName!==undefined||c.correctedForm!==undefined||c.correctedFlavor!==undefined)&&(!correctedFormulaName||!['powder','concentrate','ready-to-feed'].includes(correctedForm??'')))
+            fail('Enter a valid corrected formula name and form.');
+        if(correctedExpirationDate!==undefined&&(!validDate(correctedExpirationDate)||correctedExpirationDate<today))fail('Enter a valid corrected expiration date that has not passed.');
+        if(correctedExpirationDate!==undefined&&correctedExpirationDate!==lot!.expirationDate&&lot!.reserved>0)fail('Release reservations before correcting the expiration date.');
         if(c.expectedVersion!==lot!.version)fail('Inventory changed. Refresh the inventory history and try again.');
         const previousCorrection=await db.prepare('SELECT corrected_quantity FROM surplus_movements WHERE corrects_movement_id=? ORDER BY rowid DESC LIMIT 1').bind(correctionTarget.id).first<any>();
         const effectiveQuantity=previousCorrection?.corrected_quantity??correctionTarget.quantity;
         const isCount=correctionTarget.kind==='reconcile';
         const balanceDelta=isCount?c.quantity!-effectiveQuantity:effectiveQuantity-c.quantity!;
-        const expired=lot!.expirationDate<today;
+        const correctedExpiry=correctedExpirationDate??lot!.expirationDate;
+        const expired=correctedExpiry<today;
+        const metadata=!!correctedFormulaName||correctedExpirationDate!==undefined;
+        const formulaFields=correctedFormulaName?',formula_name=?,form=?,flavor=?':'';
+        const expiryFields=correctedExpirationDate!==undefined?',expiration_date=?':'';
+        const keyFields=metadata?',variant_key=?':'';
+        const formulaArgs=correctedFormulaName?[correctedFormulaName,correctedForm,correctedFlavor]:[];
+        const expiryArgs=correctedExpirationDate!==undefined?[correctedExpirationDate]:[];
+        const finalKey=lotKey({formulaName:correctedFormulaName??lot!.formulaName,form:(correctedForm??lot!.form) as any,flavor:correctedFormulaName?correctedFlavor:lot!.flavor,expirationDate:correctedExpiry,clinicId:lot!.clinicId});
         if(expired){
             guard('EXISTS(SELECT 1 FROM surplus_lots WHERE id=? AND expired_units+?>=0)',[lot!.id,balanceDelta]);
-            update('expired_units=expired_units+?',[balanceDelta]);
+            update('expired_units=expired_units+?'+formulaFields+expiryFields+keyFields,[balanceDelta,...formulaArgs,...expiryArgs,...(metadata?[finalKey]:[])]);
         }else{
-            guard('EXISTS(SELECT 1 FROM surplus_lots WHERE id=? AND on_hand+?>=reserved)',[lot!.id,balanceDelta]);
-            update('on_hand=on_hand+?',[balanceDelta]);
+            const restoredExpired=lot!.expirationDate<today?lot!.expiredUnits:0;
+            guard('EXISTS(SELECT 1 FROM surplus_lots WHERE id=? AND on_hand+expired_units+?>=reserved)',[lot!.id,balanceDelta]);
+            update('on_hand=on_hand+expired_units+?,expired_units=0'+formulaFields+expiryFields+keyFields,[balanceDelta,...formulaArgs,...expiryArgs,...(metadata?[finalKey]:[])]);
         }
         quantity=Math.abs(balanceDelta);
         correctionOf=c.correctionOf;
@@ -344,7 +359,7 @@ export async function executeSurplusCommand(
                 user.id,
                 c.kind==='correct-entry'?correctionTarget.request_ref??'':c.requestRef??'',
                 c.kind==='correct-entry'
-                    ? JSON.stringify({ reason:'Correction',note:c.reason,staff:c.confirmerName,date:c.date,correctedQuantity })
+                ? JSON.stringify({ reason:'Correction',note:c.reason,staff:c.confirmerName,date:c.date,correctedQuantity,...(c.correctedFormulaName!==undefined?{correctedFormulaName:c.correctedFormulaName,correctedForm:c.correctedForm,correctedFlavor:c.correctedFlavor??''}:{}),...(c.correctedExpirationDate!==undefined?{correctedExpirationDate:c.correctedExpirationDate}:{}) })
                     : JSON.stringify({ reason: c.reason ?? '', staff: c.confirmerName, date: c.date }),
                 correctionOf??null,
                 correctedQuantity,

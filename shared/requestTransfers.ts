@@ -1,8 +1,7 @@
 import {unitLabel} from './quantityLabels';
 import type {RequestRecord} from './domain';
 import type {SurplusLot,SurplusTransfer} from './surplus';
-import {localDate,normalizeVariantText} from './surplus';
-import {requestFormulas} from './requestPresentation';
+import {localDate,daysRemaining,normalizeVariantText} from './surplus';
 import {shipmentFormulaOptions} from './shipmentFormulas';
 import type {ProductRecord} from './domain';
 import type {RequestShipment} from './requestShipments';
@@ -14,14 +13,22 @@ export function transferLotFormulaLabel(lot:{formulaName:string;form:string}){
  return `${lot.formulaName} ${form}`.trim();
 }
 const formKey=(value:string)=>normalizeVariantText(value).replace(/[^a-z]/g,'').replace('liquidconcentrate','concentrate');
+const flavorKey=(value:string|undefined)=>{const key=normalizeVariantText(value??'');return key==='unflavored'?'':key;};
 export function surplusShipmentDraft(request:Partial<RequestRecord>,lot:SurplusLot,products:ProductRecord[]):RequestShipment|undefined {
- if(request.status==='incomplete'||request.status==='denied'||!matchingTransferLot(request,lot)||lot.expirationDate<localDate()||lot.expiredUnits>0||lot.onHand<=lot.reserved)return;
+ if(request.status==='incomplete'||request.status==='denied'||!matchingTransferLot(request,lot)||daysRemaining(lot.expirationDate,localDate())<=60||lot.expiredUnits>0||lot.onHand<=lot.reserved)return;
  const formula=shipmentFormulaOptions(request).find(f=>normalizeVariantText(f.productName)===normalizeVariantText(lot.formulaName)&&formKey(f.productForm??'')===formKey(lot.form)&&normalizeVariantText(f.flavor??'')===normalizeVariantText(lot.flavor));
  if(!formula)return;
  return {shipmentSource:'agency',sourceAgencyId:lot.agencyId,sourceClinicId:lot.clinicId,sourceClinicName:lot.clinicName,sourceClinicAddress:lot.clinicAddress,sourceLotId:lot.id,shipmentFormula:{...formula},unitsPerCase:transferCatalogUnitsPerCase(lot,products),casesShipped:0,looseUnitsShipped:0,eta:'',carrier:'gso',trackingNumbers:[]};
 }
 export function matchingTransferLot(request:Partial<RequestRecord>,lot:SurplusLot):boolean{
- return lot.agencyId!==request.agencyId && requestFormulas(request).some(formula=>normalizeVariantText(formula.otherFormulaName||formula.productName)===normalizeVariantText(lot.formulaName)&&formKey(formula.productForm??'')===formKey(lot.form)&&normalizeVariantText(formula.flavor??'')===normalizeVariantText(lot.flavor));
+ return lot.agencyId!==request.agencyId && shipmentFormulaOptions(request).some(formula=>normalizeVariantText(formula.productName)===normalizeVariantText(lot.formulaName)&&formKey(formula.productForm??'')===formKey(lot.form)&&normalizeVariantText(formula.flavor??'')===normalizeVariantText(lot.flavor));
+}
+
+export function matchingLocalSurplusLot(formula:import('./domain').RequestedFormula,lot:SurplusLot,agencyId:number,flavor= formula.flavor??'',catalogName?:string):boolean{
+ return lot.agencyId===agencyId
+  &&normalizeVariantText(catalogName||formula.otherFormulaName||formula.productName)===normalizeVariantText(lot.formulaName)
+  &&formKey(formula.productForm)===formKey(lot.form)
+  &&flavorKey(flavor)===flavorKey(lot.flavor);
 }
 
 export function transferCatalogUnitsPerCase(lot:{formulaName:string;form:string;flavor?:string},products:import('./domain').ProductRecord[]):number|undefined {
@@ -38,7 +45,7 @@ export function transferEntryQuantity(row:{casesShipped:number;looseUnitsShipped
 
 export function transferAuthorizationError(request:Partial<RequestRecord>,row:import('./requestShipments').RequestShipment,lots:SurplusLot[]):string {
  if(!row.sourceAgencyId)return 'Select a Sending Local Agency.';
- const available=lots.filter(l=>l.agencyId===row.sourceAgencyId&&matchingTransferLot(request,l)&&l.expirationDate>=localDate()&&!l.expiredUnits&&l.onHand>l.reserved);
+ const available=lots.filter(l=>l.agencyId===row.sourceAgencyId&&matchingTransferLot(request,l)&&daysRemaining(l.expirationDate,localDate())>60&&!l.expiredUnits&&l.onHand>l.reserved);
  if(!available.length)return 'No verified surplus is available for this formula at the selected agency. Add or confirm the sending agency’s surplus before authorizing the transfer.';
  const lot=available.find(l=>l.id===row.sourceLotId);if(!lot)return 'Select Available Surplus from the sending agency.';
  if(!Number.isSafeInteger(row.unitsPerCase)||!row.unitsPerCase||row.unitsPerCase<1)return 'Enter Units per Case.';

@@ -17,6 +17,7 @@ import { getSessionFromHeaders } from '../../utils/session';
 import { canSeeAgency, isReviewer } from '../../../shared/surplus';
 import { submissionFields } from '../../../shared/requestEditing';
 import {issueRequestLocalSurplus,syncRequestLocalSurplus} from '../../utils/requestLocalSurplus';
+import {shipmentFormulaKey} from '../../../shared/shipmentFormulas';
 export default defineEventHandler(async (event) => {
     const id = Number(getRouterParam(event, 'id'));
     const updates = await readBody<Partial<RequestRecord> & {recordLocalSurplusIssue?:{formulaIndex:number;month:string;units:number};reviewDecision?:import('../../utils/submittedRequests').ReviewDecisionCommand;editMoreInfoMessage?:import('../../utils/submittedRequests').MoreInfoMessageEdit;reopenMoreInfo?:boolean;resolveMoreInfo?:boolean;moreInfoReply?:import('../../utils/submittedRequests').MoreInfoReply;moreInfoNote?:import('../../utils/submittedRequests').MoreInfoNoteCommand;requestMoreInfo?:{notes:string};confirmShipmentReceipt?:SimpleShipmentReceiptCommand;shipmentPolicy?:ShipmentPolicyCommand;reserveTransferIndex?:number;deleteShipmentIndex?:number;sendEtaShipmentIndex?:number;confirmShipmentReceipts?:ShipmentReceiptSelection[];shipmentIssue?:ShipmentIssueCommand;shipmentCases?:ShipmentCaseCommand}>(event);
@@ -55,6 +56,8 @@ export default defineEventHandler(async (event) => {
     if(updates.moreInfoNote!==undefined){const request=await editMoreInfoNote(env.CDPHWIC,previous,user,updates.moreInfoNote,updates.revision!);updateRequestRecord(id,request);return {request};}
     if(updates.requestMoreInfo!==undefined){const request=await requestMoreInfo(env.CDPHWIC,previous,user,updates.requestMoreInfo?.notes,updates.revision!);updateRequestRecord(id,request);return {request};}
     if(updates.reserveTransferIndex!==undefined){
+        if(!isReviewer(user))throw createError({statusCode:403,statusMessage:'Only Admin or CDPH/WIC can authorize agency transfers.'});
+        if(!previous.formulaAuthorizations?.length)throw createError({statusCode:409,statusMessage:'Save the State-Issued Formula Authorization and supply plan before reserving transfer stock.'});
         if(updates.revision!==(previous.revision??0))throw createError({statusCode:409,statusMessage:'Shipment details changed. Reload before authorizing a transfer.'});
         const request=await authorizeRequestTransfer(env.CDPHWIC,previous,updates.shipmentDrafts??[],updates.reserveTransferIndex,user);
         updateRequestRecord(id,request);return {request};
@@ -123,6 +126,9 @@ export default defineEventHandler(async (event) => {
         if(!isReviewer(user))throw createError({statusCode:403,statusMessage:'Only CDPH/WIC or Admin can edit issuance.'});
         if(updates.revision!==(previous.revision??0))throw createError({statusCode:409,statusMessage:'Request changed. Reload before assigning Local Agency surplus.'});
         const errors=validateFormulaAuthorizations(updates.formulaAuthorizations);if(errors.length)throw createError({statusCode:400,statusMessage:errors[0]});
+        const specialOrderKeys=new Set(formulaOrders({...previous,...updates}).filter(row=>row.specialOrder).map(shipmentFormulaKey));
+        const issuanceSavedAt=new Date().toISOString();
+        updates.formulaAuthorizations=updates.formulaAuthorizations.map(row=>({...row,specialOrderSavedAt:specialOrderKeys.has(shipmentFormulaKey(row))?issuanceSavedAt:undefined}));
         updates.status='in_progress';
         updates.specialOrder=previous.formulaOrders?.length || updates.formulaOrders?.length
             ? allFormulasSpecialOrder({...previous,...updates}) : false;
@@ -130,6 +136,9 @@ export default defineEventHandler(async (event) => {
     }
     if (!isReviewer(user) && (updates.shipmentDrafts!==undefined || updates.shipments!==undefined || updates.approvedCases!==undefined))
         throw createError({statusCode:403,statusMessage:'Only CDPH/WIC or Admin can edit shipment plans or Approved Cases.'});
+    const incomingShipmentPlans=updates.shipmentDrafts??updates.shipments;
+    const existingShipmentCount=(previous.shipmentDrafts??previous.shipments??((previous.eta||previous.trackingNumbers?.length)?requestShipments(previous):[])).length;
+    if(!previous.formulaAuthorizations?.length&&incomingShipmentPlans&&incomingShipmentPlans.length>existingShipmentCount)throw createError({statusCode:409,statusMessage:'Save the State-Issued Formula Authorization and supply plan before creating shipments.'});
     if ((updates.shipments!==undefined || updates.shipmentDrafts!==undefined) && updates.revision!==(previous.revision ?? 0))
         throw createError({statusCode:409,statusMessage:'Shipment details changed. Reload the request before saving shipments.'});
     const changesForm = Object.entries(submissionFields(updates)).some(

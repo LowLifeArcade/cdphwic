@@ -60,7 +60,7 @@ function catalogProductByNumber(products: ProductRecord[], code: string): Produc
     return matches.length === 1 ? matches[0] : undefined;
 }
 function populateAuthorizationProduct(authorization: FormulaAuthorization, product?: ProductRecord): FormulaAuthorization {
-    return { ...authorization, formulaName: product?.name ?? authorization.formulaName, productCode: product?.productCode ?? '', unitsPerCase: product?.unitsPerCase, yield: product?.yield,
+    return { ...authorization, formulaName: product?.name ?? authorization.formulaName, flavor: product?.flavor || authorization.flavor, productCode: product?.productCode ?? '', unitsPerCase: product?.unitsPerCase, yield: product?.yield,
         approvedCases: undefined, standardCases: undefined, specialOrderCases: undefined };
 }
 export function selectAuthorizationProduct(authorization: FormulaAuthorization, products: ProductRecord[], productCode: string): FormulaAuthorization {

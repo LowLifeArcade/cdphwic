@@ -46,6 +46,13 @@ it('requires selected shipped deliveries and prevents the old whole-request conf
  event.body={receivedStatus:'received',status:'complete'};
  await expect(put(event as never)).rejects.toMatchObject({statusCode:409});
 });
+it('blocks creating shipment plans and reserving transfers until issuance has been saved',async()=>{
+ const event=await fixture();event.identity='internal';
+ event.body={revision:0,shipmentDrafts:[{eta:'',casesShipped:0,carrier:'ups',trackingNumbers:[]}]};
+ await expect(put(event as never)).rejects.toMatchObject({statusCode:409,statusMessage:expect.stringContaining('Save the State-Issued Formula Authorization')});
+ event.body={revision:0,reserveTransferIndex:0,shipmentDrafts:[{eta:'',casesShipped:0,carrier:'gso',trackingNumbers:[]}]};
+ await expect(put(event as never)).rejects.toMatchObject({statusCode:409,statusMessage:expect.stringContaining('before reserving transfer stock')});
+});
 it('authenticates receipt selections and persists partial confirmation through the route',async()=>{
  const event=await fixture();
  const {updateSubmittedRequest}=await import('../server/utils/submittedRequests');
@@ -211,12 +218,14 @@ it('requires reviewer role and current revision for private shipment draft saves
  const event=await fixture();
  event.body={shipmentDrafts:[{eta:'',casesShipped:0,carrier:'ups',trackingNumbers:[]}],revision:0};
  await expect(put(event as never)).rejects.toMatchObject({statusCode:403});
+ await saveIssuance(event);
  event.identity='internal';event.body={...event.body,revision:999};
  await expect(put(event as never)).rejects.toMatchObject({statusCode:409});
 });
 it('treats older client Save Shipments payloads as private drafts',async()=>{
  const event=await fixture();event.identity='internal';
- event.body={shipments:[{eta:'2026-11-01',casesShipped:1,unitsPerCase:6,carrier:'ups',trackingNumbers:['PRIVATE-OLD-CLIENT']}],revision:0};
+ const issuance=await saveIssuance(event);
+ event.body={shipments:[{eta:'2026-11-01',casesShipped:1,unitsPerCase:6,carrier:'ups',trackingNumbers:['PRIVATE-OLD-CLIENT']}],revision:issuance.revision};
  const result=await put(event as never);
  expect(result.request.shipments).toBeUndefined();
  expect(result.request.shipmentDrafts![0]!.trackingNumbers).toEqual(['PRIVATE-OLD-CLIENT']);
@@ -252,6 +261,7 @@ it('uses simple receipt confirmation while quantity tracking is disabled',async(
 });
 it('sends ETA without requiring hidden packaging fields when quantity tracking is off',async()=>{
  const event=await fixture();event.identity='internal';
+ await saveIssuance(event);
  vi.stubGlobal('useRuntimeConfig',()=>({public:{shipmentQuantityTracking:false}}));
  try{
   const before=await submittedRequest(event.db,1000998,getDemoUser('agency'));
@@ -259,6 +269,11 @@ it('sends ETA without requiring hidden packaging fields when quantity tracking i
   const saved=await put(event as never);expect(saved.request.shipments![0]!.etaSentAt).toBeTruthy();
  }finally{vi.stubGlobal('useRuntimeConfig',()=>({public:{shipmentQuantityTracking:true,shipmentCaseReconciliation:true,shipmentPotentialOverDelivery:true}}));}
 });
+async function saveIssuance(event:Awaited<ReturnType<typeof fixture>>){
+ const {updateSubmittedRequest}=await import('../server/utils/submittedRequests');
+ const previous=(await submittedRequest(event.db,1000998,getDemoUser('internal')))!;
+ return await updateSubmittedRequest(event.db,previous,{formulaAuthorizations:[{productName:'Synthetic Formula',productForm:'powder',totalUnitsIssued:10,benefitIssuances:[{month:'2026-11',quantity:10}]}]});
+}
 it('persists separate formula issuance values and restricts them to reviewers',async()=>{
  const event=await fixture();
  const {updateSubmittedRequest}=await import('../server/utils/submittedRequests');
@@ -268,6 +283,28 @@ it('persists separate formula issuance values and restricts them to reviewers',a
  event.identity='internal';const saved=await put(event as never);expect(saved.request.formulaAuthorizations).toEqual(rows);expect(saved.request.status).toBe('in_progress');expect(saved.request.specialOrder).toBe(false);
  const loaded=await submittedRequest(event.db,1000998,getDemoUser('agency'));expect(loaded!.formulaAuthorizations).toEqual(rows);
  event.body={revision:loaded!.revision??0,formulaAuthorizations:[{...rows[1],approvedCases:-1}]};await expect(put(event as never)).rejects.toMatchObject({statusCode:400});
+});
+it('records when a special-order issuance is saved for its agency delivery ETA',async()=>{
+ const event=await fixture();event.identity='internal';
+ const before=(await submittedRequest(event.db,1000998,getDemoUser('agency')))!;
+ event.body={revision:before.revision??0,requestedFormulas:[{productName:'First',productForm:'powder'}],formulaOrders:[{productName:'First',productForm:'powder',specialOrder:true}],formulaAuthorizations:[{productName:'First',productForm:'powder',approvedCases:2,standardCases:0,specialOrderCases:2,benefitIssuances:[]}]};
+ const saved=(await put(event as never)).request;
+ expect(saved.formulaAuthorizations?.[0]?.specialOrderSavedAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+ const loaded=await submittedRequest(event.db,1000998,getDemoUser('agency'));
+ expect(loaded?.formulaAuthorizations?.[0]?.specialOrderSavedAt).toBe(saved.formulaAuthorizations?.[0]?.specialOrderSavedAt);
+ const {listSurplusNotices}=await import('../server/utils/surplusNotices');
+ expect(await listSurplusNotices(event.db,getDemoUser('agency'))).toEqual(expect.arrayContaining([expect.objectContaining({kind:'request-special-order',anticipated_eta:expect.any(String),notes:'Product will take up to 3+ weeks for delivery.'})]));
+});
+it('notifies the agency only for the formula allocated to special order',async()=>{
+ const event=await fixture();event.identity='internal';
+ const {updateSubmittedRequest}=await import('../server/utils/submittedRequests');
+ const before=(await submittedRequest(event.db,1000998,getDemoUser('agency')))!;
+ const withFormulas=await updateSubmittedRequest(event.db,before,{requestedFormulas:[{productName:'Formula One',productForm:'powder'},{productName:'Formula Two',productForm:'ready-to-feed'}],status:'in_progress'});
+ event.body={revision:withFormulas.revision??0,formulaOrders:[{productName:'Formula One',productForm:'powder',specialOrder:false},{productName:'Formula Two',productForm:'ready-to-feed',specialOrder:true}],formulaAuthorizations:[{productName:'Formula One',productForm:'powder',approvedCases:2,standardCases:2,specialOrderCases:0,benefitIssuances:[]},{productName:'Formula Two',productForm:'ready-to-feed',approvedCases:4,standardCases:0,specialOrderCases:4,benefitIssuances:[]}]};
+ await put(event as never);
+ const {requestNotices}=await import('../server/utils/requestNotices');
+ const notices=(await requestNotices(event.db,getDemoUser('agency'))).filter(notice=>notice.kind==='request-special-order');
+ expect(notices).toHaveLength(1);expect(notices[0]?.formula_label).toBe('Formula Two RTF');
 });
 it('allows actual receipts with shipment tracking, reconciliation and overage off',async()=>{
  const event=await fixture();const before=await submittedRequest(event.db,1000998,getDemoUser('agency'));

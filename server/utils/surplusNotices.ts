@@ -9,9 +9,9 @@ export async function refreshSurplusNotices(db: D1Database, today = localDate())
     const lots = await db.prepare('SELECT * FROM surplus_lots WHERE on_hand>0 OR expired_units>0').all<any>();
     for (const lot of lots.results) {
         const kind =
-            lot.expired_units > 0 && daysRemaining(lot.expiration_date, today) < 0
+            (lot.expired_units > 0 || lot.on_hand > lot.reserved) && daysRemaining(lot.expiration_date, today) < 45
                 ? 'destruction'
-                : lot.on_hand > 0 && daysRemaining(lot.expiration_date, today) >= 60
+                : lot.on_hand > 0 && daysRemaining(lot.expiration_date, today) >= 45 && daysRemaining(lot.expiration_date, today) <= 60
                   ? 'donation'
                   : undefined;
         if (kind)
@@ -34,8 +34,8 @@ export async function listSurplusNotices(db: D1Database, user: SessionUser) {
         .all<any>();
     const notices = rows.results.filter((n) =>
         n.kind === 'donation'
-            ? n.on_hand > 0 && daysRemaining(n.expiration_date, today) >= 60
-            : n.expired_units > 0 && daysRemaining(n.expiration_date, today) < 0,
+            ? n.on_hand > 0 && daysRemaining(n.expiration_date, today) >= 45 && daysRemaining(n.expiration_date, today) <= 60
+            : (n.expired_units > 0 || n.on_hand > n.reserved) && daysRemaining(n.expiration_date, today) < 45,
     );
     const forecasts = await db
         .prepare(

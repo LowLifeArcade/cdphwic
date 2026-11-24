@@ -3,7 +3,15 @@ import {requestFormulas,formulaFormLabel} from './requestPresentation';
 export interface ShipmentFormula {productName:string;productForm?:ProductForm;flavor?:string}
 type Selection={shipmentFormula?:ShipmentFormula;transferFormulaName?:string;transferForm?:string;transferFlavor?:string};
 export function shipmentFormulaKey(formula?:ShipmentFormula):string {return formula?JSON.stringify([(formula.productName??'').trim().toLowerCase(),formula.productForm,formula.flavor?.trim().toLowerCase()??'']):'';}
-export function shipmentFormulaOptions(request:Partial<RequestRecord>):ShipmentFormula[]{return requestFormulas(request).map(f=>({productName:f.otherFormulaName||f.productName,productForm:f.productForm,...(f.flavor?{flavor:f.flavor}:{})}));}
+export function shipmentFormulaOptions(request:Partial<RequestRecord>):ShipmentFormula[]{return requestFormulas(request).map((f,index)=>{
+ const requestedProductName=(f.productName??'').trim();
+ const requestedName=(f.otherFormulaName||requestedProductName).trim();
+ const authorization=requestedProductName?request.formulaAuthorizations?.find(row=>(row.productName??'').trim().toLowerCase()===requestedProductName.toLowerCase()&&row.productForm===f.productForm&&(!f.flavor||(row.flavor??'').trim().toLowerCase()===f.flavor.trim().toLowerCase()))??request.formulaAuthorizations?.[index]:undefined;
+ const selected=authorization&&(authorization.productName??'').trim().toLowerCase()===requestedProductName.toLowerCase()&&authorization.productForm===f.productForm?authorization:undefined;
+ const productName=selected?.formulaName||requestedName;
+ const flavor=f.flavor||selected?.flavor;
+ return {productName,productForm:f.productForm,...(flavor?{flavor}:{})};
+});}
 export function resolveShipmentFormula(request:Partial<RequestRecord>,row:Selection):ShipmentFormula|undefined {
  const options=shipmentFormulaOptions(request);
  if(row.shipmentFormula)return options.find(f=>shipmentFormulaKey(f)===shipmentFormulaKey(row.shipmentFormula));

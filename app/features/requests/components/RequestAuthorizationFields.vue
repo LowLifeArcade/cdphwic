@@ -46,6 +46,7 @@ const {
                 </select>
             </label>
             <ProductVariantSelect :identity="identity" :products="authorizationProducts(authorization)" :model-value="authorization.productCode" :disabled="saving" @update:model-value="chooseAuthorizationProduct(formulaIndex,$event)" />
+            <p v-if="identity==='admin' || identity==='internal'" class="muted-copy catalog-product-help">If the exact product is not listed, <NuxtLink to="/products/new">add it on the Products page</NuxtLink>, then return here to select it.</p>
             <p v-if="authorizationProduct(authorization) && !isMcKessonPo(authorizationProduct(authorization)?.mcKessonPo)" class="muted-copy" role="status">Catalog cases remaining: <strong>{{catalogPoCasesRemaining(authorizationProduct(authorization)) ?? 'Not available'}}</strong></p>
             <div class="detail-grid cdph-product-details">
                 <label class="field-label">Formula Name<input v-model="authorization.formulaName" class="form-input" :placeholder="authorization.productName" /></label>

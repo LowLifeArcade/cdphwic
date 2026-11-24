@@ -19,7 +19,7 @@ function selection(lot:SurplusLot){return props.selections.find(item=>item.row.s
             <div class="surplus-lot-info"><strong>{{agency(lot.agencyId)}}</strong><small>{{lot.clinicName||'Clinic not specified'}}</small><small>Exp {{formatDisplayDate(lot.expirationDate)}}</small><span>{{lot.onHand-lot.reserved}} {{unitLabel(lot.onHand-lot.reserved)}} available</span></div>
             <template v-if="!selection(lot)?.row.transferId">
                 <label class="field-label">Transfer Units<input type="number" class="form-input" min="0" :max="lot.onHand-lot.reserved" step="1" :value="selection(lot)?.row.unitsToTransfer??0" :disabled="busy" :aria-label="`Transfer units from ${agency(lot.agencyId)}, ${lot.clinicName||'clinic'}, expires ${lot.expirationDate}`" @input="emit('select',lot,Number(($event.target as HTMLInputElement).value))" /></label>
-                <button type="button" class="button button-secondary" :disabled="busy||!!message||!selection(lot)?.row.unitsToTransfer" @click="emit('reserve',selection(lot)!.index)">Reserve Stock</button>
+                <button type="button" class="button button-secondary" :disabled="busy||!selection(lot)?.row.unitsToTransfer" @click="emit('reserve',selection(lot)!.index)">Reserve Stock</button>
             </template>
             <span v-else class="muted-copy">Transfer already reserved below.</span>
         </article>

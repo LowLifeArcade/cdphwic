@@ -2,6 +2,7 @@ import { afterEach, expect, it, vi } from 'vitest';
 import { reactive } from 'vue';
 import { useAuthorizationEditor } from '../app/features/requests/composables/useAuthorizationEditor';
 import type { RequestRecord } from '../shared/domain';
+import { issuanceSupplyPlan } from '../shared/issuanceSupply';
 
 function setup() {
     const draft = reactive<Partial<RequestRecord>>({ formulaAuthorizations: [{ productName: 'Fortini', productForm: 'powder', unitsPerCase: 6, benefitIssuances: [{ month: '2026-11', quantity: 10 }], localSurplusAllocations: [{ lotId: 'lot', units: 3 }] }] });
@@ -16,6 +17,12 @@ it('recalculates approved units, subtracts on-hand assignments, rounds cases and
     expect(row).toMatchObject({ unitsToOrder: 0, approvedCases: 0 });
     editor.setLocalSurplusAllocation(row, 'lot', 0);
     expect(row.localSurplusAllocations).toEqual([]); expect(row.unitsToOrder).toBe(10);
+});
+it('updates the supply plan immediately as on-hand allocations are edited',()=>{
+ const {draft,row,editor}=setup();
+ expect(issuanceSupplyPlan(draft,row,6)).toMatchObject({local:3,needed:7,cases:2});
+ editor.setLocalSurplusAllocation(row,'lot',8);
+ expect(issuanceSupplyPlan(draft,row,6)).toMatchObject({local:8,needed:2,cases:1});
 });
 it('keeps historical issuance months visible, adds only within the current window, and recomputes after removal', () => {
     vi.useFakeTimers(); vi.setSystemTime(new Date('2026-11-23T12:00:00Z'));

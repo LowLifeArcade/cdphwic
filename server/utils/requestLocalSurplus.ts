@@ -1,11 +1,13 @@
 import {unitLabel} from '../../shared/quantityLabels';
 import type {FormulaAuthorization} from '../../shared/formulaAuthorizations';
 import type {RequestRecord,SessionUser} from '../../shared/domain';
-import {isReviewer,localDate} from '../../shared/surplus';
+import {isReviewer,localDate,daysRemaining} from '../../shared/surplus';
 import {requestFormulas} from '../../shared/requestPresentation';
+import {candidateProducts} from '../../shared/productMatching';
 
 function conflict(message:string,statusCode=409):never{throw Object.assign(new Error(message),{statusCode,statusMessage:message});}
 function normalized(value:string|undefined){return (value??'').trim().replace(/\s+/g,' ').toLowerCase();}
+function normalizedFlavor(value:string|undefined){const flavor=normalized(value);return flavor==='unflavored'?'':flavor;}
 
 /** Reconciles request-linked reservations atomically with the receiving agency's own inventory. */
 export async function syncRequestLocalSurplus(db:D1Database,request:RequestRecord,authorizations:FormulaAuthorization[],user:SessionUser){
@@ -22,8 +24,15 @@ export async function syncRequestLocalSurplus(db:D1Database,request:RequestRecor
   const key=`${index}:${allocation.lotId}`;if(desired.has(key))conflict('A surplus lot can only be assigned once per formula.',400);
   const lot=await db.prepare('SELECT * FROM surplus_lots WHERE id=?').bind(allocation.lotId).first<any>();
   const requested=requestFormulas(request)[index];const formulaName=requested?.otherFormulaName||requested?.productName||auth.productName;
-  if(!lot||lot.agency_id!==request.agencyId||normalized(formulaName)!==normalized(lot.formula_name)||auth.productForm!==lot.form||normalized(requested?.flavor||auth.flavor)!==normalized(lot.flavor))conflict('Select a matching surplus lot from the requesting Local Agency.',400);
+  const catalogProduct=auth.productCode?await db.prepare('SELECT id,product_id AS productId,product_code AS productCode,name,form,category,flavor,formula_description AS formulaDescription,coverage FROM products WHERE product_code=? AND active=1').bind(auth.productCode).first<any>():null;
+  if(catalogProduct)catalogProduct.coverage=JSON.parse(catalogProduct.coverage||'[]');
+  const catalogMatchesRequest=!!catalogProduct&&candidateProducts([catalogProduct],{name:formulaName,form:requested?.productForm,flavor:requested?.flavor}).length>0;
+  const expectedName=catalogMatchesRequest?catalogProduct.name:formulaName;
+  const expectedFlavor=requested?.flavor||auth.flavor||(catalogMatchesRequest?catalogProduct?.flavor:'');
+  if(!lot||lot.agency_id!==request.agencyId||normalized(expectedName)!==normalized(lot.formula_name)||auth.productForm!==lot.form||normalizedFlavor(expectedFlavor)!==normalizedFlavor(lot.flavor))conflict('Select a matching surplus lot from the requesting Local Agency.',400);
+  const existing=old.find((row:any)=>row.formula_index===index&&row.lot_id===allocation.lotId);
   if(lot.expiration_date<localDate()||lot.expired_units>0)conflict('Expired inventory cannot be assigned.',400);
+  if(daysRemaining(lot.expiration_date,localDate())<=60&&(!existing||allocation.units>Number(existing.units)))conflict('Only surplus with more than 60 days before expiration can be newly assigned.',400);
   desired.set(key,{index,lotId:allocation.lotId,units:allocation.units,lot});
   }
  }
@@ -47,10 +56,11 @@ export async function syncRequestLocalSurplus(db:D1Database,request:RequestRecor
  for(const [key,row] of desired)if(!oldByKey.has(key))changes.push({lot:row.lot,delta:row.units,index:row.index,lotId:row.lotId,units:row.units,issued:0});
  if(!changes.some(change=>change.delta!==0))return;
  const op=crypto.randomUUID();const pending="EXISTS(SELECT 1 FROM surplus_commands WHERE id=? AND status='pending')";
+ const eligibleDate=new Date(Date.parse(localDate()+'T00:00:00Z')+61*86400000).toISOString().slice(0,10);
  const steps:D1PreparedStatement[]=[db.prepare('INSERT INTO surplus_commands(id,actor_id,payload) VALUES(?,?,?)').bind(op,user.id,JSON.stringify({kind:'request-allocation',requestId:request.id}))];
  for(const change of changes){if(!change.delta)continue;
   const condition=change.delta>0?'id=? AND version=? AND expiration_date>=? AND expired_units=0 AND on_hand-reserved>=?':'id=? AND version=? AND reserved>=?';
-  const args=change.delta>0?[change.lotId,change.lot.version,localDate(),change.delta]:[change.lotId,change.lot.version,-change.delta];
+  const args=change.delta>0?[change.lotId,change.lot.version,eligibleDate,change.delta]:[change.lotId,change.lot.version,-change.delta];
   steps.push(db.prepare(`INSERT INTO surplus_guard(ok) SELECT CASE WHEN EXISTS(SELECT 1 FROM surplus_lots WHERE ${condition}) THEN 1 ELSE 0 END WHERE ${pending}`).bind(...args,op));
   steps.push(db.prepare(`UPDATE surplus_lots SET reserved=reserved+?,version=version+1 WHERE id=? AND version=? AND ${pending}`).bind(change.delta,change.lotId,change.lot.version,op));
   steps.push(db.prepare(`INSERT INTO surplus_movements(id,operation_id,lot_id,kind,quantity,actor_id,request_ref,reason,on_hand,reserved,expired_units) SELECT ?,?,id,?,?,?, ?,?,on_hand,reserved,expired_units FROM surplus_lots WHERE id=? AND ${pending}`).bind(crypto.randomUUID(),op,change.delta>0?'reserve':'release',Math.abs(change.delta),user.id,String(request.id),JSON.stringify({reason:change.delta>0?'Assigned to participant request':'Released from participant request',formulaIndex:change.index}),change.lotId,op));
