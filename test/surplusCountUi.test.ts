@@ -92,6 +92,12 @@ describe('Formula Surplus agency count and lot groups',()=>{
   expect(page.indexOf('class="surplus-views"')).toBeLessThan(page.indexOf('class="counts-actions"'));
  });
 
+ it('does not report empty inventory while the inventory request is loading or failed',()=>{
+  expect(page).toContain('status===\'pending\'&&!data');
+  expect(page).toContain('Loading inventory…');
+  expect(page).toContain('Inventory could not be loaded. Refresh to try again.');
+ });
+
  it('opens one role-aware inventory action popup instead of the More dropdown',()=>{
   expect(page).toContain("start('edit-inventory',row.lot)\">Edit</button>");
   expect(page).toContain("modal==='edit-inventory'");

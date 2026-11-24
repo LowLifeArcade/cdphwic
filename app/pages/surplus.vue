@@ -34,7 +34,7 @@ async function openShipment(){
 }
 const identity = useState<'admin' | 'agency' | 'internal'>('demo-identity', () => 'admin');
 const headers = computed(() => ({ 'x-demo-user': identity.value }));
-const { data, refresh, error } = await useFetch('/api/surplus', { headers, server: false, watch: [identity] });
+const { data, refresh, error, status } = await useFetch('/api/surplus', { headers, server: false, watch: [identity] });
 const {data:productData, error:productError}=await useFetch<{products:ProductRecord[]}>('/api/products');
 const surplusVariants=computed(()=>surplusCatalogVariants(productData.value?.products??[]));
 const surplusFormulaNames=computed(()=>[...new Map(surplusVariants.value.map(variant=>[variant.formulaName.toLowerCase(),variant.formulaName])).values()]);
@@ -513,7 +513,7 @@ async function upload(kind: string, event: Event) {
                         </template>
                     </tr>
                     <tr v-if="!inventoryRows.length">
-                        <td colspan="8">No matching inventory.</td>
+                        <td colspan="8"><span v-if="status==='pending'&&!data">Loading inventory…</span><span v-else-if="error" role="alert">Inventory could not be loaded. Refresh to try again.</span><span v-else>No matching inventory.</span></td>
                     </tr>
                 </tbody>
             </table>
