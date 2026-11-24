@@ -87,6 +87,9 @@ describe('Formula Surplus agency count and lot groups',()=>{
   expect(page).toContain(':aria-selected="view===\'inventory\'"');
   expect(page).toContain('role="tabpanel"');
   expect(page).toContain('.surplus-tab[aria-selected="true"]');
+  expect(page).toContain("useNuxtData<{ count: number }>('pending-transfer-count')");
+  expect(page).toContain('v-if="pendingInventoryTabCount" class="surplus-tab-badge"');
+  expect(page).toContain('v-if="pendingTransferTabCount" class="surplus-tab-badge"');
   expect(page).toContain('moveSurplusTab');
   expect(page).not.toContain('id="counts-tab"');
  });

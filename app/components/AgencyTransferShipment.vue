@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import {unitLabel} from '~/../shared/quantityLabels';
-import {formatClinic,type ClinicAddress} from '~/../shared/shipping';
+import {formatClinicStreetAddress,type ClinicAddress} from '~/../shared/shipping';
 import type {SurplusTransfer} from '~/../shared/surplus';
 import {formatEtaDate as formatDisplayDate} from '~/../shared/requestPresentation';
 const props=defineProps<{transfer:SurplusTransfer;canShip:boolean;sourceName:string;destinationName:string}>();
@@ -34,7 +34,7 @@ async function ship(){busy.value=true;error.value='';try{await $fetch(`/api/requ
    <div v-if="transfer.stock_confirmed_at" class="transfer-tracking"><span class="transfer-label">Tracking Numbers</span><span>{{transfer.tracking_reference || 'Pending CDPH/WIC shipping details'}}</span></div>
    <div v-if="transfer.requested_label_count"><span class="transfer-label">Shipping Labels Requested</span><span>{{transfer.requested_label_count}}</span></div>
   </div>
-  <div class="transfer-address"><span class="transfer-label">Pickup clinic</span><address>{{transfer.source_clinic_name || 'Clinic not specified'}}<template v-if="pickup"><br />{{formatClinic(pickup)}}</template></address></div>
+  <div class="transfer-address"><span class="transfer-label">Pickup clinic</span><address>{{transfer.source_clinic_name || pickup?.clinicName || 'Clinic not specified'}}<template v-if="pickup"><br />{{formatClinicStreetAddress(pickup)}}</template></address></div>
   <div class="transfer-address">
    <span class="transfer-label">Shipping Address</span>
    <address v-if="destination">{{destinationName}}<template v-if="destination.attention"><br />Attn: {{destination.attention}}</template><br />{{destination.addressLine1}}<template v-if="destination.addressLine2"><br />{{destination.addressLine2}}</template><br />{{destination.city}}, {{destination.state}} {{destination.postalCode}}</address>

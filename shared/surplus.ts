@@ -28,6 +28,7 @@ export interface SurplusCommand {
     correctedFormulaName?:string;
     correctedForm?:ProductForm;
     correctedFlavor?:string;
+    correctedPackaging?:string;
     correctedExpirationDate?:string;
     quantity?: number;
     destinationAgencyId?: number;

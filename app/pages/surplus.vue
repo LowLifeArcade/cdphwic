@@ -75,8 +75,18 @@ const selectedPackageDescriptions = computed(() => {
 });
 const selectedSurplusFlavor=ref('__unselected__');
 const correctedVariantSelection=ref('');
-function variantSelectionKey(variant:{formulaName:string;form:string;flavor:string}){return JSON.stringify([variant.formulaName,variant.form,variant.flavor]);}
-function selectCorrectedVariant(key:string){const variant=surplusVariants.value.find(item=>variantSelectionKey(item)===key);if(!variant)return;input.correctedFormulaName=variant.formulaName;input.correctedForm=variant.form;input.correctedFlavor=variant.flavor;}
+const correctionProducts = computed(() => (productData.value?.products ?? [])
+    .filter(product => product.active !== false && ['powder', 'concentrate', 'ready-to-feed'].includes(product.form))
+    .sort((a, b) => surplusProductLabel(a).localeCompare(surplusProductLabel(b))));
+function selectCorrectedVariant(key: string) {
+    const product = correctionProducts.value.find(item => String(item.id) === key);
+    if (!product) return;
+    input.correctedFormulaName = product.name;
+    input.correctedForm = product.form;
+    input.correctedFlavor = product.flavor ?? '';
+    input.correctedPackaging = surplusProductPackaging(product);
+}
+
 function updateSurplusFormulaSearch(){input.formulaName='';input.form='';input.flavor='';input.packaging='';selectedSurplusFlavor.value='__unselected__';}
 function selectSurplusForm(){input.flavor='';input.packaging='';selectedSurplusFlavor.value='__unselected__';}
 function selectSurplusFlavor(value:string){input.flavor=value==='__unselected__'||value==='__unflavored__'?'':value;input.packaging=surplusAvailablePackagings.value.length===1?surplusAvailablePackagings.value[0]:'';}
@@ -116,6 +126,10 @@ function initializeSurplusCatalogSelection(){
  formulaSearch.value=formula;
  input.form='';input.flavor='';input.packaging='';selectedSurplusFlavor.value='__unselected__';
 }
+const { data: pendingTransfers } = useNuxtData<{ count: number }>('pending-transfer-count');
+const pendingTransferTabCount = computed(() =>
+    identity.value === 'agency' && data.value?.user.memberType === 'agency' ? pendingTransfers.value?.count ?? 0 : 0,
+);
 async function refreshTransferState(){await refresh();await refreshNuxtData('pending-transfer-count');}
 const { data: agencyData } = await useFetch('/api/agencies');
 watch([()=>route.query.transfer,()=>data.value?.transfers],async([selected])=>{
@@ -148,6 +162,13 @@ function inventoryLotIsArchived(lot:SurplusLot){return lot.onHand===0&&lot.expir
 const archivedLots=computed(()=>lots.value.filter(inventoryLotIsArchived).sort((a,b)=>b.expirationDate.localeCompare(a.expirationDate)||a.formulaName.localeCompare(b.formulaName)));
 const dispositionLots = computed(() => lots.value.filter(lot => !inventoryLotIsArchived(lot)));
 const lotDisposition = (lot: SurplusLot) => surplusDisposition(lot.expirationDate, localDate());
+const pendingInventoryTabCount = computed(() =>
+    (data.value?.lots ?? []).filter(lot => {
+        const disposition = lotDisposition(lot);
+        if (disposition === 'donation') return availableUnits(lot) > 0;
+        return disposition === 'destruction' && (lot.expiredUnits > 0 || availableUnits(lot) > 0);
+    }).length,
+);
 const activeLots = computed(() => dispositionLots.value.filter(lot => !lotDisposition(lot)));
 const dispositionSections = computed(() => [
     { title: 'Donation', description: '45–60 days remaining. Arrange donation of surplus stock.', lots: dispositionLots.value.filter(lot => lotDisposition(lot) === 'donation') },
@@ -197,6 +218,7 @@ const input = reactive({
     correctedFormulaName:'',
     correctedForm:'',
     correctedFlavor:'',
+    correctedPackaging: undefined as string | undefined,
     correctedExpirationDate:'',
     form: 'powder',
     flavor: '',
@@ -240,8 +262,15 @@ function start(kind: string, lot?: SurplusLot, item?: any) {
     if(kind==='donate')input.reason='Donation';
     if(kind==='correct-entry'){
         correctionTarget.value=item;
-        const match=surplusVariants.value.find(variant=>variant.formulaName.toLowerCase()===String(lot?.formulaName??'').toLowerCase()&&variant.form===lot?.form&&(variant.flavor??'').toLowerCase()===(lot?.flavor??'').toLowerCase());
-        correctedVariantSelection.value=match?variantSelectionKey(match):'';
+        const match = lot && correctionProducts.value.find(product => variantKey({
+            formulaName: product.name,
+            form: product.form,
+            flavor: product.flavor ?? '',
+            packaging: surplusProductPackaging(product),
+            expirationDate: lot.expirationDate,
+        }) === variantKey(lot));
+        correctedVariantSelection.value = match ? String(match.id) : 'current';
+        input.correctedPackaging = undefined;
         input.quantity=item?.effective_quantity??item?.quantity??0;
         input.correctedFormulaName=lot?.formulaName??'';
         input.correctedForm=lot?.form??'';
@@ -377,7 +406,7 @@ async function submit() {
         if(modal.value==='assign-clinic'){if(!selected.value||!input.clinicId)throw new Error('Select a clinic.');return $fetch(`/api/surplus/lots/${selected.value.id}/clinic`,{method:'POST',headers:headers.value,body:{clinicId:input.clinicId,expectedVersion:selected.value.version}});}
         if(modal.value==='correct-entry'){
             if(!selected.value||!correctionTarget.value)throw new Error('Select a history entry to correct.');
-            return $fetch('/api/surplus/commands',{method:'POST',headers:headers.value,body:{operationId:operationId.value,kind:'correct-entry',correctionOf:correctionTarget.value.id,lotId:selected.value.id,quantity:Number(input.quantity),correctedFormulaName:input.correctedFormulaName,correctedForm:input.correctedForm,correctedFlavor:input.correctedFlavor,correctedExpirationDate:input.correctedExpirationDate,reason:input.reason,confirmerName:input.confirmerName,date:input.date,expectedVersion:selected.value.version}});
+            return $fetch('/api/surplus/commands',{method:'POST',headers:headers.value,body:{operationId:operationId.value,kind:'correct-entry',correctionOf:correctionTarget.value.id,lotId:selected.value.id,quantity:Number(input.quantity),correctedFormulaName:input.correctedFormulaName,correctedForm:input.correctedForm,correctedFlavor:input.correctedFlavor,correctedPackaging:input.correctedPackaging,correctedExpirationDate:input.correctedExpirationDate === selected.value.expirationDate ? undefined : input.correctedExpirationDate,reason:input.reason,confirmerName:input.confirmerName,date:input.date,expectedVersion:selected.value.version}});
         }
         if(modal.value==='new'&&!reviewer.value)
             return $fetch('/api/surplus/counts',{method:'POST',headers:headers.value,body:{operationId:operationId.value,formulaName:input.formulaName,form:input.form,flavor:input.flavor==='__unflavored__'?'':input.flavor,packaging:input.packaging,clinicId:input.clinicId||undefined,quantity:Number(input.quantity),expirationDate:input.expirationDate,date:input.date,confirmerName:input.confirmerName,reason:input.reason}});
@@ -489,8 +518,22 @@ async function upload(kind: string, event: Event) {
             {{ message }}
         </p>
         <div class="surplus-views" role="tablist" aria-label="Formula Surplus sections">
-            <button id="inventory-tab" class="surplus-tab" role="tab" :aria-selected="view==='inventory'" :tabindex="view==='inventory'?0:-1" aria-controls="inventory-panel" @keydown="moveSurplusTab" @click="view='inventory'">Inventory</button>
-            <button id="transfers-tab" class="surplus-tab" role="tab" :aria-selected="view==='transfers'" :tabindex="view==='transfers'?0:-1" aria-controls="transfers-panel" @keydown="moveSurplusTab" @click="view='transfers'">Transfers</button>
+            <button id="inventory-tab" class="surplus-tab" role="tab" :aria-selected="view==='inventory'" :tabindex="view==='inventory'?0:-1" aria-controls="inventory-panel" @keydown="moveSurplusTab" @click="view='inventory'">
+                Inventory
+                <span v-if="pendingInventoryTabCount" class="surplus-tab-badge">
+                    <svg aria-hidden="true" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9Z"/><path d="M10 21h4"/></svg>
+                    <span aria-hidden="true">{{ pendingInventoryTabCount }}</span>
+                    <span class="surplus-tab-badge-label">{{ pendingInventoryTabCount }} {{ pendingInventoryTabCount === 1 ? 'lot needs' : 'lots need' }} donation or destruction</span>
+                </span>
+            </button>
+            <button id="transfers-tab" class="surplus-tab" role="tab" :aria-selected="view==='transfers'" :tabindex="view==='transfers'?0:-1" aria-controls="transfers-panel" @keydown="moveSurplusTab" @click="view='transfers'">
+                Transfers
+                <span v-if="pendingTransferTabCount" class="surplus-tab-badge">
+                    <svg aria-hidden="true" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9Z"/><path d="M10 21h4"/></svg>
+                    <span aria-hidden="true">{{ pendingTransferTabCount }}</span>
+                    <span class="surplus-tab-badge-label">{{ pendingTransferTabCount }} pending {{ pendingTransferTabCount === 1 ? 'transfer' : 'transfers' }}</span>
+                </span>
+            </button>
         </div>
         <section v-show="view==='transfers'" id="transfers-panel" role="tabpanel" aria-labelledby="transfers-tab" tabindex="0">
             <h2>Transfers</h2>
@@ -714,6 +757,7 @@ async function upload(kind: string, event: Event) {
         >
             <section
                 class="surplus-dialog"
+                :class="{ 'correction-dialog': modal === 'correct-entry' }"
                 role="dialog"
                 aria-modal="true"
                 aria-labelledby="surplus-dialog-title"
@@ -724,7 +768,7 @@ async function upload(kind: string, event: Event) {
                     {{ agencyName(selected.agencyId) }} · {{selected.clinicName || 'Clinic not specified'}}
                 </p>
                 <p
-                    v-if="message"
+                    v-if="message && modal !== 'correct-entry'"
                     role="alert"
                 >
                     {{ message }}
@@ -803,16 +847,24 @@ async function upload(kind: string, event: Event) {
                         <p class="history-balance">Original entry: {{correctionTarget.quantity}} {{unitLabel(correctionTarget.quantity)}}. The original record stays in history; this correction is added as a separate entry.</p>
                     </article>
                     <div class="correction-fields">
-                        <label>Corrected Formula<select v-model="correctedVariantSelection" required @change="selectCorrectedVariant(correctedVariantSelection)"><option value="">Select a catalog formula</option><option v-for="variant in surplusVariants" :key="variantSelectionKey(variant)" :value="variantSelectionKey(variant)">{{variant.formulaName}} · {{formulaFormLabel(variant.form)}}{{variant.flavor?' · '+variant.flavor:''}}</option></select></label>
-                        <label>Corrected expiration date<input v-model="input.correctedExpirationDate" type="date" :min="localDate()" required /></label>
+                        <label>Corrected Formula
+                            <select v-model="correctedVariantSelection" required @change="selectCorrectedVariant(correctedVariantSelection)">
+                                <option v-if="correctedVariantSelection === 'current'" value="current">{{ selected?.formulaName }} · Current inventory entry</option>
+                                <option v-for="product in correctionProducts" :key="product.id" :value="String(product.id)">{{ surplusProductLabel(product) }}</option>
+                            </select>
+                        </label>
+                        <label>Corrected expiration date<input v-model="input.correctedExpirationDate" type="date" required /></label>
                         <label>Corrected Units<input v-model.number="input.quantity" type="number" min="0" step="1" required /></label>
                         <label>Correction explanation<textarea v-model="input.reason" rows="2" required></textarea></label>
                         <label>Correcting staff name<input v-model="input.confirmerName" required /></label>
                         <label>Correction date<input v-model="input.date" type="date" :max="localDate()" required /></label>
                     </div>
+                    <div class="correction-feedback">
+                        <p v-if="message" role="alert">{{ message }}</p>
+                    </div>
                     <div class="dialog-actions">
                         <button class="button" type="button" :disabled="busy" @click="modal='history'">Cancel</button>
-                        <button class="button button-main" :disabled="busy">{{busy?'Saving…':'Save correction'}}</button>
+                        <button class="button button-main" type="submit" :disabled="busy">{{busy?'Saving…':'Save correction'}}</button>
                     </div>
                 </form>
                 <form
@@ -1005,6 +1057,26 @@ async function upload(kind: string, event: Event) {
 
 .surplus-views {display:flex;gap:4px;flex-wrap:wrap;margin:16px 0 24px;border-bottom:1px solid var(--line);}
 .surplus-views .surplus-tab {appearance:none;border:1px solid transparent;border-bottom:0;border-radius:7px 7px 0 0;background:transparent;color:var(--muted);font:inherit;font-size:14px;line-height:1.4;padding:9px 16px;min-height:40px;cursor:pointer;}
+.surplus-tab-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    margin-inline-start: 5px;
+    padding: 1px 6px;
+    border: 1px solid currentColor;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 700;
+    vertical-align: middle;
+}
+.surplus-tab-badge-label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+}
 .surplus-views .surplus-tab:hover {background:var(--surface-raised);color:var(--text);}
 .surplus-views .surplus-tab[aria-selected="true"] {background:var(--purple);border-color:var(--purple);color:#fff;font-weight:700;box-shadow:0 2px 0 var(--purple);}
 .surplus-views .surplus-tab:focus-visible {outline:3px solid var(--focus-ring,#1976d2);outline-offset:2px;z-index:1;}
@@ -1118,6 +1190,10 @@ async function upload(kind: string, event: Event) {
 .history-balance {font-weight:600;font-variant-numeric:tabular-nums;}
 .history-entry .history-actor,.history-entry .history-correction-note {color:var(--muted);}
 .correction-original-entry {margin:8px 0 16px;padding:12px;border:1px solid var(--line);border-radius:8px;background:var(--surface-raised);}
+.correction-dialog {align-self:start;scrollbar-gutter:stable;}
+.correction-feedback {min-height:1.5em;}
+.correction-feedback p {margin:6px 0 0;overflow-wrap:anywhere;}
+.correction-fields select {width:100%;min-width:0;text-overflow:ellipsis;}
 .correction-fields {display:grid;gap:8px;}
 .correction-fields label {margin:0;font-size:13px;font-weight:600;}
 .surplus-formula-options {display:grid;max-height:220px;overflow:auto;border:1px solid var(--line);border-radius:6px;background:var(--surface);}

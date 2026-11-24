@@ -16,13 +16,13 @@ import { hasMedicalDocumentation, medicalDocumentationRequiredMessage } from '~/
 import {shippingContact,blankClinicAddress,validateShipping,type RequestShipping,type ClinicRecord} from '~/../shared/shipping';
 import {canEditSubmission,hasPendingMoreInfo,restoreSubmittedForm} from '~/../shared/requestEditing';
 import { benefitMonthLabels, toggleRequestedMonth, serializeRequestedMonths, validateRequestedMonths } from '~/../shared/requestMonthSelection';
-import { catalogFormulaOptions, findFormula, availableFormulaForms, defaultFormulaForm, requiresReadyToFeedReason } from '~/../shared/formulaCatalog';
+import { activeProductFormulaOptions, availableFormulaForms, requiresReadyToFeedReason } from '~/../shared/formulaCatalog';
 import { resolveProduct } from '~/../shared/productMatching';
 import type { ProductForm, RequestRecord } from '~/../shared/domain';
 import { blankFormula, formulaEntryName, getFormulaFieldErrors, validateOtherFormulaName, validateFormulaEntry, validateFormulaSelection, type FormulaEntry } from '~/../shared/formulaEntries';
 import { validateAgencyFields, providerSignatureMessage } from '~/../shared/newRequestFields';
 import { formatPhoneNumber, normalizePhoneNumber } from '~/../shared/phone';
-import {availableUnits,daysRemaining,localDate,normalizeVariantText} from '~/../shared/surplus';
+import {availableUnits,daysRemaining,localDate,normalizeVariantText,surplusProductPackaging} from '#shared/surplus';
 
 const router = useRouter();
 const route = useRoute();
@@ -53,7 +53,7 @@ async function deleteUnsubmittedRequest(){
 }
 const formulaAlert = ref('');
 const additionalFormulas = ref<FormulaEntry[]>([]);
-const surplusEntries = ref<Array<{ productName: string; productForm: ProductForm | ''; flavor: string; units: string | number; expirationDate: string; clinicId?: string }>>([]);
+const surplusEntries = ref<Array<{ productName: string; productForm: ProductForm | ''; flavor: string; packaging?: string; units: string | number; expirationDate: string; clinicId?: string }>>([]);
 const surplusDuplicateError = computed(() => duplicateSurplusLotError(surplusEntries.value));
 const requestedMonths = ref<string[]>([]);
 const requestForm = ref<HTMLFormElement | null>(null);
@@ -64,10 +64,27 @@ const validationAttempted = ref(false);
 const submissionError = ref('');
 const { data: productData } = await useFetch('/api/products');
 const products = computed(() => productData.value?.products ?? []);
+const activeFormulas = computed(() => activeProductFormulaOptions(products.value));
+function findActiveFormula(name: string) {
+    return activeFormulas.value.find(option => option.name.toLowerCase() === name.trim().toLowerCase());
+}
+function activeFormulaForms(name: string) {
+    return name.trim().toLowerCase() === 'other' ? availableFormulaForms('Other') : findActiveFormula(name)?.forms ?? [];
+}
+function defaultActiveFormulaForm(name: string) {
+    const forms = activeFormulaForms(name);
+    return forms.length === 1 ? forms[0]! : '';
+}
+
 const {data:agencyOptions}=await useFetch('/api/agencies');
 const {data:shippingProfile}=await useFetch('/api/profile',{headers:computed(()=>({'x-demo-user':identity.value}))});
 const requestAgencyId=ref(shippingProfile.value?.user?.agencyId??10);
-const {data:surplusInventory,error:surplusInventoryError,status:surplusInventoryStatus}=await useFetch('/api/surplus',{headers:computed(()=>({'x-demo-user':identity.value})),server:false});
+const {data:surplusInventory,error:surplusInventoryError,status:surplusInventoryStatus,refresh:refreshSurplusInventory}=await useFetch('/api/surplus',{headers:computed(()=>({'x-demo-user':identity.value})),server:false});
+function refreshVisibleSurplusInventory() {
+    if (!document.hidden) void refreshSurplusInventory();
+}
+onMounted(() => window.addEventListener('focus', refreshVisibleSurplusInventory));
+onBeforeUnmount(() => window.removeEventListener('focus', refreshVisibleSurplusInventory));
 const {data:storageClinics,error:storageClinicError,status:storageClinicStatus}=await useFetch<{clinics:ClinicRecord[]}>(()=>`/api/agencies/${requestAgencyId.value}/clinics`,{headers:computed(()=>({'x-demo-user':identity.value})),server:false});
 const enteredShipping=ref<RequestShipping>({...blankClinicAddress()});
 const selectedAgencyMemberId=ref<number|''>(shippingProfile.value?.user?.agencyMemberId??agencyOptions.value?.members.find(m=>m.agencyId===requestAgencyId.value)?.id??'');
@@ -112,14 +129,14 @@ const { parsing, parserMessage, parserError, parserMissing, selectedPrescription
             }
         }
         if (!availableForms.value.includes(form.productForm as ProductForm)) {
-            form.productForm = defaultFormulaForm(form.formulaName, products.value);
+            form.productForm = defaultActiveFormulaForm(form.formulaName);
         }
     },
 });
 
 const isOtherFormula = computed(() => form.formulaName.trim().toLowerCase() === 'other');
-const selectedFormula = computed(() => findFormula(form.formulaName, products.value));
-const availableForms = computed(() => availableFormulaForms(form.formulaName, products.value));
+const selectedFormula = computed(() => findActiveFormula(form.formulaName));
+const availableForms = computed(() => activeFormulaForms(form.formulaName));
 const selectedProduct = computed(() => resolveProduct(products.value, {
     name: isOtherFormula.value ? form.otherFormulaName : form.formulaName,
     form: form.productForm, flavor: form.formulaFlavor,
@@ -136,27 +153,84 @@ function dismissFormulaAlert() {
 }
 const requestedFormulaNames = computed(() => [...new Set([productName.value, ...additionalFormulas.value.map(entry => formulaEntryName(entry, products.value))].filter(Boolean))]);
 function surplusForms(name: string) {
-    return findFormula(name, products.value) ? availableFormulaForms(name, products.value) : availableFormulaForms('Other');
+    return findActiveFormula(name) ? activeFormulaForms(name) : availableFormulaForms('Other');
+}
+function surplusFlavorKey(value: string) {
+    return normalizeVariantText(value).replace(/^unflavored$/, '');
+}
+function surplusProductsForForm(entry: typeof surplusEntries.value[number]) {
+    return products.value.filter(product =>
+        product.active !== false && product.form === entry.productForm &&
+        normalizeVariantText(product.name) === normalizeVariantText(entry.productName),
+    );
+}
+function surplusFlavors(entry: typeof surplusEntries.value[number]) {
+    const flavors = new Map<string, string>();
+    for (const product of surplusProductsForForm(entry)) {
+        const flavor = product.flavor?.trim() ?? '';
+        const key = surplusFlavorKey(flavor);
+        if (!flavors.get(key)) flavors.set(key, flavor);
+    }
+    return [...flavors.values()];
+}
+function surplusPackages(entry: typeof surplusEntries.value[number]) {
+    const packages = new Map<string, string>();
+    for (const product of surplusProductsForForm(entry)) {
+        if (surplusFlavorKey(product.flavor ?? '') !== surplusFlavorKey(entry.flavor)) continue;
+        const packaging = surplusProductPackaging(product);
+        if (packaging) packages.set(packaging, product.formulaDescription?.trim() || packaging);
+    }
+    return Array.from(packages, ([value, label]) => ({ value, label }));
+}
+function selectDefaultSurplusPackage(entry: typeof surplusEntries.value[number]) {
+    const options = surplusPackages(entry);
+    entry.packaging = options.length === 1 ? options[0]!.value : undefined;
+}
+function selectDefaultSurplusFlavor(entry: typeof surplusEntries.value[number]) {
+    const flavors = surplusFlavors(entry);
+    entry.flavor = flavors.length === 1 ? flavors[0]! :
+        flavors.find(flavor => surplusFlavorKey(flavor) === surplusFlavorKey(entry.flavor)) ?? '';
+    selectDefaultSurplusPackage(entry);
 }
 function initializeSurplus(entry: typeof surplusEntries.value[number]) {
     const match = [form, ...additionalFormulas.value].find((formula) => formulaEntryName(formula, products.value) === entry.productName);
-    entry.productForm = match?.productForm || defaultFormulaForm(entry.productName, products.value);
-    entry.flavor = findFormula(entry.productName, products.value)?.hasFlavor ? match?.formulaFlavor ?? '' : '';
+    entry.productForm = match?.productForm || defaultActiveFormulaForm(entry.productName);
+    entry.flavor = match?.formulaFlavor ?? '';
+    selectDefaultSurplusFlavor(entry);
 }
-function agencySurplusStock(entry:typeof surplusEntries.value[number]){
+function agencyAvailableSurplus(entry: typeof surplusEntries.value[number]) {
+    const packageOptions = surplusPackages(entry);
+    const selectedPackage = normalizeVariantText(entry.packaging ?? '');
+    const canIncludeUnspecifiedPackage = packageOptions.length === 1 && normalizeVariantText(packageOptions[0]!.value) === selectedPackage;
     const lots=(surplusInventory.value?.lots??[]).filter((lot:any)=>
         lot.agencyId===requestAgencyId.value&&
         daysRemaining(lot.expirationDate,localDate())>60&&
         !lot.expiredUnits&&
         normalizeVariantText(lot.formulaName)===normalizeVariantText(entry.productName)&&
         lot.form===entry.productForm&&
-        normalizeVariantText(lot.flavor??'')===normalizeVariantText(entry.flavor??''),
+        (!selectedPackage || normalizeVariantText(lot.packaging ?? '') === selectedPackage ||
+            (!lot.packaging?.trim() && canIncludeUnspecifiedPackage))&&
+        surplusFlavorKey(lot.flavor ?? '') === surplusFlavorKey(entry.flavor),
     );
-    return {
-        onHand:lots.reduce((total:number,lot:any)=>total+Number(lot.onHand??0),0),
-        available:lots.reduce((total:number,lot:any)=>total+availableUnits(lot),0),
-    };
+    return lots.reduce((total, lot) => total + availableUnits(lot), 0);
 }
+const surplusStockSummary = computed(() => surplusInventory.value
+    ? surplusEntries.value.flatMap((entry, index) => entry.productName && entry.productForm
+        ? [{ index, formula: entry.productName, available: agencyAvailableSurplus(entry) }] : [])
+    : []);
+
+const surplusInventoryDialog = ref<HTMLDialogElement>();
+const inventoryDialogFormula = ref('');
+const inventoryDialogLots = computed(() => (surplusInventory.value?.lots ?? []).filter(lot =>
+    lot.agencyId === requestAgencyId.value && lot.onHand + lot.expiredUnits > 0 &&
+    (!inventoryDialogFormula.value || normalizeVariantText(lot.formulaName) === normalizeVariantText(inventoryDialogFormula.value)),
+));
+function openSurplusInventory(formula: string) {
+    inventoryDialogFormula.value = formula;
+    surplusInventoryDialog.value?.showModal();
+    refreshVisibleSurplusInventory();
+}
+
 function addSurplus() {
     const entry: typeof surplusEntries.value[number] = { productName: requestedFormulaNames.value[0] ?? '', productForm: '', flavor: '', units: '', expirationDate: '', clinicId: shipping.value.clinicId };
     initializeSurplus(entry);
@@ -183,14 +257,14 @@ function serializedFormulas() {
     }));
 }
 watch(() => isOtherFormula.value ? 'Other' : selectedFormula.value?.name, () => {
-    form.productForm = defaultFormulaForm(form.formulaName, products.value);
+    form.productForm = defaultActiveFormulaForm(form.formulaName);
     form.formulaFlavor = '';
 }, { flush: 'sync' });
 
 const formulaMatches = computed(() => {
     const query = form.formulaName.trim().toLowerCase();
     return query.length >= 3 && !selectedFormula.value && !isOtherFormula.value
-        ? [...catalogFormulaOptions(products.value).filter((item) => item.name.toLowerCase().includes(query)), { name: 'Other' }] : [];
+        ? [...activeFormulas.value.filter((item) => item.name.toLowerCase().includes(query)), { name: 'Other' }] : [];
 });
 function selectFormula(name: string) {
     form.formulaName = name;
@@ -638,7 +712,7 @@ async function submitRequest() {
                 </fieldset>
                 <fieldset v-for="(_, index) in additionalFormulas" :key="index" class="additional-formula formula-group full">
                     <legend>Formula {{ index + 2 }}</legend>
-                    <AdditionalFormulaFields :products="products" v-model="additionalFormulas[index]!" :index="index + 2" />
+                    <AdditionalFormulaFields catalog-only :products="products" v-model="additionalFormulas[index]!" :index="index + 2" />
                     <p v-if="formulaSelectionError" class="field-error" role="alert">{{ formulaSelectionError }}</p>
                     <button class="text-button" type="button" @click="additionalFormulas.splice(index, 1)">Remove Formula {{ index + 2 }}</button>
                 </fieldset>
@@ -706,15 +780,37 @@ async function submitRequest() {
         <RequestProviderFields :form="form" />
 
         <section class="form-section">
-            <div class="panel-heading"><h2>Surplus Formula</h2></div>
+            <div class="panel-heading surplus-heading">
+                <h2>Surplus Formula</h2>
+                <div class="surplus-heading-counts">
+                    <div v-for="{ index, formula, available } in surplusStockSummary" :key="index">
+                        <template v-if="surplusEntries.length > 1">Entry {{ index + 1 }} · </template>On Hand: {{ available }} {{ unitLabel(available) }}
+                        <button class="text-button surplus-inventory-link" type="button" @click="openSurplusInventory(formula)">View inventory</button>
+                    </div>
+                    <button v-if="!surplusStockSummary.length" class="text-button surplus-inventory-link" type="button" @click="openSurplusInventory(productName)">View inventory</button>
+                </div>
+            </div>
+            <dialog ref="surplusInventoryDialog" class="request-surplus-inventory-dialog" aria-labelledby="request-surplus-inventory-title">
+                <div class="panel-heading">
+                    <h2 id="request-surplus-inventory-title">Recorded Surplus Inventory</h2>
+                    <button class="text-button" type="button" @click="surplusInventoryDialog?.close()">Close</button>
+                </div>
+                <p v-if="surplusInventoryStatus === 'pending' && !surplusInventory" role="status">Loading inventory…</p>
+                <p v-if="surplusInventoryError" role="alert">Inventory could not be refreshed.</p>
+                <p v-else-if="surplusInventoryStatus === 'success' && !inventoryDialogLots.length">No recorded stock matches this formula for the requesting agency.</p>
+                <ul v-if="inventoryDialogLots.length" class="request-surplus-inventory-list">
+                    <li v-for="lot in inventoryDialogLots" :key="lot.id">
+                        <strong>{{ lot.formulaName }} · {{ lot.form }}</strong>
+                        <div>{{ [lot.flavor, lot.packaging || 'Package size not recorded', lot.clinicName || 'Clinic not specified'].filter(Boolean).join(' · ') }}</div>
+                        <div>Expires {{ lot.expirationDate }} · Recorded {{ lot.onHand + lot.expiredUnits }} · Reserved {{ lot.reserved }}</div>
+                    </li>
+                </ul>
+            </dialog>
             <p>Enter any surplus the local agency has of the formula(s) requested.</p>
-            <p v-if="surplusInventoryStatus==='pending'" class="surplus-stock-note" role="status">Checking current inventory for the requesting local agency…</p>
+            <p v-if="surplusInventoryStatus==='pending' && !surplusInventory" class="surplus-stock-note" role="status">Checking current inventory for the requesting local agency…</p>
             <p v-else-if="surplusInventoryError" class="surplus-stock-note" role="status">Current inventory could not be loaded. You can still enter the local agency’s surplus below.</p>
             <p v-if="storageClinicError" role="alert">Storage clinics could not be loaded. Try again before choosing a clinic.</p>
             <div v-for="(entry, index) in surplusEntries" :key="index" class="form-grid surplus-form-row">
-                <p v-if="entry.productName && entry.productForm && surplusInventory" class="surplus-stock-note">
-                    On Hand at requesting agency: {{agencySurplusStock(entry).onHand}} {{unitLabel(agencySurplusStock(entry).onHand)}} · Available: {{agencySurplusStock(entry).available}} {{unitLabel(agencySurplusStock(entry).available)}}
-                </p>
                 <div class="form-field">
                     <label :for="`surplus-formula-${index}`">Formula Name</label>
                     <select :id="`surplus-formula-${index}`" v-model="entry.productName" class="form-input" required @change="initializeSurplus(entry)">
@@ -724,14 +820,25 @@ async function submitRequest() {
                 </div>
                 <div class="form-field">
                     <label :for="`surplus-form-${index}`">Form</label>
-                    <select :id="`surplus-form-${index}`" v-model="entry.productForm" class="form-input" required>
+                    <select :id="`surplus-form-${index}`" v-model="entry.productForm" class="form-input" required @change="selectDefaultSurplusFlavor(entry)">
                         <option disabled value="">Select Form</option>
                         <option v-for="option in surplusForms(entry.productName)" :key="option" :value="option">{{ { powder: 'Powder', concentrate: 'Liquid Concentrate', 'ready-to-feed': 'Ready-to-Feed' }[option] }}</option>
                     </select>
                 </div>
-                <div v-if="findFormula(entry.productName, products)?.hasFlavor" class="form-field">
+                <div v-if="surplusFlavors(entry).length > 1" class="form-field">
                     <label :for="`surplus-flavor-${index}`">Flavor</label>
-                    <input :id="`surplus-flavor-${index}`" v-model="entry.flavor" class="form-input" />
+                    <select :id="`surplus-flavor-${index}`" v-model="entry.flavor" class="form-input" @change="selectDefaultSurplusPackage(entry)">
+                        <option v-if="!surplusFlavors(entry).includes('')" disabled value="">Select Flavor</option>
+                        <option v-for="flavor in surplusFlavors(entry)" :key="flavor" :value="flavor">{{ flavor || 'Unflavored' }}</option>
+                    </select>
+                </div>
+                <div v-if="surplusPackages(entry).length || entry.packaging" class="form-field">
+                    <label :for="`surplus-package-${index}`">Package size</label>
+                    <select :id="`surplus-package-${index}`" v-model="entry.packaging" class="form-input" required>
+                        <option :value="undefined">Select a package size</option>
+                        <option v-if="entry.packaging && !surplusPackages(entry).some(option => option.value === entry.packaging)" :value="entry.packaging">{{ entry.packaging }}</option>
+                        <option v-for="option in surplusPackages(entry)" :key="option.value" :value="option.value">{{ option.label }}</option>
+                    </select>
                 </div>
                 <div class="form-field">
                     <label :for="`surplus-units-${index}`">Surplus Quantity (in Units)</label>
@@ -818,6 +925,31 @@ async function submitRequest() {
 <style scoped>.correction-request-note{border-left:3px solid #902A92;padding:12px 16px;margin-bottom:16px;}.correction-request-note p{white-space:pre-wrap;overflow-wrap:anywhere;}</style>
 
 <style scoped>
+.surplus-heading {justify-content:space-between; gap:12px;}
+.surplus-heading h2 {flex-shrink:0;}
+.surplus-inventory-link {margin-inline-start:6px;font-size:13px;}
+.request-surplus-inventory-dialog {
+    width:min(560px, calc(100% - 32px));
+    max-height:80vh;
+    overflow:auto;
+    padding:20px;
+    border:1px solid var(--line);
+    border-radius:12px;
+    background:var(--surface);
+    color:var(--text);
+}
+.request-surplus-inventory-dialog::backdrop {background:#0008;}
+.request-surplus-inventory-list {list-style:none; padding:0; margin:0;}
+.request-surplus-inventory-list li {padding:8px 0; border-top:1px solid var(--line);}
+.surplus-heading-counts {
+    display:flex;
+    gap:12px;
+    min-width:0;
+    overflow-x:auto;
+    white-space:nowrap;
+    font-size:15px;
+    font-weight:650;
+}
 .diagnosis-entry-actions {display:flex;gap:12px;flex-shrink:0;}
 .diagnosis-list .diagnosis-is-editing {align-items:flex-start;flex-wrap:wrap;}
 .diagnosis-edit-error {flex-basis:100%;margin:0;}

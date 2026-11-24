@@ -52,8 +52,12 @@ export function validateShipping(input?: Partial<RequestShipping>): string {
     if (input?.phone && !/^(?:1)?\d{10}$/.test(input.phone.replace(/\D/g, ''))) return 'Enter a valid Shipping Phone Number.';
     return '';
 }
+export function formatClinicStreetAddress(address: ClinicAddress) {
+    return [address.addressLine1, address.addressLine2, address.city, [address.state, address.postalCode].filter(Boolean).join(' ')].filter(Boolean).join(', ');
+}
+
 export function formatClinic(address: ClinicAddress) {
-    return `${address.clinicName} — ${address.addressLine1}${address.addressLine2 ? ', ' + address.addressLine2 : ''}, ${address.city}, ${address.state} ${address.postalCode}`;
+    return `${address.clinicName} — ${formatClinicStreetAddress(address)}`;
 }
 
 export function formatShippingAddress(address?: Partial<ClinicAddress>): string {

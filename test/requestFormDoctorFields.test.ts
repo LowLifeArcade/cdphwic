@@ -88,11 +88,15 @@ describe('new request doctor fields', () => {
         expect(requestForm).not.toContain('v-model="form.doctorSignature"');
     });
 
-    it('shows the requesting agency on-hand and available surplus for each requested formula', () => {
+    it('shows only available surplus in the section heading', () => {
         expect(requestForm).toContain("useFetch('/api/surplus'");
         expect(requestForm).toContain('lot.agencyId===requestAgencyId.value');
-        expect(requestForm).toContain('On Hand at requesting agency:');
-        expect(requestForm).toContain('agencySurplusStock(entry).onHand');
-        expect(requestForm).toContain('agencySurplusStock(entry).available');
+        expect(requestForm).toContain('On Hand: {{ available }} {{ unitLabel(available) }}');
+        expect(requestForm).toContain('canIncludeUnspecifiedPackage');
+        expect(requestForm).toContain('surplusInventoryDialog.value?.showModal()');
+        expect(requestForm).toContain('Recorded Surplus Inventory');
+        expect(requestForm).toContain('refreshVisibleSurplusInventory');
+        expect(requestForm).toContain('agencyAvailableSurplus(entry)');
+        expect(requestForm).not.toContain('On Hand at requesting agency:');
     });
 });

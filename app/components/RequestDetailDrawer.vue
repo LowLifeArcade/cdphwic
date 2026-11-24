@@ -11,7 +11,7 @@ import {toRaw} from 'vue';
 import {unreadOutgoingMessage,sameRequestOutsideMessages,type MoreInfoConversation} from '~/../shared/moreInfoMessages';
 import {shipmentFormulaOptions,shipmentFormulaKey,resolveShipmentFormula,shipmentFormulaLabel,requireShipmentFormula} from '~/../shared/shipmentFormulas';
 import type {Directive} from 'vue';
-import {formatClinic,type ClinicRecord,blankClinicAddress,validateShipping} from '~/../shared/shipping';
+import {formatClinicStreetAddress,type ClinicRecord,blankClinicAddress,validateShipping} from '~/../shared/shipping';
 const vTrackingSize:Directive<HTMLTextAreaElement>={mounted:fitTrackingNumbers,updated:fitTrackingNumbers};
 function fitTrackingNumbers(input:HTMLTextAreaElement){input.style.height='auto';input.style.height=`${input.scrollHeight+input.offsetHeight-input.clientHeight}px`;}
 import {formulaOrders,allFormulasSpecialOrder,hasSpecialOrder} from '~/../shared/formulaOrders';
@@ -885,7 +885,7 @@ async function saveAgencyUpdate() {
                         <div v-else-if="splitOrderTypesEnabled"><span>Fulfillment Type</span><strong>{{shipmentFulfillmentType(request,shipment)==='special'?'Special Order':'Standard'}}</strong></div>
                         <label v-if="editingShipmentPlan(shipment,index) && shipment.shipmentSource!=='agency'" class="field-label detail-field-wide">Shipment Source<select :value="shipment.shipmentSource??''" class="form-input" :aria-label="`Shipment ${index+1} Source`" :disabled="saving || !!requestShipments(request)[index]?.etaSentAt" @change="changeShipmentSource(shipment,($event.target as HTMLSelectElement).value)"><option disabled value="">Select source</option><option value="distributor">Distributor</option></select></label>
                         <template v-if="shipment.shipmentSource==='agency'">
-                            <div><span>From</span><strong>{{shipment.sourceAgencyName||transferAgencies?.agencies.find(a=>a.id===shipment.sourceAgencyId)?.name||'Agency not selected'}}<br />{{shipment.sourceClinicName || 'Clinic not specified'}}</strong><small v-if="shipment.sourceClinicAddress">Pickup: {{formatClinic(shipment.sourceClinicAddress)}}</small></div>
+                            <div><span>From</span><strong>{{shipment.sourceAgencyName||transferAgencies?.agencies.find(a=>a.id===shipment.sourceAgencyId)?.name||'Agency not selected'}}<br />{{shipment.sourceClinicName || shipment.sourceClinicAddress?.clinicName || 'Clinic not specified'}}</strong><small v-if="shipment.sourceClinicAddress" class="transfer-pickup-address"> {{formatClinicStreetAddress(shipment.sourceClinicAddress)}}</small></div>
                             <div><span>To</span><strong>{{agency?.name}}</strong></div>
                             <a v-if="canStaffEdit && !shipment.transferId" class="text-button" :href="`#issuance-${request.id}`">Select and reserve transfer stock in Issuance</a>
                         </template>
@@ -894,13 +894,14 @@ async function saveAgencyUpdate() {
                         <div v-else><span>Distributor</span><strong>{{shipment.supplier || '—'}}</strong></div>
                         </template>
                         <template v-if="hasTransferLabelRequest(shipment)">
-                        <label v-if="editingShipmentLogistics(shipment,index)" class="field-label">ETA<input v-model="shipment.eta" class="form-input" type="date" :aria-label="`Shipment ${index+1} ETA`" :disabled="saving" /></label>
-                        <div v-else><span>ETA</span><strong>{{shipment.shipmentSource==='agency' && shipment.transferStatus==='reserved' && identity==='agency' ? 'Pending GSO pickup' : formatDisplayDate(shipment.eta)}}</strong></div>
+                        <label v-if="editingShipmentLogistics(shipment,index)" class="field-label" :class="{ 'detail-field-wide': shipment.shipmentSource === 'agency' }">ETA<input v-model="shipment.eta" class="form-input" type="date" :aria-label="`Shipment ${index+1} ETA`" :disabled="saving" /></label>
+                        <div v-else :class="{ 'detail-field-wide': shipment.shipmentSource === 'agency' }"><span>ETA</span><strong>{{shipment.shipmentSource==='agency' && shipment.transferStatus==='reserved' && identity==='agency' ? 'Pending GSO pickup' : formatDisplayDate(shipment.eta)}}</strong></div>
                         </template>
-                        <template v-if="shipment.shipmentSource==='agency'">
-                            <div><span>Cases to Transfer</span><strong>{{shipment.casesShipped}}</strong></div><div><span>Units to Transfer</span><strong>{{shipment.looseUnitsShipped??0}}</strong></div>
-                            <div class="detail-field-wide"><span>Total Transfer Quantity</span><strong>{{shipment.transferQuantity??shipment.unitsToTransfer??0}} {{unitLabel(shipment.transferQuantity??shipment.unitsToTransfer??0)}}</strong></div>
-                        </template>
+                        <dl v-if="shipment.shipmentSource === 'agency'" class="detail-field-wide transfer-quantity-summary" aria-label="Transfer quantities">
+                            <div><dt>Cases to Transfer</dt><dd>{{ shipment.casesShipped ?? 0 }}</dd></div>
+                            <div><dt>Units to Transfer</dt><dd>{{ shipment.looseUnitsShipped ?? 0 }}</dd></div>
+                            <div><dt>Total Transfer Quantity</dt><dd>{{ shipment.transferQuantity ?? shipment.unitsToTransfer ?? 0 }} {{ unitLabel(shipment.transferQuantity ?? shipment.unitsToTransfer ?? 0) }}</dd></div>
+                        </dl>
                         <template v-else-if="shipmentFeatures.casesShipped">
                         <label v-if="editingShipmentPlan(shipment,index)" class="field-label">Cases Shipped<input v-model.number="shipment.casesShipped" class="form-input" type="number" min="0" :aria-label="`Shipment ${index+1} Cases Shipped`" :disabled="saving" /></label>
                         <div v-else><span>Cases Shipped</span><strong>{{shipment.casesShipped}}<template v-if="shipmentFeatures.quantityTracking && shipment.looseUnitsShipped"> + {{shipment.looseUnitsShipped}} loose {{unitLabel(shipment.looseUnitsShipped)}}</template></strong></div>
@@ -1093,6 +1094,16 @@ async function saveAgencyUpdate() {
 @media(max-width:700px){.surplus-entry-row{grid-template-columns:minmax(0,1fr) 80px;}.surplus-entry-row .icon-button{justify-self:end;}}
 .shipment-compact-row {border:1px solid var(--border);border-radius:8px;background:var(--surface-raised);}
 .shipment-compact-row + .shipment-compact-row {margin-top:8px;}
+.transfer-quantity-summary {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px 16px;
+    margin: 0;
+    text-align: left;
+}
+.transfer-quantity-summary dt {color: var(--muted); font-size: 13px;}
+.transfer-quantity-summary dd {margin: 3px 0 0; font-weight: 700; font-variant-numeric: tabular-nums;}
+.transfer-pickup-address {display:block;margin-top:3px;}
 .shipment-compact-summary {display:flex;justify-content:space-between;align-items:center;gap:12px;padding:12px 14px;cursor:pointer;list-style-position:inside;}
 .shipment-compact-title {font-weight:650;}
 .shipment-compact-status {text-align:right;color:var(--muted);font-size:.9em;}

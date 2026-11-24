@@ -64,6 +64,7 @@ export async function editSubmittedRequest(
                 e.productName,
                 e.productForm ?? '',
                 e.flavor ?? '',
+                e.packaging ?? '',
                 e.units,
                 e.expirationDate ?? '',
                 e.clinicId ?? '',
@@ -101,7 +102,7 @@ export async function editSubmittedRequest(
             steps.push(
                 db
                     .prepare(
-                        'INSERT INTO surplus_reports(id,submission_id,row_id,agency_id,formula_name,form,flavor,expiration_date,reported_units,request_ref,reporter_id,counted_at,confirmer_name,clinic_id,clinic_name,clinic_address) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
+                        'INSERT INTO surplus_reports(id,submission_id,row_id,agency_id,formula_name,form,flavor,packaging,expiration_date,reported_units,request_ref,reporter_id,counted_at,confirmer_name,clinic_id,clinic_name,clinic_address) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
                     )
                     .bind(
                         id,
@@ -111,6 +112,7 @@ export async function editSubmittedRequest(
                         row.productName.trim().replace(/\s+/g, ' '),
                         row.productForm,
                         (row.flavor ?? '').trim().replace(/\s+/g, ' '),
+                        (row.packaging ?? '').trim().replace(/\s+/g, ' '),
                         row.expirationDate ?? '',
                         row.units,
                         previous.submissionId,

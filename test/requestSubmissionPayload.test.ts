@@ -7,7 +7,7 @@ const context = (): SubmissionContext => ({
     shipping: { addressLine1: '123 Main', city: 'Sacramento', state: 'CA', postalCode: '95814' },
     benefitMonthsRequested: ['2026-11'], productId: 7, productName: 'Fortini',
     requestedFormulas: [{ productName: 'Fortini', productForm: 'ready-to-feed', ouncesPrescribed: 8 }],
-    surplusItems: [{ productName: 'Fortini', productForm: 'ready-to-feed', flavor: '', units: '2', expirationDate: '' }],
+    surplusItems: [{ productName: 'Fortini', productForm: 'ready-to-feed', flavor: '', packaging: '2 fl oz Bottle', units: '2', expirationDate: '' }],
     hasFlavor: true, isOtherFormula: false, prescriptionKey: 'upload-key',
 });
 const payload = (form: ReturnType<typeof blankRequestForm>, input = context(), saveOnly = false) => JSON.parse(requestSubmissionBody(form, input, saveOnly).get('request') as string);
@@ -17,7 +17,7 @@ it('serializes create/edit metadata, formulas, quantities and normalized provide
     const result = payload(form);
     expect(result).toMatchObject({ saveOnly: false, draftId: 12, revision: 3, removePrescriptionAttachment: true, submissionId: 'stable-id', agencyId: 10, agencyMemberId: 100, participantName: 'First Last', participantFamilyId: 42, wicIndividualId: '001', doctorOfficePhone: '9165551234', ouncesPrescribed: 8, durationMonths: 3, formulaFlavor: 'Vanilla', prescriptionKey: 'upload-key', status: 'unopened' });
     expect(result.requestedFormulas).toEqual(context().requestedFormulas);
-    expect(result.surplusItems[0].units).toBe(2);
+    expect(result.surplusItems[0]).toMatchObject({ units: 2, packaging: '2 fl oz Bottle' });
     expect(payload(form, context(), true).saveOnly).toBe(true);
 });
 it('omits optional blanks and clears fields whose conditional selection is no longer active', () => {

@@ -279,10 +279,20 @@ describe('agency surplus entry corrections', () => {
         const lot=await ensureSurplusLot(db,10,{...variant,formulaName:'Incorrect formula',form:'powder',flavor:'',expirationDate:'2027-01-01'});
         await executeSurplusCommand(db,agencyActor,{kind:'reconcile',operationId:'formula-correction-count',lotId:lot.id,quantity:10,expectedVersion:0,reason:'Opening count',confirmerName:'Agency Staff',date:'2026-10-26'},'2026-10-26');
         const originalId=await movementId(db,'formula-correction-count');
-        await executeSurplusCommand(db,agencyActor,{kind:'correct-entry',operationId:'formula-metadata-correction',lotId:lot.id,correctionOf:originalId,quantity:10,correctedFormulaName:'Correct Formula',correctedForm:'ready-to-feed',correctedFlavor:'Vanilla',correctedExpirationDate:'2027-02-01',expectedVersion:await version(db,lot.id),reason:'Correcting the formula details',confirmerName:'Agency Staff',date:'2026-10-26'},'2026-10-26');
-        expect(await db.prepare('SELECT formula_name,form,flavor,expiration_date,on_hand,reserved FROM surplus_lots WHERE id=?').bind(lot.id).first()).toEqual({formula_name:'Correct Formula',form:'ready-to-feed',flavor:'Vanilla',expiration_date:'2027-02-01',on_hand:10,reserved:0});
+        await executeSurplusCommand(db,agencyActor,{kind:'correct-entry',operationId:'formula-metadata-correction',lotId:lot.id,correctionOf:originalId,quantity:10,correctedFormulaName:'Correct Formula',correctedForm:'ready-to-feed',correctedFlavor:'Vanilla',correctedPackaging:'2 fl oz Bottle',correctedExpirationDate:'2027-02-01',expectedVersion:await version(db,lot.id),reason:'Correcting the formula details',confirmerName:'Agency Staff',date:'2026-10-26'},'2026-10-26');
+        expect(await db.prepare('SELECT formula_name,form,flavor,packaging,expiration_date,on_hand,reserved FROM surplus_lots WHERE id=?').bind(lot.id).first()).toEqual({formula_name:'Correct Formula',form:'ready-to-feed',flavor:'Vanilla',packaging:'2 fl oz Bottle',expiration_date:'2027-02-01',on_hand:10,reserved:0});
         expect(await db.prepare('SELECT reason FROM surplus_movements WHERE corrects_movement_id=?').bind(originalId).first<string>('reason')).toContain('Correct Formula');
-        expect(await db.prepare('SELECT id FROM surplus_lots WHERE agency_id=? AND variant_key=?').bind(10,JSON.stringify(['correct formula','ready-to-feed','vanilla','2027-02-01'])).first('id')).toBe(lot.id);
+        expect(await db.prepare('SELECT id FROM surplus_lots WHERE agency_id=? AND variant_key=?').bind(10,JSON.stringify(['correct formula','ready-to-feed','vanilla','2 fl oz bottle','2027-02-01'])).first('id')).toBe(lot.id);
+        await executeSurplusCommand(db, agencyActor, {
+            kind: 'correct-entry', operationId: 'formula-expired-correction', lotId: lot.id,
+            correctionOf: originalId, quantity: 10, correctedFormulaName: 'Correct Expired Formula',
+            correctedForm: 'ready-to-feed', correctedFlavor: 'Vanilla', correctedPackaging: '2 fl oz Bottle',
+            correctedExpirationDate: '2026-10-25', expectedVersion: await version(db, lot.id),
+            reason: 'Verified the printed expiration date', confirmerName: 'Agency Staff', date: '2026-10-26',
+        }, '2026-10-26');
+        expect(await db.prepare('SELECT formula_name,expiration_date,on_hand,expired_units FROM surplus_lots WHERE id=?').bind(lot.id).first())
+            .toEqual({ formula_name: 'Correct Expired Formula', expiration_date: '2026-10-25', on_hand: 0, expired_units: 10 });
+
     });
 
     it('corrects a donation quantity against the current unexpired balance', async () => {
@@ -310,7 +320,12 @@ describe('agency surplus entry corrections', () => {
         const originalId = await movementId(db, 'destruction-to-correct');
 
         await expect(correct(db, lot.id, originalId, 11, 'destruction-correction-beyond-balance', await version(db, lot.id))).rejects.toThrow();
-        await correct(db, lot.id, originalId, 2, 'destruction-correction', await version(db, lot.id));
+        await executeSurplusCommand(db, agencyActor, {
+            kind: 'correct-entry', operationId: 'destruction-correction', lotId: lot.id,
+            correctionOf: originalId, quantity: 2, correctedExpirationDate: lot.expirationDate,
+            expectedVersion: await version(db, lot.id), reason: 'Corrected destruction quantity',
+            confirmerName: 'Agency Staff', date: '2026-10-26',
+        }, '2026-10-26');
 
         expect(await db.prepare('SELECT on_hand,expired_units FROM surplus_lots WHERE id=?').bind(lot.id).first()).toEqual({ on_hand: 0, expired_units: 8 });
     });

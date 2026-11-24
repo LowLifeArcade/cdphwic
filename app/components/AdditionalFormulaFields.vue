@@ -1,9 +1,9 @@
 <script setup lang="ts">
-import { catalogFormulaOptions, findFormula, availableFormulaForms, defaultFormulaForm, requiresReadyToFeedReason } from '~/../shared/formulaCatalog';
+import { activeProductFormulaOptions, catalogFormulaOptions, availableFormulaForms, requiresReadyToFeedReason } from '~/../shared/formulaCatalog';
 import { validateOtherFormulaName } from '~/../shared/formulaEntries';
 import type { ProductRecord } from '../../shared/domain';
 import type { FormulaEntry } from '~/../shared/formulaEntries';
-const props = defineProps<{ modelValue: FormulaEntry; products?: ProductRecord[]; index: number; autoFitJustification?: boolean; hideRequiredMarkers?: boolean }>();
+const props = defineProps<{ modelValue: FormulaEntry; products?: ProductRecord[]; index: number; autoFitJustification?: boolean; hideRequiredMarkers?: boolean; catalogOnly?: boolean }>();
 const emit = defineEmits<{ 'update:modelValue': [value: FormulaEntry] }>();
 const focused = ref(false);
 const justificationInput = ref<HTMLTextAreaElement>();
@@ -16,20 +16,25 @@ function fitJustification() {
 watch([justificationInput, () => props.modelValue.readyToFeedJustification], () => nextTick(fitJustification), {flush:'post'});
 const active = ref(0);
 const prefix = computed(() => `extra-formula-${props.index}`);
-const selected = computed(() => findFormula(props.modelValue.formulaName, props.products));
+const options = computed(() => props.catalogOnly ? activeProductFormulaOptions(props.products ?? []) : catalogFormulaOptions(props.products));
+function formsFor(name: string) {
+    return name.trim().toLowerCase() === 'other' ? availableFormulaForms('Other') : options.value.find(option => option.name.toLowerCase() === name.trim().toLowerCase())?.forms ?? [];
+}
+const selected = computed(() => options.value.find(option => option.name.toLowerCase() === props.modelValue.formulaName.trim().toLowerCase()));
 const other = computed(() => props.modelValue.formulaName.trim().toLowerCase() === 'other');
-const forms = computed(() => availableFormulaForms(props.modelValue.formulaName, props.products));
+const forms = computed(() => formsFor(props.modelValue.formulaName));
 const matches = computed(() => {
     const query = props.modelValue.formulaName.trim().toLowerCase();
     return query.length >= 3 && !selected.value && !other.value
-        ? [...catalogFormulaOptions(props.products).filter((item) => item.name.toLowerCase().includes(query)), { name: 'Other' }] : [];
+        ? [...options.value.filter((item) => item.name.toLowerCase().includes(query)), { name: 'Other' }] : [];
 });
 function update<K extends keyof FormulaEntry>(key: K, value: FormulaEntry[K]) {
     emit('update:modelValue', { ...props.modelValue, [key]: value });
 }
 function nameChanged(value: string) {
     active.value = 0;
-    emit('update:modelValue', { ...props.modelValue, formulaName: value, formulaFlavor: '', productForm: defaultFormulaForm(value, props.products) });
+    const available = formsFor(value);
+    emit('update:modelValue', { ...props.modelValue, formulaName: value, formulaFlavor: '', productForm: available.length === 1 ? available[0]! : '' });
 }
 </script>
 

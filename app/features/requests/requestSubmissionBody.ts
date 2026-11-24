@@ -17,6 +17,7 @@ export interface SubmissionContext {
         productName: string;
         productForm: ProductForm | '';
         flavor: string;
+        packaging?: string;
         units: string | number;
         expirationDate: string;
         clinicId?: string;

@@ -1,7 +1,15 @@
 import { describe, expect, it } from 'vitest';
-import { formulaCatalog, findFormula, availableFormulaForms, defaultFormulaForm, requiresReadyToFeedReason } from '../shared/formulaCatalog';
+import { activeProductFormulaOptions, formulaCatalog, findFormula, availableFormulaForms, defaultFormulaForm, requiresReadyToFeedReason } from '../shared/formulaCatalog';
 
 describe('request formula catalog', () => {
+    it('lists only active catalog products and their actual forms for new requests', () => {
+        const product = { id: 1, productId: '1', productCode: '1', name: 'Similac NeoSure', form: 'powder', category: 'standard', coverage: [] } as const;
+        expect(activeProductFormulaOptions([])).toEqual([]);
+        expect(activeProductFormulaOptions([
+            { ...product, coverage: [] },
+            { ...product, id: 2, form: 'ready-to-feed', active: false, coverage: [] },
+        ])).toMatchObject([{ name: 'Similac NeoSure', forms: ['powder'] }]);
+    });
     it('contains all 27 requested names without duplicates', () => {
         expect(formulaCatalog).toHaveLength(27);
         expect(new Set(formulaCatalog.map(({ name }) => name)).size).toBe(27);
