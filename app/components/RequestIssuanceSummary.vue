@@ -45,7 +45,8 @@ function earlierLocalIssuesComplete(row:FormulaAuthorization,month:string){let r
                 <div><strong>Local Agency surplus: {{assigned(authorization)}} {{unitLabel(assigned(authorization))}} reserved</strong><p class="muted-copy">This is a one-time stock reservation. Issue it in the earliest benefit months first; distributor or transfer stock covers later months.</p></div>
             </div>
         </fieldset>
-        <div class="detail-grid"><div class="detail-field-wide"><span>Next Steps</span><strong class="preserve-lines">{{request.nextSteps || '—'}}</strong></div></div>
+        <div class="section-heading"><h3 style="color:light-dark(#002595,#0077CF)">Next Steps</h3></div>
+        <p class="preserve-lines">{{ request.nextSteps || '—' }}</p>
     </section>
 </template>
 

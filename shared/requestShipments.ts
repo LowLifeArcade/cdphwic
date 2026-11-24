@@ -13,7 +13,11 @@ export function validateShipments(rows: RequestShipment[], requireComplete = fal
         const prefix = `Shipment ${index + 1}: `;
         if (row?.supplier!==undefined && (typeof row.supplier!=='string' || row.supplier.length>200)) return prefix+'Enter a valid Supplier (200 characters or fewer).';
         if (row?.unitsPerCase!==undefined && (!Number.isSafeInteger(row.unitsPerCase) || row.unitsPerCase<1)) return prefix+'Enter a positive whole number for Units per Case.';
-        if (row?.looseUnitsShipped!==undefined && (!Number.isSafeInteger(row.looseUnitsShipped)||row.looseUnitsShipped<0||!row.unitsPerCase||row.looseUnitsShipped>=row.unitsPerCase)) return prefix+'Loose Units Shipped must be fewer than Units per Case.';
+        if (row?.looseUnitsShipped !== undefined) {
+            if (!Number.isSafeInteger(row.looseUnitsShipped) || row.looseUnitsShipped < 0) return prefix + 'Enter a nonnegative whole number for Loose Units Shipped.';
+            if (row.looseUnitsShipped > 0 && !row.unitsPerCase) return prefix + 'Enter Units per Case before entering Loose Units Shipped.';
+            if (row.looseUnitsShipped > 0 && row.unitsPerCase && row.looseUnitsShipped >= row.unitsPerCase) return prefix + 'Loose Units Shipped must be fewer than Units per Case.';
+        }
         if (row?.replacementBasis==='cases' && row.looseUnitsShipped) return prefix+'This distributor requires whole-case replacements.';
         if (!row || !['fedex','dhl','ups','agency','gso'].includes(row.carrier)) return prefix + 'Select a valid Carrier.';
         if (!Number.isInteger(row.casesShipped) || row.casesShipped < 0) return prefix + 'Cases Shipped must be a nonnegative whole number.';

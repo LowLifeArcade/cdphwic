@@ -186,13 +186,6 @@ watch([()=>route.query.request,()=>props.requests],async([id],[previousId])=>{co
             @next="nextRequest && openRequest(nextRequest)"
             @close="selected = null"
         />
-        <button
-            v-if="selected"
-            class="request-drawer-backdrop"
-            type="button"
-            aria-label="Close request details"
-            @click="selected = null"
-        />
     </div>
     </div>
 </template>

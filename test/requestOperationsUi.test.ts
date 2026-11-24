@@ -119,9 +119,11 @@ describe('request operations UI', () => {
         expect(authorization).toContain('Units Per Case');
         expect(authorization).toContain('Yield');
         expect(authorization).toContain('Total Units Approved');
+        expect(drawer).toContain('<fieldset class="local-surplus-assignment">');
+        expect(drawer).toContain('No matching units are available to assign from the requesting agency.');
         expect(drawer).toContain('Assign Units');
         expect(drawer).toContain('On Hand</h4>');
-        expect(drawer).toMatch(/class="authorization-formula"[\s\S]*?<RequestAuthorizationFields[\s\S]*?<RequestTransferAllocation[\s\S]*?@reserve="reserveIssuanceTransfer"[\s\S]*?<RequestSupplyPlan[\s\S]*?<\/fieldset>\s*<label[^>]*>\s*Next Steps/);
+        expect(drawer).toMatch(/class="authorization-formula"[\s\S]*?<RequestAuthorizationFields[\s\S]*?<RequestTransferAllocation[\s\S]*?@reserve="reserveIssuanceTransfer"[\s\S]*?<RequestSupplyPlan[\s\S]*?<\/fieldset>\s*<div class="issuance-heading"><h3><label[^>]*>Next Steps/);
         expect(drawer).toContain('<RequestSupplyPlan');
         expect(drawer).not.toContain('Amount Approved');
         expect(drawer).not.toContain('Expected Surplus Unit');

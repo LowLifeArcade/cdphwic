@@ -11,7 +11,7 @@ import {toRaw} from 'vue';
 import {unreadOutgoingMessage,sameRequestOutsideMessages,type MoreInfoConversation} from '~/../shared/moreInfoMessages';
 import {shipmentFormulaOptions,shipmentFormulaKey,resolveShipmentFormula,shipmentFormulaLabel,requireShipmentFormula} from '~/../shared/shipmentFormulas';
 import type {Directive} from 'vue';
-import {formatClinicStreetAddress,type ClinicRecord,blankClinicAddress,validateShipping} from '~/../shared/shipping';
+import {clinicStreetAddressLines,type ClinicRecord,blankClinicAddress,validateShipping} from '~/../shared/shipping';
 const vTrackingSize:Directive<HTMLTextAreaElement>={mounted:fitTrackingNumbers,updated:fitTrackingNumbers};
 function fitTrackingNumbers(input:HTMLTextAreaElement){input.style.height='auto';input.style.height=`${input.scrollHeight+input.offsetHeight-input.clientHeight}px`;}
 import {formulaOrders,allFormulasSpecialOrder,hasSpecialOrder} from '~/../shared/formulaOrders';
@@ -55,6 +55,10 @@ const emit = defineEmits<{ close: []; previous: []; next: [] }>();
 const identity = useState<'admin' | 'agency' | 'internal'>('demo-identity', () => 'admin');
 const draft = reactive<Partial<RequestRecord>>({});
 const transferRoute=useRoute();
+const etaSendError = ref<{ requestId: number; index: number; message: string } | null>(null);
+function showEtaSendError(requestId: number, index: number, message: string) {
+    if (props.request?.id === requestId) etaSendError.value = { requestId, index, message };
+}
 const transferLabelsReady=reactive<Record<string,boolean>>({});
 const shortcutApplied=ref('');
 const shortcutNotice=ref('');
@@ -161,17 +165,17 @@ async function saveMoreInfoNote(action:'edit'|'delete',noteId:string){await save
 watch(()=>props.request?.id,()=>{moreInfoNotes.value='';moreInfoNotice.value='';editingMoreInfoId.value='';deletingMoreInfoId.value='';moreInfoReplies.value={};});
 async function sendMoreInfo(){if(!props.request||!moreInfoNotes.value.trim())return;await save({reviewDecision:{action:'request-info',notes:moreInfoNotes.value.trim()}} as Partial<RequestRecord>);if(!error.value){moreInfoNotes.value='';showMoreInfoComposer.value=false;editingReviewDecision.value=false;moreInfoNotice.value='Sent to Local Agency.';}}
 const canEditOriginal= computed(()=>!!props.request&&canEditSubmission(props.request));
-const {data:distributorData}=await useFetch<{distributors:import('~/../shared/distributors').DistributorProfile[]}>('/api/distributors',{headers:computed(()=>({'x-demo-user':identity.value})),watch:[identity]});
+const {data:distributorData}=useFetch<{distributors:import('~/../shared/distributors').DistributorProfile[]}>('/api/distributors',{headers:computed(()=>({'x-demo-user':identity.value})),watch:[identity]});
 function selectDistributor(shipment:import('~/../shared/requestShipments').RequestShipment,id:string){shipment.distributorId=id||undefined;const found=distributorData.value?.distributors.find(d=>d.id===id);shipment.supplier=found?.name??'';}
-const {data:transferAgencies}=await useFetch('/api/agencies');
-const {data:transferStock,refresh:refreshTransferStock,error:transferStockError}=await useFetch<{lots:SurplusLot[]}>('/api/surplus',{headers:computed(()=>({'x-demo-user':identity.value})),server:false,watch:[identity]});
-const {data:anticipatedSurplusData,refresh:refreshAnticipatedSurplus}=await useFetch<{forecasts:Array<{id:string;agency_id:number;request_ref:string;formula_name:string;form:string;flavor:string;expected_units:number;actual_units:number|null;due_date:string;status:string;clinic_name?:string|null}>}>('/api/surplus',{headers:computed(()=>({'x-demo-user':identity.value})),server:false,watch:[identity]});
+const {data:transferAgencies}=useFetch('/api/agencies');
+const {data:transferStock,refresh:refreshTransferStock,error:transferStockError}=useFetch<{lots:SurplusLot[]}>('/api/surplus',{headers:computed(()=>({'x-demo-user':identity.value})),server:false,watch:[identity]});
+const {data:anticipatedSurplusData,refresh:refreshAnticipatedSurplus}=useFetch<{forecasts:Array<{id:string;agency_id:number;request_ref:string;formula_name:string;form:string;flavor:string;expected_units:number;actual_units:number|null;due_date:string;status:string;clinic_name?:string|null}>}>('/api/surplus',{headers:computed(()=>({'x-demo-user':identity.value})),server:false,watch:[identity]});
 const anticipatedSurplusRows=computed(()=>{
  const request=props.request;if(!request)return [];
  const refs=new Set([String(request.id),request.submissionId].filter((value):value is string=>!!value));
  return (anticipatedSurplusData.value?.forecasts??[]).filter(item=>item.agency_id===request.agencyId&&refs.has(String(item.request_ref)));
 });
-const {data:surplusClinics,error:surplusClinicError}=await useFetch<{clinics:ClinicRecord[]}>(()=>`/api/agencies/${props.request?.agencyId??0}/clinics`,{headers:computed(()=>({'x-demo-user':identity.value})),server:false});
+const {data:surplusClinics,error:surplusClinicError}=useFetch<{clinics:ClinicRecord[]}>(()=>`/api/agencies/${props.request?.agencyId??0}/clinics`,{headers:computed(()=>({'x-demo-user':identity.value})),server:false});
 const shipmentFormulaChoices=computed(()=>props.request?shipmentFormulaOptions({...props.request,formulaAuthorizations:draft.formulaAuthorizations}):[]);
 function shipmentFormula(row:RequestShipment){const request=props.request?{...props.request,formulaAuthorizations:draft.formulaAuthorizations}:undefined;return row.shipmentFormula??(request?resolveShipmentFormula(request,row):undefined);}
 function shipmentRequest(row:RequestShipment):Partial<RequestRecord>{const formula=props.request?resolveShipmentFormula(props.request,row):undefined;return formula?{...props.request,formulaAuthorizations:draft.formulaAuthorizations,requestedFormulas:[{...formula,productForm:formula.productForm!,ouncesPrescribed:0}]}:{...props.request,formulaAuthorizations:draft.formulaAuthorizations};}
@@ -571,9 +575,12 @@ function editingShipmentLogistics(row:RequestShipment,index:number){return editi
 async function editOrSendTransferEta(index:number){
  const row=draft.shipments?.[index];if(!row?.transferId||!props.request)return;
  if(row.transferEtaSentAt&&editingEtaIndex.value!==index){editingEtaIndex.value=index;return;}
- const requestId=props.request.id;saving.value=true;error.value='';sendingEtaIndex.value=index;
+ const requestId=props.request.id;etaSendError.value=null;saving.value=true;error.value='';sendingEtaIndex.value=index;
  try{const result=await $fetch<{request:RequestRecord}>(`/api/request-transfers/${row.transferId}/eta`,{method:'POST',headers:{'x-demo-user':identity.value},body:{eta:row.eta,carrier:row.carrier,trackingNumbers:row.trackingNumbers,revision:props.request.revision??0}});if(props.request?.id===requestId){applyShipmentIssueResult(result.request);editingEtaIndex.value=null;}}
- catch(e){error.value=(e as {data?:{statusMessage?:string}}).data?.statusMessage??'Transfer ETA could not be saved.';}finally{saving.value=false;sendingEtaIndex.value=null;}
+ catch(e){
+    const failure = e as { data?: { statusMessage?: string; message?: string } };
+    showEtaSendError(requestId, index, failure.data?.statusMessage || failure.data?.message || 'Shipping details could not be sent. Try again.');
+ }finally{saving.value=false;sendingEtaIndex.value=null;}
 }
 function editingShipmentPlan(shipment:RequestShipment,index:number){return canStaffEdit.value&&!shipment.transferId&&!shipmentReceived(props.request??{},shipment)&&shipment.receivedCases===undefined&&!shipment.issue&&!shipment.deletedIssues?.length&&(!shipment.etaSentAt||editingEtaIndex.value===index||shipmentHasUnsentChanges(shipment,requestShipments(props.request??{})[index]));}
 function editOrSendEta(index:number){
@@ -589,6 +596,8 @@ function setShipmentTracking(shipment: RequestShipment, value: string) {
     shipment.trackingNumbers = value.split(/\r?\n/);
 }
 async function saveShipments(index?: number) {
+    const requestId = props.request?.id;
+    if (index !== undefined) etaSendError.value = null;
     shippingSaveStatus.value = 'saving';
     sendingEtaIndex.value = index ?? null;
     const rows = draft.shipments ?? [];
@@ -597,13 +606,15 @@ async function saveShipments(index?: number) {
         : validateShipments([rows[index]!],true);
     if (validation) {
         error.value = index === undefined ? validation : `Shipment ${index + 1}: ${validation.replace(/^Shipment 1: /,'')}`;
+        if (index !== undefined && requestId !== undefined) showEtaSendError(requestId, index, error.value);
         shippingSaveStatus.value = 'failed';
         sendingEtaIndex.value = null;
         return;
     }
     const wasPublished=index!==undefined && !!requestShipments(props.request??{})[index]?.etaSentAt;
     await save({shipmentDrafts:rows, ...(index === undefined ? {} : {sendEtaShipmentIndex:index})});
-    shippingSaveStatus.value = error.value ? 'failed' : index===undefined?'saved':'idle';
+    if (error.value && index !== undefined && requestId !== undefined) showEtaSendError(requestId, index, error.value);
+    shippingSaveStatus.value = index === undefined ? (error.value ? 'failed' : 'saved') : 'idle';
     if(!error.value && index!==undefined)shipmentPublishNotice.value={index,updated:wasPublished};
     if(!error.value && index!==undefined)editingEtaIndex.value=null;
     sendingEtaIndex.value = null;
@@ -639,6 +650,13 @@ async function saveAgencyUpdate() {
         <div class="document-pane-header"><strong>Medical Documentation</strong><button type="button" class="button button-ghost" @click="documentOpen=false">Close document</button></div>
         <RequestDocumentPreview :key="`${request.id}-${request.prescriptionAttachment.storageKey}-${identity}`" :request-id="request.id" :attachment="request.prescriptionAttachment" />
     </section>
+    <button
+        v-if="request"
+        class="request-drawer-backdrop"
+        type="button"
+        aria-label="Close request details"
+        @click="emit('close')"
+    />
     <aside
         v-if="request"
         class="detail-drawer"
@@ -785,7 +803,7 @@ async function saveAgencyUpdate() {
                 :split-order-types-enabled="splitOrderTypesEnabled"
                 @change-order="changeFormulaOrder"
             />
-            <fieldset v-if="localAgencySurplusLots(authorization,formulaIndex).length || assignedUnits(authorization)>0" class="local-surplus-assignment">
+            <fieldset class="local-surplus-assignment">
                 <div class="transfer-heading"><h4>On Hand</h4></div>
                 <p class="muted-copy">Available units are shown for each lot. Enter the number to assign, then save. Saving reserves those units; they remain in the On Hand balance until the Local Agency records an issue.</p>
                 <div v-if="localAgencySurplusLots(authorization,formulaIndex).length" class="local-surplus-lots">
@@ -794,6 +812,10 @@ async function saveAgencyUpdate() {
                         <label class="field-label local-surplus-assign-field">Assign Units<input class="form-input authorization-number" type="number" inputmode="numeric" min="0" :max="localSurplusAvailable(lot,formulaIndex)" :value="authorization.localSurplusAllocations?.find(row=>row.lotId===lot.id)?.units??0" :aria-label="`Units to assign from ${lot.clinicName||'clinic'}, expires ${lot.expirationDate}`" @input="setLocalSurplusAllocation(authorization,lot.id,Math.min(Number(($event.target as HTMLInputElement).value)||0,localSurplusAvailable(lot,formulaIndex)))" /></label>
                     </div>
                 </div>
+                <p v-else-if="transferStockError" class="form-error" role="alert">On Hand inventory could not be loaded. <button class="text-button" type="button" @click="refreshTransferStock()">Retry</button></p>
+                <p v-else-if="!transferStock" class="muted-copy" role="status">Checking On Hand inventory…</p>
+                <p v-else class="muted-copy">No matching units are available to assign from the requesting agency.</p>
+                <p v-if="assignedUnits(authorization)>0" class="muted-copy">{{ assignedUnits(authorization) }} {{ unitLabel(assignedUnits(authorization)) }} assigned to this formula.</p>
             </fieldset>
             <div v-if="splitOrderTypesEnabled" class="form-grid fulfillment-allocation-fields">
                 <label class="field-label">Standard Order Cases<input v-model.number="authorization.standardCases" class="form-input authorization-number" type="number" inputmode="numeric" min="0" step="1" :aria-label="`Formula ${formulaIndex+1} Standard Order Cases`" :disabled="saving" /></label>
@@ -809,10 +831,8 @@ async function saveAgencyUpdate() {
                 :units-per-case="authorizationUnitsPerCase(authorization)"
             />
             </fieldset>
-            <label class="field-label">
-                Next Steps
-                <textarea v-model="draft.nextSteps" class="form-textarea" placeholder="Add instructions or follow-up notes." />
-            </label>
+            <div class="issuance-heading"><h3><label :for="`next-steps-${request.id}`">Next Steps</label></h3></div>
+            <textarea :id="`next-steps-${request.id}`" v-model="draft.nextSteps" class="form-textarea" placeholder="Add instructions or follow-up notes." />
             <p v-if="error" class="form-error" role="alert">{{error}}</p>
             <div class="staff-save-action">
                 <button
@@ -888,7 +908,7 @@ async function saveAgencyUpdate() {
                         <div v-else-if="splitOrderTypesEnabled"><span>Fulfillment Type</span><strong>{{shipmentFulfillmentType(request,shipment)==='special'?'Special Order':'Standard'}}</strong></div>
                         <label v-if="editingShipmentPlan(shipment,index) && shipment.shipmentSource!=='agency'" class="field-label detail-field-wide">Shipment Source<select :value="shipment.shipmentSource??''" class="form-input" :aria-label="`Shipment ${index+1} Source`" :disabled="saving || !!requestShipments(request)[index]?.etaSentAt" @change="changeShipmentSource(shipment,($event.target as HTMLSelectElement).value)"><option disabled value="">Select source</option><option value="distributor">Distributor</option></select></label>
                         <template v-if="shipment.shipmentSource==='agency'">
-                            <div><span>From</span><strong>{{shipment.sourceAgencyName||transferAgencies?.agencies.find(a=>a.id===shipment.sourceAgencyId)?.name||'Agency not selected'}}<br />{{shipment.sourceClinicName || shipment.sourceClinicAddress?.clinicName || 'Clinic not specified'}}</strong><small v-if="shipment.sourceClinicAddress" class="transfer-pickup-address"> {{formatClinicStreetAddress(shipment.sourceClinicAddress)}}</small></div>
+                            <div><span>From</span><strong>{{shipment.sourceAgencyName||transferAgencies?.agencies.find(a=>a.id===shipment.sourceAgencyId)?.name||'Agency not selected'}}<br />{{shipment.sourceClinicName || shipment.sourceClinicAddress?.clinicName || 'Clinic not specified'}}</strong><small v-if="shipment.sourceClinicAddress" class="transfer-pickup-address"><template v-for="(line, lineIndex) in clinicStreetAddressLines(shipment.sourceClinicAddress)" :key="lineIndex"><br v-if="lineIndex > 0" />{{ line }}</template></small></div>
                             <div><span>To</span><strong>{{agency?.name}}</strong></div>
                             <a v-if="canStaffEdit && !shipment.transferId" class="text-button" :href="`#issuance-${request.id}`">Select and reserve transfer stock in Issuance</a>
                         </template>
@@ -901,14 +921,21 @@ async function saveAgencyUpdate() {
                         <div v-else :class="{ 'detail-field-wide': shipment.shipmentSource === 'agency' }"><span>ETA</span><strong>{{shipment.shipmentSource==='agency' && shipment.transferStatus==='reserved' && identity==='agency' ? 'Pending GSO pickup' : formatDisplayDate(shipment.eta)}}</strong></div>
                         </template>
                         <dl v-if="shipment.shipmentSource === 'agency'" class="detail-field-wide transfer-quantity-summary" aria-label="Transfer quantities">
-                            <div><dt>Cases to Transfer</dt><dd>{{ shipment.casesShipped ?? 0 }}</dd></div>
-                            <div><dt>Units to Transfer</dt><dd>{{ shipment.looseUnitsShipped ?? 0 }}</dd></div>
+                            <div><dt>Cases<br />to Transfer</dt><dd>{{ shipment.casesShipped ?? 0 }}</dd></div>
+                            <div><dt>Units<br />to Transfer</dt><dd>{{ shipment.looseUnitsShipped ?? 0 }}</dd></div>
                             <div><dt>Total Transfer Quantity</dt><dd>{{ shipment.transferQuantity ?? shipment.unitsToTransfer ?? 0 }} {{ unitLabel(shipment.transferQuantity ?? shipment.unitsToTransfer ?? 0) }}</dd></div>
                         </dl>
                         <template v-else-if="shipmentFeatures.casesShipped">
                         <label v-if="editingShipmentPlan(shipment,index)" class="field-label">Cases Shipped<input v-model.number="shipment.casesShipped" class="form-input" type="number" min="0" :aria-label="`Shipment ${index+1} Cases Shipped`" :disabled="saving" /></label>
                         <div v-else><span>Cases Shipped</span><strong>{{shipment.casesShipped}}<template v-if="shipmentFeatures.quantityTracking && shipment.looseUnitsShipped"> + {{shipment.looseUnitsShipped}} loose {{unitLabel(shipment.looseUnitsShipped)}}</template></strong></div>
-                        <label v-if="shipmentFeatures.quantityTracking && editingShipmentPlan(shipment,index) && shipment.replacementFor!==undefined" class="field-label">Loose Units Shipped<input v-model.number="shipment.looseUnitsShipped" class="form-input" type="number" min="0" :max="(shipment.unitsPerCase??1)-1" :disabled="saving || shipment.replacementBasis==='cases'" :aria-label="`Shipment ${index+1} Loose Units Shipped`" /></label>
+                        <label v-if="editingShipmentPlan(shipment,index) && (shipmentFeatures.quantityTracking || shipment.looseUnitsShipped !== undefined)" class="field-label">
+                            Units per Case
+                            <input :value="shipment.unitsPerCase" class="form-input" type="number" min="1" step="1" :disabled="saving" :aria-label="`Shipment ${index+1} Units per Case`" @input="shipment.unitsPerCase = ($event.target as HTMLInputElement).valueAsNumber || undefined" />
+                        </label>
+                        <label v-if="editingShipmentPlan(shipment,index) && shipment.replacementBasis !== 'cases' && (shipmentFeatures.quantityTracking || shipment.looseUnitsShipped !== undefined)" class="field-label">
+                            Loose Units Shipped
+                            <input :value="shipment.looseUnitsShipped ?? 0" class="form-input" type="number" min="0" step="1" :max="shipment.unitsPerCase ? shipment.unitsPerCase - 1 : undefined" :disabled="saving" :aria-label="`Shipment ${index+1} Loose Units Shipped`" @input="shipment.looseUnitsShipped = ($event.target as HTMLInputElement).valueAsNumber || 0" />
+                        </label>
                         </template>
                         <template v-if="shipment.shipmentSource!=='agency' || shipment.transferStockConfirmedAt">
                         <label v-if="shipment.shipmentSource==='agency'" class="field-label detail-field-wide">Carrier<input value="GSO" class="form-input" readonly :aria-label="`Shipment ${index+1} Carrier`" /></label>
@@ -941,6 +968,7 @@ async function saveAgencyUpdate() {
                         <button v-if="canStaffEdit && canDeleteShipment({...request,shipmentDrafts:draft.shipments},index)" type="button" class="text-button" :disabled="saving" :aria-label="`Delete Shipment ${index+1}`" @click="deletingShipmentIndex=index">Delete Shipment</button>
                         <span v-if="!shipment.etaSentAt" class="save-feedback" role="status">Draft · Not sent</span><span v-else-if="!shipmentHasUnsentChanges(shipment,requestShipments(request)[index])" class="shipment-sent-status" role="status"><span aria-hidden="true">✓</span> {{shipmentPublishNotice?.index===index && shipmentPublishNotice.updated ? 'Update Sent' : 'ETA Sent'}}</span>
                     </div>
+                    <p v-if="etaSendError?.requestId === request.id && etaSendError.index === index" class="form-error" role="alert">{{ etaSendError.message }}</p>
                     </fieldset>
                 </details>
             </div>
@@ -1099,13 +1127,15 @@ async function saveAgencyUpdate() {
 .shipment-compact-row + .shipment-compact-row {margin-top:8px;}
 .transfer-quantity-summary {
     display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 8px 16px;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) minmax(0, 1.8fr);
+    grid-template-rows: auto auto;
+    gap: 3px 16px;
     margin: 0;
     text-align: left;
 }
+.transfer-quantity-summary > div {display:grid;grid-row:span 2;grid-template-rows:subgrid;}
 .transfer-quantity-summary dt {color: var(--muted); font-size: 13px;}
-.transfer-quantity-summary dd {margin: 3px 0 0; font-weight: 700; font-variant-numeric: tabular-nums;}
+.transfer-quantity-summary dd {margin: 0; font-weight: 700; font-variant-numeric: tabular-nums;}
 .transfer-pickup-address {display:block;margin-top:3px;}
 .shipment-compact-summary {display:flex;justify-content:space-between;align-items:center;gap:12px;padding:12px 14px;cursor:pointer;list-style-position:inside;}
 .shipment-compact-title {font-weight:650;}

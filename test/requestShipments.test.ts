@@ -23,6 +23,14 @@ it('permits saving incomplete shipments but requires every ETA and tracking numb
     expect(validateShipments([{eta:'2026-11-01',casesShipped:2,carrier:'ups',trackingNumbers:['A']},...rows],true)).toContain('Shipment 2');
 });
 
+it('accepts zero loose units without a case size and explains missing packaging for positive quantities', () => {
+    const row = { eta: '', casesShipped: 0, carrier: 'ups' as const, trackingNumbers: [] };
+    expect(validateShipments([{ ...row, looseUnitsShipped: 0 }])).toBe('');
+    expect(validateShipments([{ ...row, looseUnitsShipped: 2 }])).toContain('Enter Units per Case');
+    expect(validateShipments([{ ...row, unitsPerCase: 6, looseUnitsShipped: 2 }])).toBe('');
+    expect(validateShipments([{ ...row, unitsPerCase: 6, looseUnitsShipped: 6 }])).toContain('must be fewer');
+});
+
 it('persists both shipment sets and rejects incomplete shipped records at the server boundary', async () => {
     const {surplusDb} = await import('./helpers/surplusDb');
     const {ensureSubmittedRequest,updateSubmittedRequest,submittedRequests} = await import('../server/utils/submittedRequests');

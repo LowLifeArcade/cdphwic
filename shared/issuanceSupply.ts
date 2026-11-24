@@ -4,6 +4,13 @@ import {resolveShipmentFormula,shipmentFormulaKey} from './shipmentFormulas';
 import {shipmentHasUnsentChanges} from './shipmentPublishing';
 import {validUnitSize} from './shipmentQuantities';
 
+function supplyFormulaKey(authorization: FormulaAuthorization) {
+    return shipmentFormulaKey({
+        ...authorization,
+        productName: authorization.formulaName || authorization.productName,
+    });
+}
+
 /** Approved supply excludes replacements, which restore an existing allocation. */
 export function issuanceSupply(request:Partial<RequestRecord>,authorization:FormulaAuthorization){
  const local=(authorization.localSurplusAllocations??[]).reduce((sum,row)=>sum+row.units,0);
@@ -11,7 +18,7 @@ export function issuanceSupply(request:Partial<RequestRecord>,authorization:Form
  let transferred=0,orderedCases=0,orderedLooseUnits=0,orderedUnits=0,unknownOrderSize=false;
  const sizes=new Set<number>();
  for(const row of request.shipments??[]){
-  if(row.replacementFor!==undefined||shipmentFormulaKey(resolveShipmentFormula(request,row))!==shipmentFormulaKey(authorization))continue;
+  if(row.replacementFor!==undefined||shipmentFormulaKey(resolveShipmentFormula(request,row))!==supplyFormulaKey(authorization))continue;
   if(row.shipmentSource==='agency'){
    if(!row.transferId)continue;
    const size=row.unitsPerCase??authorization.unitsPerCase;
@@ -37,7 +44,7 @@ export function issuanceSupplyPlan(request:Partial<RequestRecord>,authorization:
  const local=(authorization.localSurplusAllocations??[]).reduce((sum,row)=>sum+Math.max(0,row.units),0);
  let transferred=0,unknownTransferSize=false;
  for(const row of request.shipments??[]){
-  if(row.shipmentSource!=='agency'||(!row.transferId&&!row.sourceLotId)||row.replacementFor!==undefined||shipmentFormulaKey(resolveShipmentFormula(request,row))!==shipmentFormulaKey(authorization))continue;
+  if(row.shipmentSource!=='agency'||(!row.transferId&&!row.sourceLotId)||row.replacementFor!==undefined||shipmentFormulaKey(resolveShipmentFormula(request,row))!==supplyFormulaKey(authorization))continue;
   if(row.unitsToTransfer!==undefined){transferred+=Math.max(0,row.unitsToTransfer);continue;}
   const size=row.unitsPerCase??unitsPerCase;
   if(row.casesShipped>0&&!validUnitSize(size)){unknownTransferSize=true;continue;}
@@ -61,7 +68,7 @@ export function issuanceSupplySources(request:Partial<RequestRecord>,authorizati
  const rows:SupplySourceRow[]=[{key:'on-hand',kind:'on-hand',label:'On Hand',units:local}];
  let supplied=local,unknown=false,plannedUnits=0,unknownPlannedUnits=false;
  const shipments=request.shipments??[];
- const matching=shipments.map((row,index)=>({row,index})).filter(({row})=>row.replacementFor===undefined&&shipmentFormulaKey(resolveShipmentFormula(request,row))===shipmentFormulaKey(authorization));
+ const matching=shipments.map((row,index)=>({row,index})).filter(({row})=>row.replacementFor===undefined&&shipmentFormulaKey(resolveShipmentFormula(request,row))===supplyFormulaKey(authorization));
  for(const {row,index} of matching.filter(({row})=>row.shipmentSource==='agency')){
   if(!row.transferId&&!(includeDrafts&&row.sourceLotId))continue;
   const size=row.unitsPerCase??authorization.unitsPerCase;
@@ -71,7 +78,7 @@ export function issuanceSupplySources(request:Partial<RequestRecord>,authorizati
   if(units===undefined)unknown=true;else supplied+=units;
  }
  const isPublished=(row:NonNullable<RequestRecord['shipments']>[number])=>!!(row.etaSentAt||row.dispatched||row.receivedAt||row.receiptConfirmed);
- const matchesFormula=(row:NonNullable<RequestRecord['shipments']>[number])=>row.shipmentSource!=='agency'&&row.replacementFor===undefined&&shipmentFormulaKey(resolveShipmentFormula(request,row))===shipmentFormulaKey(authorization);
+ const matchesFormula=(row:NonNullable<RequestRecord['shipments']>[number])=>row.shipmentSource!=='agency'&&row.replacementFor===undefined&&shipmentFormulaKey(resolveShipmentFormula(request,row))===supplyFormulaKey(authorization);
  const distributorEntries=publishedShipments===undefined
   ?matching.filter(({row})=>row.shipmentSource!=='agency').map(entry=>({...entry,forceDraft:false,baseline:undefined as NonNullable<RequestRecord['shipments']>[number]|undefined}))
   :[
