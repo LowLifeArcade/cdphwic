@@ -40,6 +40,13 @@ describe('submission requirements', () => {
         expect(validateRequestSubmission({ ...complete, surplusItems: [{ productName: 'Unknown', units: 3, expirationDate: '' }] })).toContain('surplus');
     });
 
+    it('rejects duplicate surplus lots while allowing distinct expirations or clinics', () => {
+        const lot = { productName: 'Fortini', productForm: 'ready-to-feed' as const, units: 3, expirationDate: '2027-01-01' };
+        expect(validateRequestSubmission({ ...complete, surplusItems: [lot, { ...lot, units: 5 }] })).toContain('same lot');
+        expect(validateRequestSubmission({ ...complete, surplusItems: [lot, { ...lot, expirationDate: '2027-02-01' }] })).toBe('');
+        expect(validateRequestSubmission({ ...complete, surplusItems: [lot, { ...lot, clinicId: 'other-clinic' }] })).toBe('');
+    });
+
     it('retains surplus forms and flavors and rejects invalid forms and too many months', () => {
         const surplus = { productName: 'Kate Farms Pediatric Std 1.2 Cal', productForm: 'ready-to-feed' as const, flavor: 'Vanilla', units: 3, expirationDate: '2027-01-01' };
         const request = { ...complete, requestedFormulas: [{ productName: surplus.productName, productForm: surplus.productForm, ouncesPrescribed: 24 }], surplusItems: [surplus] };

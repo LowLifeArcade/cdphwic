@@ -1,7 +1,7 @@
 import type { ProductRecord } from './domain';
 
 type EditorField = {
-    key: keyof ProductRecord;
+    key: keyof ProductRecord | 'unitUpc' | 'caseBarcode';
     label: string;
     type?: 'textarea' | 'number' | 'select';
     options?: readonly string[];
@@ -25,7 +25,12 @@ export const productEditorFields = [
     { key: 'infantToddler', label: 'Infant/Toddler', type: 'select', options: ['Infant', 'Toddler', 'Adult'] },
 ] as const satisfies readonly EditorField[];
 
-type EditorKey = (typeof productEditorFields)[number]['key'];
+export const productBarcodeFields = [
+    { key: 'unitUpc', label: 'Unit UPC' },
+    { key: 'caseBarcode', label: 'Case Barcode' },
+] as const;
+
+type EditorKey = (typeof productEditorFields | typeof productBarcodeFields)[number]['key'];
 export type ProductEditor = Record<EditorKey, string>;
 export type ProductEditorInput = Omit<ProductRecord, 'id' | 'unitsPerCase' | 'yield' | 'mcKessonPrice' | 'coveredByMediCal'> & {
     unitsPerCase?: number | null;
@@ -35,10 +40,12 @@ export type ProductEditorInput = Omit<ProductRecord, 'id' | 'unitsPerCase' | 'yi
 };
 
 export function createProductEditor(product?: ProductRecord): ProductEditor {
-    return Object.fromEntries(productEditorFields.map(({ key }) => [key,
+    return Object.fromEntries([...productEditorFields, ...productBarcodeFields].map(({ key }) => [key,
         key === 'coveredByMediCal'
             ? product?.coveredByMediCal == null ? '' : product.coveredByMediCal ? 'yes' : 'no'
-            : String(product?.[key] ?? ''),
+            : key === 'unitUpc' || key === 'caseBarcode'
+              ? product?.genericFields?.[key] ?? ''
+              : String(product?.[key] ?? ''),
     ])) as ProductEditor;
 }
 
@@ -52,11 +59,18 @@ export function productEditorOptionLabel(value: string): string {
 }
 
 export function productEditorBody(product: ProductRecord, form: ProductEditor): ProductEditorInput {
+    const { unitUpc, caseBarcode, ...fields } = form;
+    const genericFields = { ...product.genericFields };
+    for (const [key, value] of Object.entries({ unitUpc, caseBarcode })) {
+        if (value?.trim()) genericFields[key] = value.trim();
+        else delete genericFields[key];
+    }
     const coverage = [...product.coverage];
     if (form.coveredByMediCal === 'yes' && !coverage.includes('medical')) coverage.push('medical');
     return {
         ...product,
-        ...form,
+        ...fields,
+        genericFields,
         form: form.form as ProductRecord['form'],
         unitsPerCase: form.unitsPerCase === '' ? null : Number(form.unitsPerCase),
         yield: form.yield === '' ? null : Number(form.yield),

@@ -7,6 +7,36 @@ import { validateFormulaEntry, validateFormulaSelection, validateOtherFormulaNam
 import { availableFormulaForms, findFormula } from './formulaCatalog';
 import { normalizePhoneNumber } from './phone';
 
+import { lotKey } from './surplus';
+
+type SurplusEntry = {
+    productName: string;
+    productForm?: string;
+    flavor?: string;
+    packaging?: string;
+    expirationDate?: string;
+    clinicId?: string;
+};
+
+export function duplicateSurplusLotError(items: readonly SurplusEntry[]) {
+    const seen = new Map<string, number>();
+    for (const [index, item] of items.entries()) {
+        if (!item.productName.trim() || !item.productForm) continue;
+        const key = lotKey({
+            formulaName: item.productName,
+            form: item.productForm,
+            flavor: item.flavor ?? '',
+            packaging: item.packaging,
+            expirationDate: item.expirationDate ?? '',
+            clinicId: item.clinicId,
+        });
+        const first = seen.get(key);
+        if (first !== undefined) return `Surplus entries ${first + 1} and ${index + 1} describe the same lot. Enter one count for that lot.`;
+        seen.set(key, index);
+    }
+    return '';
+}
+
 export function validateRequestSubmission(request: Partial<RequestRecord>, products: ProductRecord[] = []) {
     const breastfeedingError = validateBreastfeeding(request);
     if (breastfeedingError) return breastfeedingError;
@@ -38,6 +68,8 @@ export function validateRequestSubmission(request: Partial<RequestRecord>, produ
         if (!item.productForm || !surplusForms.includes(item.productForm)) return 'Select a valid Form for each surplus entry.';
         if (item.expirationDate && !/^\d{4}-\d{2}-\d{2}$/.test(item.expirationDate)) return 'Enter a valid surplus expiration date.';
     }
+    const surplusError = duplicateSurplusLotError(request.surplusItems ?? []);
+    if (surplusError) return surplusError;
     const shippingError=validateShipping(request.shipping);
     if(shippingError)return shippingError;
     return validateAgencyFields({

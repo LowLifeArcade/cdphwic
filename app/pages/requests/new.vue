@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { duplicateSurplusLotError } from '#shared/requestSubmission';
 import { restoreRequestDraft, serializeRequestDraft } from '~/features/requests/requestDraft';
 import RequestProviderFields from '~/features/requests/components/RequestProviderFields.vue';
 import RequestFoodRestrictionFields from '~/features/requests/components/RequestFoodRestrictionFields.vue';
@@ -53,6 +54,7 @@ async function deleteUnsubmittedRequest(){
 const formulaAlert = ref('');
 const additionalFormulas = ref<FormulaEntry[]>([]);
 const surplusEntries = ref<Array<{ productName: string; productForm: ProductForm | ''; flavor: string; units: string | number; expirationDate: string; clinicId?: string }>>([]);
+const surplusDuplicateError = computed(() => duplicateSurplusLotError(surplusEntries.value));
 const requestedMonths = ref<string[]>([]);
 const requestForm = ref<HTMLFormElement | null>(null);
 const formulaFocused = ref(false);
@@ -384,6 +386,7 @@ async function submitRequest() {
     if (!submissionError.value) submissionError.value = validateShipping(shipping.value);
     if (!submissionError.value) submissionError.value = validateRequestedMonths(selectedBenefitMonths());
     if (!submissionError.value && surplusEntries.value.some((entry) => !entry.productForm || !surplusForms(entry.productName).includes(entry.productForm))) submissionError.value = 'Select a valid Form for each surplus entry.';
+    if (!submissionError.value) submissionError.value = surplusDuplicateError.value;
     if (submissionError.value) return;
     saving.value = true;
     try {
@@ -741,6 +744,7 @@ async function submitRequest() {
                 <div class="form-field"><label :for="`surplus-clinic-${index}`">Storage clinic</label><select :id="`surplus-clinic-${index}`" v-model="entry.clinicId" class="form-input" :disabled="storageClinicStatus==='pending'"><option :value="undefined">Clinic not specified</option><option v-if="entry.clinicId &amp;&amp; !storageClinics?.clinics.some(c=>c.id===entry.clinicId)" :value="entry.clinicId" disabled>Previously selected clinic unavailable — choose a clinic</option><option v-for="clinic in storageClinics?.clinics" :key="clinic.id" :value="clinic.id">{{clinic.clinicName}}</option></select><small>Select the clinic where this stock is stored.</small></div>
                 <button type="button" class="text-button" @click="surplusEntries.splice(index, 1)">Remove surplus entry</button>
             </div>
+            <p v-if="surplusDuplicateError" class="submission-alert" role="status">{{ surplusDuplicateError }}</p>
             <button class="button button-ghost add-surplus-button" type="button" @click="addSurplus">Add surplus</button>
         </section>
 

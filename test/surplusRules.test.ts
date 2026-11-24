@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { variantKey, availableUnits, canAllocate, validateUnits, daysRemaining, surplusDisposition, localDate, surplusCatalogVariants, defaultSurplusCatalogOption } from '../shared/surplus';
+import { variantKey, availableUnits, canAllocate, validateUnits, daysRemaining, surplusDisposition, localDate, surplusCatalogVariants, surplusBarcodeMatches, defaultSurplusCatalogOption } from '../shared/surplus';
 describe('surplus rules', () => {
     it('identifies variants and excludes quarantine from availability', () => {
         const v = { formulaName: ' Fortini ', form: 'ready-to-feed', flavor: '', expirationDate: '2027-01-01' };
@@ -29,6 +29,13 @@ describe('surplus rules', () => {
     it('allows allocation only when more than 60 days remain',()=>{
         expect(canAllocate({onHand:10,reserved:0,expiredUnits:0,expirationDate:'2026-12-25'},1,'2026-10-26')).toBe(false);
         expect(canAllocate({onHand:10,reserved:0,expiredUnits:0,expirationDate:'2026-12-26'},1,'2026-10-26')).toBe(true);
+    });
+    it('matches exact configured unit and case barcodes without losing leading zeroes', () => {
+        const product = { form: 'ready-to-feed', genericFields: { unitUpc: '012345678905', caseBarcode: '10012345678902' } } as any;
+        expect(surplusBarcodeMatches([product], '012345678905')).toEqual([{ product, field: 'unitUpc' }]);
+        expect(surplusBarcodeMatches([product], '10012345678902')).toEqual([{ product, field: 'caseBarcode' }]);
+        expect(surplusBarcodeMatches([product], '12345678905')).toEqual([]);
+        expect(surplusBarcodeMatches([{ ...product, active: false }], '012345678905')).toEqual([]);
     });
     it('provides distinct active catalog formula, form, and flavor variants for surplus entries', () => {
         const products = [

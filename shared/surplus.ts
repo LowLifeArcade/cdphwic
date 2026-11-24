@@ -45,10 +45,22 @@ export const isReviewer = (user: SessionUser) => user.role === 'admin' || user.m
 export const canSeeAgency = (user: SessionUser, agencyId: number) => isReviewer(user) || user.agencyId === agencyId;
 export const normalizeVariantText = (s: string) => s.trim().replace(/\s+/g, ' ').toLowerCase();
 export interface SurplusCatalogVariant {formulaName:string;form:ProductForm;flavor:string;packagings:string[]}
-export function surplusProductPackaging(product:Pick<ProductRecord,'packaging'|'yield'|'form'>):string{
+export function surplusProductPackaging(product:Pick<ProductRecord,'packaging'|'yield'|'form'|'formulaDescription'>):string{
     const packaging=(product.packaging??'').trim().replace(/\s+/g,' ');
-    const size=product.form==='ready-to-feed'&&typeof product.yield==='number'&&Number.isFinite(product.yield)&&product.yield>0?`${product.yield} fl oz`:'';
+    const describedSize = product.formulaDescription?.match(/\b(\d+(?:\.\d+)?)\s*fl\.?\s*oz\b/i)?.[1];
+    const ounces = typeof product.yield === 'number' && Number.isFinite(product.yield) && product.yield > 0 ? product.yield : describedSize;
+    const size = product.form === 'ready-to-feed' && ounces ? `${ounces} fl oz` : '';
     return [size,packaging].filter(Boolean).join(' ');
+}
+export function surplusBarcodeMatches(products: ProductRecord[], input: string) {
+    const barcode = input.trim().replace(/[ -]/g, '');
+    if (!/^(?:[0-9]{8}|[0-9]{12,14})$/.test(barcode)) return [];
+    return products.flatMap(product => {
+        if (product.active === false || !['powder', 'concentrate', 'ready-to-feed'].includes(product.form)) return [];
+        return (['unitUpc', 'caseBarcode'] as const).flatMap(field =>
+            product.genericFields?.[field]?.replace(/[ -]/g, '') === barcode ? [{ product, field }] : [],
+        );
+    });
 }
 export function surplusCatalogVariants(products:ProductRecord[]=[]):SurplusCatalogVariant[]{
     const variants=new Map<string,SurplusCatalogVariant>();

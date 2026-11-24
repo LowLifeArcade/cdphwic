@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import {
     productEditorFields,
+    productBarcodeFields,
     productEditorOptions,
     productEditorOptionLabel,
     type ProductEditor,
@@ -20,6 +21,10 @@ defineProps<{
                     </select>
                     <input v-else-if="'type' in field && field.type === 'number'" :id="`product-${field.key}`" v-model="form[field.key]" class="form-input" type="number" :min="field.key === 'unitsPerCase' ? 1 : 0" :step="field.key === 'mcKessonPrice' ? '0.01' : 'any'" />
                     <input v-else :id="`product-${field.key}`" v-model="form[field.key]" class="form-input" type="text" />
+                </div>
+                <div v-for="field in productBarcodeFields" :key="field.key" class="form-field">
+                    <label :for="`product-${field.key}`">{{ field.label }}</label>
+                    <input :id="`product-${field.key}`" v-model="form[field.key]" class="form-input" type="text" inputmode="numeric" />
                 </div>
             </div>
 </template>

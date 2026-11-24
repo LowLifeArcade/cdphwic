@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest';
-import { createSSRApp, type Component } from 'vue';
+import { createSSRApp, h, type Component } from 'vue';
 import { renderToString } from '@vue/server-renderer';
 import { loadComponent } from './helpers/vueComponent';
 import { blankRequestForm } from '../app/features/requests/requestForm';
@@ -8,7 +8,7 @@ import * as phone from '../shared/phone';
 
 function sectionApp(component: Component, props: Record<string, unknown>) {
     const app = createSSRApp(component, props);
-    app.component('RequestHistory', { render: () => null });
+    app.component('RequestHistory', { render: () => h('section', { 'aria-label': 'Prior requests' }) });
     return app;
 }
 
@@ -17,11 +17,19 @@ it('renders participant insurance and breastfeeding conditional fields and limit
     const form = { ...blankRequestForm(), medicalStatus: 'yes', breastfeedingStatus: 'Discontinued BF' };
     const html = await renderToString(sectionApp(component, { form, requestedMonths: ['01', '02', '03'], benefitMonthOptions: [{ value: '01', label: 'JAN', selected: true }, { value: '04', label: 'APR', selected: false }] }));
     expect(html).toContain('id="medi-cal-status"');
-    expect(html).toContain('Date BF Discontinued');
+    expect(html).toMatch(/id="breastfeeding".*?<\/select>\s*<div[^>]*>\s*<label[^>]*for="breastfeeding-discontinued-date"/s);
     expect(html).toMatch(/type="checkbox"[^>]*disabled/);
     const empty = await renderToString(sectionApp(component, { form: blankRequestForm(), requestedMonths: [], benefitMonthOptions: [] }));
     expect(empty).not.toContain('id="medi-cal-status"');
     expect(empty).not.toContain('Date BF Discontinued');
+});
+it('renders Breastfeeding before the separate Prior Requests panel', async () => {
+    const component = await loadComponent(new URL('../app/features/requests/components/RequestParticipantFields.vue', import.meta.url), { '#shared/breastfeeding': breastfeeding });
+    const render = (requestKind: 'new' | 'extension') => renderToString(sectionApp(component, {
+        form: { ...blankRequestForm(), requestKind }, requestedMonths: [], benefitMonthOptions: [],
+    }));
+    expect(await render('extension')).toMatch(/id="request-type".*?id="breastfeeding".*?class="benefit-prior-requests".*?aria-label="Prior requests"/s);
+    expect(await render('new')).not.toContain('aria-label="Prior requests"');
 });
 it('preserves required provider signature, date and phone controls', async () => {
     const component = await loadComponent(new URL('../app/features/requests/components/RequestProviderFields.vue', import.meta.url), { '#shared/phone': phone });

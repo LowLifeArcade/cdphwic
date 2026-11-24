@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import {unitLabel} from '~/../shared/quantityLabels';
 import {formatDisplayDate,formulaFormLabel} from '~/../shared/requestPresentation';
-import { isReviewer, availableUnits, localDate, daysRemaining, surplusDisposition, variantKey, surplusCatalogVariants } from '~/../shared/surplus';
+import { isReviewer, availableUnits, localDate, daysRemaining, surplusDisposition, lotKey, variantKey, normalizeVariantText, surplusCatalogVariants, surplusBarcodeMatches, surplusProductPackaging } from '~/../shared/surplus';
 import {surplusShipmentDraft} from '~/../shared/requestTransfers';
 import {formatClinic,type ClinicAddress,type ClinicRecord} from '~/../shared/shipping';
 import {groupSurplusLots} from '~/../shared/surplusInventoryGroups';
@@ -52,6 +52,17 @@ const filteredSurplusFormulaNames=computed(()=>{const query=formulaSearch.value.
 const surplusAvailableForms=computed(()=>[...new Set(surplusVariants.value.filter(variant=>variant.formulaName===input.formulaName).map(variant=>variant.form))]);
 const surplusAvailableFlavors=computed(()=>[...new Set(surplusVariants.value.filter(variant=>variant.formulaName===input.formulaName&&variant.form===input.form).map(variant=>variant.flavor))]);
 const surplusAvailablePackagings=computed(()=>[...new Set(surplusVariants.value.filter(variant=>variant.formulaName===input.formulaName&&variant.form===input.form&&variant.flavor===input.flavor).flatMap(variant=>variant.packagings).filter(Boolean))]);
+const selectedPackageDescriptions = computed(() => {
+    const descriptions = new Map<string, string>();
+    for (const product of productData.value?.products ?? []) {
+        if (product.active === false || product.form !== input.form ||
+            normalizeVariantText(product.name) !== normalizeVariantText(input.formulaName) ||
+            normalizeVariantText(product.flavor ?? '') !== normalizeVariantText(input.flavor)) continue;
+        const description = product.formulaDescription?.trim();
+        if (description) descriptions.set(surplusProductPackaging(product), description);
+    }
+    return descriptions;
+});
 const selectedSurplusFlavor=ref('__unselected__');
 const correctedVariantSelection=ref('');
 function variantSelectionKey(variant:{formulaName:string;form:string;flavor:string}){return JSON.stringify([variant.formulaName,variant.form,variant.flavor]);}
@@ -60,6 +71,30 @@ function selectSurplusFormula(name:string){input.formulaName=name;formulaSearch.
 function updateSurplusFormulaSearch(){input.formulaName='';input.form='';input.flavor='';input.packaging='';selectedSurplusFlavor.value='__unselected__';}
 function selectSurplusForm(){input.flavor='';input.packaging='';selectedSurplusFlavor.value='__unselected__';}
 function selectSurplusFlavor(value:string){input.flavor=value==='__unselected__'||value==='__unflavored__'?'':value;input.packaging=surplusAvailablePackagings.value.length===1?surplusAvailablePackagings.value[0]:'';}
+const barcodeInput = ref('');
+const barcodeMessage = ref('');
+function lookupSurplusBarcode() {
+    const matches = surplusBarcodeMatches(productData.value?.products ?? [], barcodeInput.value);
+    if (matches.length !== 1) {
+        barcodeMessage.value = matches.length ? 'More than one catalog entry uses this barcode. Select the formula manually.' : 'Barcode not found. Select the formula manually.';
+        return;
+    }
+    const { product, field } = matches[0]!;
+    const name = surplusFormulaNames.value.find(name => name.toLowerCase() === product.name.trim().replace(/\s+/g, ' ').toLowerCase());
+    if (!name) return;
+    selectSurplusFormula(name);
+    input.form = product.form;
+    const flavor = (product.flavor ?? '').trim().replace(/\s+/g, ' ');
+    selectedSurplusFlavor.value = flavor || '__unflavored__';
+    selectSurplusFlavor(selectedSurplusFlavor.value);
+    input.packaging = surplusProductPackaging(product);
+    if (field === 'caseBarcode' && Number.isSafeInteger(product.unitsPerCase) && product.unitsPerCase! > 0) {
+        input.quantity = product.unitsPerCase!;
+        barcodeMessage.value = `Case matched. Units set to ${product.unitsPerCase} for one case. Adjust Units for the total you counted.`;
+    } else {
+        barcodeMessage.value = field === 'caseBarcode' ? 'Case matched. Enter the total individual units from the case label.' : 'Unit UPC matched. Enter the number of units you counted.';
+    }
+}
 function initializeSurplusCatalogSelection(){
  const formula=surplusFormulaNames.value.find(name=>name.toLowerCase()===input.formulaName.trim().toLowerCase());
  if(!formula){input.formulaName='';formulaSearch.value='';input.form='';input.flavor='';input.packaging='';selectedSurplusFlavor.value='__unselected__';return;}
@@ -160,6 +195,8 @@ const clinicAgency=computed(()=>modal.value==='review'?report.value?.agency_id:m
 const {data:formClinics,error:clinicError,status:clinicStatus}=await useFetch<{clinics:ClinicRecord[]}>(()=>`/api/agencies/${clinicAgency.value}/clinics`,{headers,server:false});
 watch(()=>input.agencyId,()=>{if(['new','forecast'].includes(modal.value))input.clinicId='';});
 function start(kind: string, lot?: SurplusLot, item?: any) {
+    barcodeInput.value = '';
+    barcodeMessage.value = '';
     operationId.value = crypto.randomUUID();
     modal.value = kind;
     selected.value = lot;
@@ -207,6 +244,7 @@ function start(kind: string, lot?: SurplusLot, item?: any) {
                         formulaName: item.formula_name,
                         form: item.form,
                         flavor: item.flavor,
+                        packaging: item.packaging ?? '',
                         expirationDate: item.expiration_date,
                     }),
         );
@@ -264,6 +302,7 @@ watch(
                             formulaName: currentReport.formula_name,
                             form: currentReport.form,
                             flavor: currentReport.flavor,
+                            packaging: currentReport.packaging ?? '',
                             expirationDate: date,
                         }),
             );
@@ -300,6 +339,14 @@ async function run(work: () => Promise<unknown>) {
         busy.value = false;
     }
 }
+const matchingRecordedLot = computed(() => {
+    if (modal.value !== 'new' || reviewer.value || !input.formulaName || !input.form || !input.expirationDate ||
+        selectedSurplusFlavor.value === '__unselected__' || (surplusAvailablePackagings.value.length && !input.packaging)) return;
+    const key = lotKey(input);
+    return data.value?.lots.find(lot => lot.agencyId === data.value?.user.agencyId && lotKey(lot) === key);
+});
+const confirmedReplacement = ref(false);
+watch([matchingRecordedLot, () => input.quantity], () => { confirmedReplacement.value = false; }, { flush: 'sync' });
 const recordedSurplusAction = computed(() => {
     if (modal.value !== 'new' || reviewer.value || !input.expirationDate) return '';
     const disposition = surplusDisposition(input.expirationDate, localDate());
@@ -308,6 +355,10 @@ const recordedSurplusAction = computed(() => {
     return '';
 });
 async function submit() {
+    if (matchingRecordedLot.value && !confirmedReplacement.value) {
+        message.value = 'Confirm that this is the combined physical count for the matching inventory before saving.';
+        return;
+    }
     await run(async () => {
         if(modal.value==='assign-clinic'){if(!selected.value||!input.clinicId)throw new Error('Select a clinic.');return $fetch(`/api/surplus/lots/${selected.value.id}/clinic`,{method:'POST',headers:headers.value,body:{clinicId:input.clinicId,expectedVersion:selected.value.version}});}
         if(modal.value==='correct-entry'){
@@ -768,13 +819,20 @@ async function upload(kind: string, event: Event) {
                                     {{ a.name }}
                                 </option>
                             </select></label
-                        ><label
-                            >Formula Name<div class="surplus-formula-picker"><input v-model="formulaSearch" class="form-input" type="search" placeholder="Search any part of a formula name" autocomplete="off" @input="updateSurplusFormulaSearch"/><div v-if="!input.formulaName" class="surplus-formula-options" role="listbox" aria-label="Matching formula names"><button v-for="name in filteredSurplusFormulaNames" :key="name" type="button" role="option" @click="selectSurplusFormula(name)">{{name}}</button><small v-if="formulaSearch.trim() && !filteredSurplusFormulaNames.length">No matching formulas.</small></div><small v-if="input.formulaName">Selected: {{input.formulaName}}</small></div><small v-if="productError" role="alert">The product catalog could not be loaded. Close and try again.</small><small v-else-if="!surplusFormulaNames.length">No active formula products are available in the Products list.</small></label
+                        >
+                        <div v-if="modal === 'new'">
+                            <label for="surplus-barcode">Scan or enter UPC or case barcode</label>
+                            <input id="surplus-barcode" v-model="barcodeInput" class="form-input" inputmode="numeric" autocomplete="off" @input="barcodeMessage = ''" @keydown.enter.prevent="lookupSurplusBarcode" />
+                            <button class="text-button" type="button" @click="lookupSurplusBarcode">Look up barcode</button>
+                            <p v-if="barcodeMessage" role="status">{{ barcodeMessage }}</p>
+                        </div>
+                        <label
+                            >Formula Name<div class="surplus-formula-picker"><input v-model="formulaSearch" class="form-input" type="search" placeholder="Search any part of a formula name" autocomplete="off" @input="updateSurplusFormulaSearch"/><div v-if="!input.formulaName" class="surplus-formula-options" role="listbox" aria-label="Matching formula names"><button v-for="name in filteredSurplusFormulaNames" :key="name" type="button" role="option" @click="selectSurplusFormula(name)">{{name}}</button><small v-if="formulaSearch.trim() && !filteredSurplusFormulaNames.length">No matching formulas.</small></div><small v-if="input.formulaName">Selected: {{ selectedPackageDescriptions.get(input.packaging) || input.formulaName }}</small></div><small v-if="productError" role="alert">The product catalog could not be loaded. Close and try again.</small><small v-else-if="!surplusFormulaNames.length">No active formula products are available in the Products list.</small></label
                         ><label
                             >Form<select v-model="input.form" class="form-input" required :disabled="!surplusAvailableForms.length" @change="selectSurplusForm"><option value="">Select a form</option><option v-for="form in surplusAvailableForms" :key="form" :value="form">{{formulaFormLabel(form)}}</option></select></label
                         ><label>Flavor<select v-model="selectedSurplusFlavor" class="form-input" required :disabled="!input.form" @change="selectSurplusFlavor(selectedSurplusFlavor)"><option value="__unselected__">Select a flavor</option><option v-for="flavor in surplusAvailableFlavors" :key="flavor||'unflavored'" :value="flavor||'__unflavored__'">{{flavor||'Unflavored'}}</option></select></label
-                        ><label v-if="surplusAvailablePackagings.length>1">Package size<select v-model="input.packaging" class="form-input" required><option value="">Select a package size</option><option v-for="packaging in surplusAvailablePackagings" :key="packaging" :value="packaging">{{packaging}}</option></select></label
-                        ><label v-else-if="surplusAvailablePackagings.length===1">Package size<input class="form-input" :value="surplusAvailablePackagings[0]" disabled/></label
+                        ><label v-if="surplusAvailablePackagings.length>1">Package size<select v-model="input.packaging" class="form-input" required><option value="">Select a package size</option><option v-for="packaging in surplusAvailablePackagings" :key="packaging" :value="packaging">{{ selectedPackageDescriptions.get(packaging) || packaging }}</option></select></label
+                        ><label v-else-if="surplusAvailablePackagings.length===1">Package size<input class="form-input" :value="selectedPackageDescriptions.get(surplusAvailablePackagings[0]!) || surplusAvailablePackagings[0]" disabled/></label
                     ></template>
                     <label v-if="['new','forecast','review','confirm','assign-clinic'].includes(modal)">{{modal==='confirm'?'Actual storage clinic':'Storage clinic'}}<select v-model="input.clinicId" :required="modal==='assign-clinic'" :disabled="clinicStatus==='pending'"><option value="">Clinic not specified</option><option v-for="c in formClinics?.clinics" :key="c.id" :value="c.id">{{c.clinicName}}</option></select></label>
                     <p v-if="clinicError &amp;&amp; ['new','forecast','review','confirm','assign-clinic'].includes(modal)" role="alert">Clinics could not be loaded. Close and try again.</p>
@@ -806,6 +864,10 @@ async function upload(kind: string, event: Event) {
                             type="date"
                             required /></label
                     >
+                    <div v-if="matchingRecordedLot" class="checkbox-confirmation">
+                        <p role="status">Matching inventory already has {{ matchingRecordedLot.onHand + matchingRecordedLot.expiredUnits }} units. Saving replaces the recorded count for these details. If you counted additional packages, enter the combined physical total.</p>
+                        <label><input v-model="confirmedReplacement" type="checkbox" required /> Confirm the combined physical count</label>
+                    </div>
                     <p v-if="recordedSurplusAction" role="status">{{ recordedSurplusAction }}</p>
                     <label v-if="modal === 'forecast'"
                         >Agency confirmation due<input

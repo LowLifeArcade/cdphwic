@@ -84,7 +84,7 @@ function requiredLabel(label: string) {
             <fieldset class="form-field full local-agency-fields">
                 <legend>Additional Participant Details</legend>
                 <p>To be provided by the local agency. These fields are needed to submit the request but not part of complete medical documentation.</p>
-                <div class="form-grid">
+                <div class="form-grid benefit-details-grid">
                     <div class="form-field">
                         <label for="family">WIC Family ID</label>
                         <input
@@ -126,17 +126,19 @@ function requiredLabel(label: string) {
                             <option value="extension">Extension</option>
                         </select>
                     </div>
-                    <RequestHistory v-if="form.requestKind === 'extension'" class="full" :family-id="form.familyId" :individual-id="form.individualId" :name="`${form.patientFirstName} ${form.patientLastName}`" :dob="form.participantDob" :current-id="editingId" context="form" @preview="emit('preview', $event)" />
                     <div class="form-field">
                         <label for="breastfeeding">Breastfeeding</label>
                         <select id="breastfeeding" v-model="form.breastfeedingStatus" class="form-input" @change="form.breastfeedingDiscontinuedDate = ''">
                             <option value="">Select</option>
                             <option v-for="option in breastfeedingOptions" :key="option" :value="option">{{option}}</option>
                         </select>
+                        <div v-if="form.breastfeedingStatus === 'Discontinued BF'" class="form-field">
+                            <label for="breastfeeding-discontinued-date">Date BF Discontinued</label>
+                            <input id="breastfeeding-discontinued-date" v-model="form.breastfeedingDiscontinuedDate" type="date" class="form-input" required />
+                        </div>
                     </div>
-                    <div v-if="form.breastfeedingStatus === 'Discontinued BF'" class="form-field">
-                        <label for="breastfeeding-discontinued-date">Date BF Discontinued</label>
-                        <input id="breastfeeding-discontinued-date" v-model="form.breastfeedingDiscontinuedDate" type="date" class="form-input" required />
+                    <div v-if="form.requestKind === 'extension'" class="benefit-prior-requests">
+                        <RequestHistory :family-id="form.familyId" :individual-id="form.individualId" :name="`${form.patientFirstName} ${form.patientLastName}`" :dob="form.participantDob" :current-id="editingId" context="form" @preview="emit('preview', $event)" />
                     </div>
                 </div>
                 <fieldset class="benefit-month-picker">
@@ -156,6 +158,31 @@ function requiredLabel(label: string) {
 </template>
 
 <style scoped>
-.participant-grid {align-items:start;}
+.participant-grid,
+.benefit-details-grid {
+    align-items: start;
+}
+.benefit-details-grid > .form-field {
+    min-width: 0;
+    align-content: start;
+    overflow-wrap: anywhere;
+}
+.benefit-details-grid #benefits-start {
+    box-sizing: border-box;
+    width: 100%;
+    min-width: 0;
+}
+.benefit-prior-requests {
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+.benefit-prior-requests :deep(.prior-request-history) {
+    margin-top: 0;
+}
+@media (width > 720px) {
+    .benefit-prior-requests {
+        grid-area: 3 / 2;
+    }
+}
 .insurance-fields {display:grid;gap:16px;align-content:start;}
 </style>
