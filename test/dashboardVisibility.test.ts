@@ -11,6 +11,7 @@ const agency: SessionUser = {
     agencyId: 10,
     agencyMemberId: 100,
 };
+const internal: SessionUser = { id: 3, name: 'CDPH/WIC', role: 'member', memberType: 'internal', internalMemberId: 200 };
 
 describe('dashboard navigation visibility', () => {
     it('shows admin-only links to admins', () => {
@@ -30,5 +31,13 @@ describe('dashboard navigation visibility', () => {
         expect(labels).not.toContain('Reports');
         expect(labels).not.toContain('McKesson Log');
         expect(labels).toContain('My Agency Requests');
+    });
+
+    it('shows the surplus disposal report to agencies, admins, and CDPH/WIC', () => {
+        for (const user of [admin, agency, internal]) {
+            const items = getNavigationItems(user);
+            const surplus = items.find((item) => item.to === '/surplus');
+            expect(surplus?.children).toContainEqual({ label: 'Donation & Destruction Report', to: '/surplus-dispositions', icon: '↳' });
+        }
     });
 });

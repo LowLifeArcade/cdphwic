@@ -35,6 +35,12 @@ Read the row for the requested change, then follow only the imports you need. Pa
 | Persistence / validation | `server/utils/productRepository.ts`, `productDatabase.ts`, `productValidation.ts` | D1 `products` table; metadata migration `0019_product_catalog_persistence.sql` | `test/productRepository.test.ts test/productMigration.test.ts test/productDeleteRoute.test.ts` |
 | Bulk upload/update | `server/utils/productImport.ts`; `app/pages/products/bulk-upload.vue` | `shared/productUploadErrors.ts`, API `bulk.post.ts`, `bulk-update.post.ts` | `test/productImport.test.ts test/productBulkUpdateImport.test.ts test/productBulkUpdateRoute.test.ts` |
 
+## Surplus inventory
+
+| Change | Start here | Related contract / data | Focused tests |
+| --- | --- | --- | --- |
+| Donation/destruction report | `server/utils/surplusDisposalReport.ts`; `app/pages/surplus-dispositions.vue`; `app/features/surplus/composables/useSurplusDisposalReport.ts` | `shared/surplusDisposalReport.ts`; `/api/surplus/dispositions` and CSV endpoint; role scoping via `shared/surplus.ts` | `test/surplusDisposalReport.test.ts test/surplusDisposalReportRoute.test.ts test/surplusDisposalReportUi.test.ts test/surplusDisposalReportClient.test.ts test/dashboardVisibility.test.ts` |
+
 ## Data ownership and invariants
 
 - Persisted requests live as JSON in D1 `surplus_submissions`. Reads are agency-scoped; writes compare the full previous JSON in a guarded batch, advance revision, and preserve request identity. Inventory and notice statements that belong to a write stay in the same batch.

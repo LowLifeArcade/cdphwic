@@ -16,7 +16,7 @@ export function getNavigationItems(user: SessionUser): NavigationItem[] {
             icon: '▤',
             children: [{ label: user.memberType === 'agency' && user.role !== 'admin' ? 'My Agency Requests' : 'My Requests', to: '/requests?scope=mine', icon: '↳' }],
         },
-        { label: 'Formula Surplus', to: '/surplus', icon: '▦' },
+        { label: 'Formula Surplus', to: '/surplus', icon: '▦', children: [{ label: 'Donation & Destruction Report', to: '/surplus-dispositions', icon: '↳' }] },
         { label: 'Distributors', to: '/distributors', icon: '◇' },
         { label: 'Products', to: '/products', icon: '◫' },
         { label: 'Participants', to: '/participants', icon: '◎' },
