@@ -30,7 +30,7 @@ describe('Formula Surplus agency count and lot groups',()=>{
   expect(page).toContain('groupSurplusLots(activeLots.value)');
   expect(page).toContain("row.kind==='group'");
   expect(page).toContain('row.group.earliestExpiration');
-  expect(page).toMatch(/\{\{expandedInventoryGroups\[row\.group\.key\]\?'Hide':'View'\}\}\s*\{\{row\.group\.lots\.length\}\} expiration lots/);
+  expect(page).toMatch(/\{\{expandedInventoryGroups\[row\.group\.key\]\?'Hide':'View'\}\}\s*\{\{row\.group\.lots\.length\}\} Expiration Lots/);
   expect(page).toContain('useInRequest(row.lot)');
   expect(page).toContain("start('edit-inventory',row.lot)");
   expect(page).toContain('showHistory(selected)');
@@ -49,7 +49,7 @@ describe('Formula Surplus agency count and lot groups',()=>{
   expect(page).toContain("daysRemaining(selected.expirationDate,localDate())<=60");
   expect(page).toContain("start('donate',selected)");
   expect(page).toContain("section.title==='Donation' && availableUnits(lot)>0");
-  expect(page).toContain('Confirm and record donation');
+  expect(page).toContain('Record Donation');
   expect(page).toContain("start('donate',lot)");
   expect(page).toContain("start('destroy',selected)");
   expect(page).toContain('Staff name attesting to donation');

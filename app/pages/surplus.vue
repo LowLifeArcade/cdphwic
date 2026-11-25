@@ -548,7 +548,7 @@ async function upload(kind: string, event: Event) {
                     <div class="legacy-transfer-summary"><span><strong>{{t.quantity}}</strong> {{unitLabel(t.quantity)}}</span><span>Expires {{formatDisplayDate(t.expiration_date)}}</span><span>ETA {{t.eta?formatDisplayDate(t.eta):'Pending'}}</span><span v-if="t.request_ref">Ref {{t.request_ref}}</span></div>
                     <p>{{t.source_clinic_name || 'Clinic not specified'}}</p><p v-if="pickupAddress(t.source_clinic_address)">Pickup: {{pickupAddress(t.source_clinic_address)}}</p><p v-if="t.tracking_reference">Tracking: {{t.tracking_reference}}</p>
                     <p>This transfer was recorded without a linked request. {{reviewer?'Cancel an unshipped reservation and reserve it again in the request’s Shipment section to use agency confirmation and shipping labels.':'Contact CDPH/WIC about this transfer.'}}</p>
-                    <button v-if="reviewer && t.status==='reserved'" class="button" @click="start('cancel', data?.lots.find((l: any) => l.id === t.source_lot_id) as SurplusLot, t)">Cancel reservation</button>
+                    <button v-if="reviewer && t.status==='reserved'" class="button" @click="start('cancel', data?.lots.find((l: any) => l.id === t.source_lot_id) as SurplusLot, t)">Cancel Reservation</button>
                 </details>
             </section>
             <section class="transfer-direction" aria-labelledby="receiving-transfers-heading">
@@ -642,7 +642,7 @@ async function upload(kind: string, event: Event) {
                             </td>
                             <td>See lots</td>
                             <td><strong class="inventory-quantity">{{row.group.onHand}}</strong></td><td><strong class="inventory-quantity">{{row.group.reserved}}</strong></td><td class="inventory-available"><strong>{{row.group.available}}</strong></td><td><strong class="inventory-quantity">{{row.group.total}}</strong></td>
-                            <td class="row-actions"><button class="button" type="button" :aria-expanded="!!expandedInventoryGroups[row.group.key]" @click="toggleInventoryGroup(row.group.key)">{{expandedInventoryGroups[row.group.key]?'Hide':'View'}} {{row.group.lots.length}} expiration lots</button></td>
+                            <td class="row-actions"><button class="button" type="button" :aria-expanded="!!expandedInventoryGroups[row.group.key]" @click="toggleInventoryGroup(row.group.key)">{{expandedInventoryGroups[row.group.key]?'Hide':'View'}} {{row.group.lots.length}} Expiration Lots</button></td>
                         </template>
                         <template v-else>
                             <td class="inventory-product"><template v-if="row.group.lots.length===1"><strong>{{row.group.formulaName}} {{row.group.form==='concentrate'?'Concentrate':formulaFormLabel(row.group.form)}}</strong><span v-if="row.group.flavor || row.group.packaging">{{[row.group.flavor,row.group.packaging].filter(Boolean).join(' · ')}}</span><span v-if="reviewer">{{agencyName(row.group.agencyId)}}</span><span>{{row.group.clinicName||'Clinic not specified'}}</span></template><span v-else class="inventory-lot-label">Expiration lot</span><small v-if="row.lot.expiredUnits" class="inventory-quarantine">Quarantined: {{ row.lot.expiredUnits }}</small></td>
@@ -673,7 +673,7 @@ async function upload(kind: string, event: Event) {
                 <div>Total <strong>{{ lot.onHand + lot.expiredUnits }}</strong></div>
                 <div>Reserved <strong>{{ lot.reserved }}</strong></div>
                 <div class="inventory-archive-actions">
-                    <button v-if="!reviewer && section.title==='Donation' && availableUnits(lot)>0" class="button button-secondary" type="button" @click="start('donate',lot)">Confirm and record donation</button>
+                    <button v-if="!reviewer && section.title==='Donation' && availableUnits(lot)>0" class="button button-secondary" type="button" @click="start('donate',lot)">Record Donation</button>
                     <button class="text-button" type="button" @click="start('edit-inventory',lot)">Edit</button>
                 </div>
             </article>
@@ -710,7 +710,7 @@ async function upload(kind: string, event: Event) {
                     class="button"
                     @click="start('review', undefined, r)"
                 >
-                    Review count
+                    Review Count
                 </button>
             </article>
         </section>
@@ -730,7 +730,7 @@ async function upload(kind: string, event: Event) {
                     class="button"
                     @click="start('confirm', undefined, f)"
                 >
-                    Confirm actual surplus
+                    Confirm Actual Surplus
                 </button>
             </article>
         </section>
@@ -799,7 +799,7 @@ async function upload(kind: string, event: Event) {
                         <p v-if="h.corrects_movement_id && h.correction_target" class="history-correction-note">Corrects {{movementLabel(h.correction_target.kind).toLowerCase()}} from {{formatDisplayDate(h.correction_target.created_at)}} (original {{h.correction_target.quantity}} {{unitLabel(h.correction_target.quantity)}}).</p>
                         <p v-else-if="h.corrects_movement_id" class="history-correction-note">Corrects an earlier inventory entry; updated quantity {{h.corrected_quantity}} {{unitLabel(h.corrected_quantity)}}.</p>
                         <p v-if="h.corrected_formula_details" class="history-correction-note">Formula details corrected to {{[h.corrected_formula_details.formulaName,formulaFormLabel(h.corrected_formula_details.form),h.corrected_formula_details.flavor].filter(Boolean).join(' ')}}.</p>
-                        <button v-if="h.correctable" class="text-button" type="button" @click="start('correct-entry',selected,h)">Correct entry</button>
+                        <button v-if="h.correctable" class="text-button" type="button" @click="start('correct-entry',selected,h)">Correct Entry</button>
                     </article>
                     <button
                         class="button"
@@ -817,10 +817,10 @@ async function upload(kind: string, event: Event) {
                     <p>Select an inventory action for this lot.</p>
                     <button class="button" type="button" @click="selected && showHistory(selected)">Inventory History</button>
                     <button v-if="reviewer && !selected?.clinicId && !selected?.reserved" class="button" type="button" @click="start('assign-clinic',selected)">Assign Clinic</button>
-                    <button v-if="reviewer && selected && availableUnits(selected)>0" class="button" type="button" @click="start('deduct',selected)">Deduct stock</button>
-                    <button v-if="reviewer" class="button" type="button" @click="start('correct-expiry',selected)">Correct expiration</button>
-                    <button v-if="!reviewer && selected && availableUnits(selected)>0 && daysRemaining(selected.expirationDate,localDate())>=45 && daysRemaining(selected.expirationDate,localDate())<=60" class="button" type="button" @click="start('donate',selected)">Record donation</button>
-                    <button v-if="selected && lotDisposition(selected)==='destruction' && (selected.expiredUnits>0 || availableUnits(selected)>0)" class="button" type="button" @click="start('destroy',selected)">Record destruction</button>
+                    <button v-if="reviewer && selected && availableUnits(selected)>0" class="button" type="button" @click="start('deduct',selected)">Deduct Stock</button>
+                    <button v-if="reviewer" class="button" type="button" @click="start('correct-expiry',selected)">Correct Expiration</button>
+                    <button v-if="!reviewer && selected && availableUnits(selected)>0 && daysRemaining(selected.expirationDate,localDate())>=45 && daysRemaining(selected.expirationDate,localDate())<=60" class="button" type="button" @click="start('donate',selected)">Record Donation</button>
+                    <button v-if="selected && lotDisposition(selected)==='destruction' && (selected.expiredUnits>0 || availableUnits(selected)>0)" class="button" type="button" @click="start('destroy',selected)">Record Destruction</button>
                     <div class="dialog-actions"><button class="button" type="button" @click="modal=''">Close</button></div>
                 </div>
                 <form v-else-if="modal==='use-request'" @submit.prevent="openShipment">
@@ -870,7 +870,7 @@ async function upload(kind: string, event: Event) {
                     </div>
                     <div class="dialog-actions">
                         <button class="button" type="button" :disabled="busy" @click="modal='history'">Cancel</button>
-                        <button class="button button-main" type="submit" :disabled="busy">{{busy?'Saving…':'Save correction'}}</button>
+                        <button class="button button-main" type="submit" :disabled="busy">{{busy?'Saving…':'Save Correction'}}</button>
                     </div>
                 </form>
                 <form
@@ -895,7 +895,7 @@ async function upload(kind: string, event: Event) {
                         <div v-if="modal === 'new'">
                             <label for="surplus-barcode">Scan or enter UPC or case barcode</label>
                             <input id="surplus-barcode" v-model="barcodeInput" class="form-input" inputmode="numeric" autocomplete="off" @input="barcodeMessage = ''" @keydown.enter.prevent="lookupSurplusBarcode" />
-                            <button class="text-button" type="button" @click="lookupSurplusBarcode">Look up barcode</button>
+                            <button class="text-button" type="button" @click="lookupSurplusBarcode">Look Up Barcode</button>
                             <p v-if="barcodeMessage" role="status">{{ barcodeMessage }}</p>
                         </div>
                         <label
@@ -991,7 +991,7 @@ async function upload(kind: string, event: Event) {
                     >
                     <p v-if="modal === 'donate'">Record formula donated while it is 45–60 days from expiration. Only unreserved Units can be donated.</p>
                     <p v-if="modal === 'destroy'">
-                        Confirm these Units have been physically destroyed and the Formula Destruction Form completed.
+                        Confirm that product has been physically destroyed according to WPPM 390-30.
                     </p>
                     <div
                         v-if="modal === 'review'"
@@ -1003,14 +1003,14 @@ async function upload(kind: string, event: Event) {
                             :disabled="busy"
                             @click="decideReport('rejected')"
                         >
-                            Reject report</button
+                            Reject Report</button
                         ><button
                             class="button"
                             type="button"
                             :disabled="busy"
                             @click="decideReport('already-accounted')"
                         >
-                            Already accounted for
+                            Already Accounted For
                         </button>
                     </div>
                     <div class="dialog-actions">
@@ -1025,7 +1025,7 @@ async function upload(kind: string, event: Event) {
                             class="button button-main"
                             :disabled="busy || resolvingCount || (modal === 'review' && !countReady)"
                         >
-                            {{ busy ? 'Saving…' : 'Confirm' }}
+                            {{ busy ? 'Saving…' : modal === 'destroy' ? 'Confirm Destruction' : modal === 'donate' ? 'Confirm Donation' : 'Confirm' }}
                         </button>
                     </div>
                 </form>
