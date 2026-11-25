@@ -673,6 +673,7 @@ async function upload(kind: string, event: Event) {
                 <div>Total <strong>{{ lot.onHand + lot.expiredUnits }}</strong></div>
                 <div>Reserved <strong>{{ lot.reserved }}</strong></div>
                 <div class="inventory-archive-actions">
+                    <button v-if="!reviewer && section.title==='Donation' && availableUnits(lot)>0" class="button button-secondary" type="button" @click="start('donate',lot)">Confirm and record donation</button>
                     <button class="text-button" type="button" @click="start('edit-inventory',lot)">Edit</button>
                 </div>
             </article>

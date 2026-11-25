@@ -48,6 +48,9 @@ describe('Formula Surplus agency count and lot groups',()=>{
   expect(page).toContain("daysRemaining(selected.expirationDate,localDate())>=45");
   expect(page).toContain("daysRemaining(selected.expirationDate,localDate())<=60");
   expect(page).toContain("start('donate',selected)");
+  expect(page).toContain("section.title==='Donation' && availableUnits(lot)>0");
+  expect(page).toContain('Confirm and record donation');
+  expect(page).toContain("start('donate',lot)");
   expect(page).toContain("start('destroy',selected)");
   expect(page).toContain('Staff name attesting to donation');
   expect(page).toContain('Donation date');
