@@ -136,6 +136,19 @@ describe('Formula Surplus agency count and lot groups',()=>{
   expect(page).toContain('surplusLotFormulaDescription } from');
  });
 
+ it('uses title case and shows formula description, location, and expiration in action headers',()=>{
+  expect(page).toContain("new:'Record Physical Count'");
+  expect(page).toContain("confirm:'Confirm Actual Usable, Uncommitted Surplus'");
+  expect(page).toContain("donate:'Record Formula Donation'");
+  expect(page).toContain("destroy:'Record Verified Destruction'");
+  expect(page).toContain("'correct-entry':'Correct Inventory Entry'");
+  expect(page).toContain("'correct-expiry':'Correct Verified Expiration Date'");
+  expect(page).toContain('<strong :title="surplusLotFormulaDescription(selected, productData?.products ?? [])">{{surplusLotFormulaDescription(selected, productData?.products ?? [])}}</strong>');
+  expect(page).toContain('<span>{{agencyName(selected.agencyId)}} · {{selected.clinicName || \'Clinic not specified\'}}</span>');
+  expect(page).toContain('<span>Expires {{formatInventoryDate(selected.expirationDate)}}</span>');
+  expect(page).not.toContain('[surplusLotFormulaDescription(selected, productData?.products ?? []),formulaFormLabel(selected.form),selected.flavor,selected.packaging]');
+ });
+
  it('formats the Use in Request popup like the inventory edit popup',()=>{
   expect(page).toContain("'use-request':'Use in Request'");
   expect(page).toContain("!['history','edit-inventory','use-request'].includes(modal)");
@@ -151,7 +164,7 @@ describe('Formula Surplus agency count and lot groups',()=>{
 
  it('formats inventory history dates and product details consistently',()=>{
   expect(page).toContain('{{formatDisplayDate(h.created_at)}}');
-  expect(page).toContain('[surplusLotFormulaDescription(selected, productData?.products ?? []),formulaFormLabel(selected.form),selected.flavor,selected.packaging].filter(Boolean).join(\' \')');
+  expect(page).toContain('<strong :title="surplusLotFormulaDescription(selected, productData?.products ?? [])">{{surplusLotFormulaDescription(selected, productData?.products ?? [])}}</strong>');
   expect(page).toContain('function movementLabel');
   expect(page).toContain("reconcile:'Physical count'");
   expect(page).toContain('class="history-entry-heading"');

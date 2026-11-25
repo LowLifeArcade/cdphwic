@@ -197,7 +197,7 @@ const archivedTransfers=computed(()=>transferRows.value.filter(t=>t.status==='ca
 const completedTransfers=computed(()=>transferRows.value.filter(t=>t.status==='received'&&(data.value?.user.memberType!=='agency'||t.source_agency_id===data.value?.user.agencyId||t.destination_agency_id===data.value?.user.agencyId)));
 const operationId = ref('');
 const modal = ref('');
-const modalTitles:Record<string,string>={'edit-inventory':'Edit Inventory', 'assign-clinic':'Assign Clinic',new:'Record physical count',review:'Review reported count',forecast:'Anticipated Surplus',confirm:'Confirm actual usable, uncommitted surplus',donate:'Record formula donation',destroy:'Record verified destruction','correct-entry':'Correct inventory entry','correct-expiry':'Correct verified expiration date',reconcile:'Update physical count',deduct:'Deduct surplus','use-request':'Use in Request',cancel:'Cancel reservation',history:'Inventory History'};
+const modalTitles:Record<string,string>={'edit-inventory':'Edit Inventory', 'assign-clinic':'Assign Clinic',new:'Record Physical Count',review:'Review Reported Count',forecast:'Anticipated Surplus',confirm:'Confirm Actual Usable, Uncommitted Surplus',donate:'Record Formula Donation',destroy:'Record Verified Destruction','correct-entry':'Correct Inventory Entry','correct-expiry':'Correct Verified Expiration Date',reconcile:'Update Physical Count',deduct:'Deduct Surplus','use-request':'Use in Request',cancel:'Cancel Reservation',history:'Inventory History'};
 const modalTitle=computed(()=>modal.value==='new'&&!reviewer.value?'Record Surplus':modalTitles[modal.value]??'');
 const selected = ref<SurplusLot>();
 const report = ref<any>();
@@ -735,7 +735,7 @@ async function upload(kind: string, event: Event) {
             </article>
         </section>
         <section v-if="data?.user.role === 'admin'">
-            <h2>Agency notice forms</h2>
+            <h2>Agency Notice Forms</h2>
             <p>Upload the current forms used by donation and destruction notices.</p>
             <label
                 >Formula Donation Form (PDF)<input
@@ -764,10 +764,11 @@ async function upload(kind: string, event: Event) {
                 aria-labelledby="surplus-dialog-title"
             >
                 <h2 id="surplus-dialog-title">{{modalTitle}}</h2>
-                <p v-if="selected && !['history','edit-inventory','use-request'].includes(modal)">
-                    {{ surplusLotFormulaDescription(selected, productData?.products ?? []) }} · {{ selected.form }} {{ selected.flavor }}<template v-if="selected.packaging"> · {{selected.packaging}}</template> ·
-                    {{ agencyName(selected.agencyId) }} · {{selected.clinicName || 'Clinic not specified'}}
-                </p>
+                <div v-if="selected && !['history','edit-inventory','use-request'].includes(modal)" class="history-product">
+                    <strong :title="surplusLotFormulaDescription(selected, productData?.products ?? [])">{{surplusLotFormulaDescription(selected, productData?.products ?? [])}}</strong>
+                    <span>{{agencyName(selected.agencyId)}} · {{selected.clinicName || 'Clinic not specified'}}</span>
+                    <span>Expires {{formatInventoryDate(selected.expirationDate)}}</span>
+                </div>
                 <p
                     v-if="message && modal !== 'correct-entry'"
                     role="alert"
@@ -776,8 +777,9 @@ async function upload(kind: string, event: Event) {
                 </p>
                 <div v-if="modal === 'history'">
                     <div v-if="selected" class="history-product">
-                        <strong>{{[surplusLotFormulaDescription(selected, productData?.products ?? []),formulaFormLabel(selected.form),selected.flavor,selected.packaging].filter(Boolean).join(' ')}}</strong>
+                        <strong :title="surplusLotFormulaDescription(selected, productData?.products ?? [])">{{surplusLotFormulaDescription(selected, productData?.products ?? [])}}</strong>
                         <span>{{agencyName(selected.agencyId)}} · {{selected.clinicName || 'Clinic not specified'}}</span>
+                        <span>Expires {{formatInventoryDate(selected.expirationDate)}}</span>
                     </div>
                     <p v-if="!history.length" class="history-empty">No inventory history for this lot yet.</p>
                     <article
@@ -808,8 +810,9 @@ async function upload(kind: string, event: Event) {
                 </div>
                 <div v-else-if="modal==='edit-inventory'" class="inventory-edit-actions">
                     <div v-if="selected" class="history-product">
-                        <strong>{{[surplusLotFormulaDescription(selected, productData?.products ?? []),formulaFormLabel(selected.form),selected.flavor,selected.packaging].filter(Boolean).join(' ')}}</strong>
+                        <strong :title="surplusLotFormulaDescription(selected, productData?.products ?? [])">{{surplusLotFormulaDescription(selected, productData?.products ?? [])}}</strong>
                         <span>{{agencyName(selected.agencyId)}} · {{selected.clinicName || 'Clinic not specified'}}</span>
+                        <span>Expires {{formatInventoryDate(selected.expirationDate)}}</span>
                     </div>
                     <p>Select an inventory action for this lot.</p>
                     <button class="button" type="button" @click="selected && showHistory(selected)">Inventory History</button>
@@ -822,8 +825,9 @@ async function upload(kind: string, event: Event) {
                 </div>
                 <form v-else-if="modal==='use-request'" @submit.prevent="openShipment">
                     <div v-if="selected" class="history-product">
-                        <strong>{{[surplusLotFormulaDescription(selected, productData?.products ?? []),formulaFormLabel(selected.form),selected.flavor,selected.packaging].filter(Boolean).join(' ')}}</strong>
+                        <strong :title="surplusLotFormulaDescription(selected, productData?.products ?? [])">{{surplusLotFormulaDescription(selected, productData?.products ?? [])}}</strong>
                         <span>{{agencyName(selected.agencyId)}} · {{selected.clinicName || 'Clinic not specified'}}</span>
+                        <span>Expires {{formatInventoryDate(selected.expirationDate)}}</span>
                     </div>
                     <p>Select a matching request. You’ll choose the quantity and reserve stock in its Shipment section.</p>
                     <p v-if="requestsLoading" role="status">Loading matching requests…</p>
@@ -837,8 +841,9 @@ async function upload(kind: string, event: Event) {
                 </form>
                 <form v-else-if="modal==='correct-entry'" class="correction-form" @submit.prevent="submit">
                     <div v-if="selected" class="history-product">
-                        <strong>{{[surplusLotFormulaDescription(selected, productData?.products ?? []),formulaFormLabel(selected.form),selected.flavor,selected.packaging].filter(Boolean).join(' ')}}</strong>
+                        <strong :title="surplusLotFormulaDescription(selected, productData?.products ?? [])">{{surplusLotFormulaDescription(selected, productData?.products ?? [])}}</strong>
                         <span>{{agencyName(selected.agencyId)}} · {{selected.clinicName || 'Clinic not specified'}}</span>
+                        <span>Expires {{formatInventoryDate(selected.expirationDate)}}</span>
                     </div>
                     <article v-if="correctionTarget" class="history-entry correction-original-entry">
                         <header class="history-entry-heading">
@@ -1178,7 +1183,7 @@ async function upload(kind: string, event: Event) {
 .inventory-edit-actions > p {margin:0 0 4px;}
 .inventory-edit-actions > .button {min-width:190px;text-align:left;}
 .history-product {display:grid;gap:4px;padding:12px;margin:0 0 8px;background:var(--surface-raised);border-radius:8px;}
-.history-product strong {font-size:16px;}
+.history-product strong {font-size:16px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 .history-product span,.history-actor,.history-reference {font-size:12px;color:var(--muted);}
 .history-empty {padding:16px 0;color:var(--muted);}
 .history-entry {border-bottom:1px solid var(--line);padding:14px 0;}
