@@ -162,6 +162,8 @@ export interface SurplusTransfer {
     source_clinic_id?:string;
     source_clinic_name?:string;
     source_clinic_address?:string;
+    availability_response?: string | null;
+    availability_response_at?: string | null;
     stock_confirmed_at?:string;
     stock_confirmed_by?:number;
     requested_label_count?:number;

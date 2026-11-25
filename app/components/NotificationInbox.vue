@@ -20,12 +20,13 @@ onBeforeUnmount(()=>window.removeEventListener('keydown',closeOnEscape));
 const unread = computed(() => data.value?.notices.filter((n) => !n.is_read).length ?? 0);
 function openMessage(requestId:number){open.value=false;(document.activeElement as HTMLElement|null)?.blur();window.dispatchEvent(new CustomEvent('open-request-message',{detail:requestId}));}
 function notificationTitle(n:any){const formula=String(n.formula_label??'').replaceAll(' · ',' ');return [n.participant_name,formula].filter(Boolean).join(' | ')||formula||'Formula Surplus';}
-function notificationNature(n:any){return ({'request-info':'Request More Info','request-response':'Response to Request More Info','request-eta':'Shipment Update','request-special-order':'Special Order Delivery Update','transfer-stock':'Transfer Request','transfer-ready':'Transfer Labels Ready','transfer-confirmed':'Stock Confirmed','transfer-pickup':'Transfer Pickup',forecast:'Anticipated Surplus',donation:'Donation Reminder',destruction:'Destruction Required'} as Record<string,string>)[n.kind]??'Inventory Update';}
+function notificationNature(n:any){return ({'request-info':'Request More Info','request-response':'Response to Request More Info','request-eta':'Shipment Update','request-special-order':'Special Order Delivery Update','transfer-availability':'Transfer Availability Response','transfer-stock':'Transfer Request','transfer-ready':'Transfer Labels Ready','transfer-confirmed':'Stock Confirmed','transfer-pickup':'Transfer Pickup',forecast:'Anticipated Surplus',donation:'Donation Reminder',destruction:'Destruction Required'} as Record<string,string>)[n.kind]??'Inventory Update';}
 async function toggleNotices(){
  if(open.value){open.value=false;return;}
+ open.value=true;
  if(noticeLoading.value)return;
  noticeLoading.value=true;
- try{await refresh();if(noticeError.value)clear();open.value=true;}finally{noticeLoading.value=false;}
+ try{await refresh();}finally{noticeLoading.value=false;}
 }
 async function read(id: string) {
     await $fetch('/api/surplus/notices', {
@@ -59,7 +60,7 @@ async function download(kind: string) {
             class="icon-button notice-trigger"
             aria-label="Notifications"
             :title="unread ? `${unread} unread notifications` : 'Notifications'"
-            :disabled="noticeLoading"
+            :aria-expanded="open"
             @click="toggleNotices"
         >
             <svg aria-hidden="true" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9Z"/><path d="M10 21h4"/></svg><span class="notice-trigger-label">Notifications</span><span v-if="unread" class="notice-count" role="status" :aria-label="`${unread} unread notifications`">{{unread>99?'99+':unread}}</span>
@@ -77,14 +78,15 @@ async function download(kind: string) {
             >
                 {{ message }}
             </p>
-            <p v-if="!data">Unable to load notifications.</p>
+            <p v-if="noticeLoading && !data" role="status">Loading notifications…</p>
+            <p v-else-if="noticeError || !data" role="alert">Unable to load notifications. <button class="text-button" type="button" @click="refresh()">Retry</button></p>
             <p v-else-if="!data.notices.length">No active notifications.</p>
             <article
                 v-for="n in data?.notices"
                 :key="n.id"
                 :class="{'notice-unread':!n.is_read}"
             >
-                <strong v-if="['request-info','request-eta','request-special-order','request-response','transfer-pickup','transfer-confirmed','transfer-stock','transfer-ready'].includes(n.kind)" class="notice-title">{{notificationTitle(n)}}</strong>
+                <strong v-if="['request-info','request-eta','request-special-order','request-response','transfer-pickup','transfer-confirmed','transfer-availability','transfer-stock','transfer-ready'].includes(n.kind)" class="notice-title">{{notificationTitle(n)}}</strong>
                 <strong v-else>{{
                     n.title
                         ? n.title
@@ -95,7 +97,7 @@ async function download(kind: string) {
                           : 'Formula under 45 days — destruction required'
                 }}</strong>
                 <p v-if="n.request_id" class="notice-submitted">Submitted {{ formatDisplayDate(n.submission_date) }}</p>
-                <p v-if="['request-info','request-eta','request-special-order','request-response','transfer-pickup','transfer-confirmed','transfer-stock','transfer-ready'].includes(n.kind)" class="notice-kind">{{notificationNature(n)}}</p>
+                <p v-if="['request-info','request-eta','request-special-order','request-response','transfer-pickup','transfer-confirmed','transfer-availability','transfer-stock','transfer-ready'].includes(n.kind)" class="notice-kind">{{notificationNature(n)}}</p>
                 <template v-if="n.kind==='request-info' || n.kind==='request-eta' || n.kind==='request-special-order' || n.kind==='request-response' || n.kind==='transfer-pickup' || n.kind==='transfer-confirmed'">
                     <p v-if="n.kind==='request-info' || n.kind==='request-response'" class="request-notice-notes">{{n.notes}}</p>
                     <p v-else-if="n.kind==='request-eta'" class="notice-summary">Shipment details and authorization are ready.</p>
@@ -106,6 +108,10 @@ async function download(kind: string) {
                     <NuxtLink v-else-if="n.kind==='transfer-pickup' || n.kind==='transfer-confirmed'" class="button button-secondary" :to="{path:'/requests',query:{request:n.request_id},hash:`#shipments-${n.request_id}`}" @click="open=false">View Shipment</NuxtLink>
                     <NuxtLink v-else-if="n.kind==='request-response'" class="button button-secondary" :to="{path:'/requests',query:{request:n.request_id},hash:`#more-info-${n.request_id}`}" @click="openMessage(n.request_id)">View Message</NuxtLink>
                     <template v-else-if="n.kind==='request-eta'"><NuxtLink class="button button-secondary" :to="{path:'/requests',query:{request:n.request_id}}" @click="open=false">View Shipment</NuxtLink><a class="button button-secondary" :href="`/api/requests/${n.request_id}/authorization-form.pdf?version=${n.version_id}`" target="_blank" rel="noopener">Print / Download Authorization</a></template>
+                </template>
+                <template v-else-if="n.kind === 'transfer-availability'">
+                    <p class="notice-summary">{{ n.notes }}</p>
+                    <NuxtLink class="button button-secondary" :to="{path:'/surplus',query:{transfer:n.transfer_id},hash:`#transfer-${n.transfer_id}`}" @click="open=false">View Transfer</NuxtLink>
                 </template>
                 <template v-else-if="n.kind==='transfer-stock' || n.kind==='transfer-ready'">
                     <p class="notice-summary">{{n.quantity}} reserved {{unitLabel(n.quantity)}} · {{n.source_clinic_name || 'Clinic not specified'}}</p>

@@ -450,6 +450,7 @@ export async function listSurplus(db: D1Database, user: SessionUser) {
                           )
                           .bind(user.agencyId ?? -1, user.agencyId ?? -1)
             ).all<SurplusTransfer>()
-        ).results,
+        ).results.map(transfer => isReviewer(user) || transfer.source_agency_id === user.agencyId
+            ? transfer : { ...transfer, availability_response: undefined, availability_response_at: undefined }),
     };
 }

@@ -62,8 +62,18 @@ export async function listSurplusNotices(db: D1Database, user: SessionUser) {
             :kind==='transfer-stock'?'Confirm that your agency physically has the reserved formula and quantity.'
             :'Download and print the labels provided by CDPH/WIC, arrange carrier pickup, then confirm pickup after collection.',is_read:seen.has(id)?1:0}];
     });
+    const availabilityNotices = isReviewer(user) ? transfers.results.flatMap(transfer => {
+        if (!transfer.availability_response || transfer.stock_confirmed_at) return [];
+        const id = `transfer-availability:${transfer.id}:${transfer.availability_response_at}`;
+        return [{
+            id, kind: 'transfer-availability', transfer_id: transfer.id, request_id: transfer.request_id,
+            formula_label: shipmentFormulaLabel({ productName: transfer.formula_name, productForm: transfer.form }),
+            notes: transfer.availability_response, is_read: seen.has(id) ? 1 : 0,
+        }];
+    }) : [];
     return [
         ...await requestNotices(db,user),
+        ...availabilityNotices,
         ...transferNotices,
         ...notices,
         ...forecasts.results.map((f) => ({

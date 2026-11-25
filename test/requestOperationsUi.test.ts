@@ -124,6 +124,7 @@ describe('request operations UI', () => {
         expect(drawer).toContain('Assign Units');
         expect(drawer).toContain('On Hand</h4>');
         expect(drawer).toMatch(/class="authorization-formula"[\s\S]*?<RequestAuthorizationFields[\s\S]*?<RequestTransferAllocation[\s\S]*?@reserve="reserveIssuanceTransfer"[\s\S]*?<RequestSupplyPlan[\s\S]*?<\/fieldset>\s*<div class="issuance-heading"><h3><label[^>]*>Next Steps/);
+        expect(drawer).toContain('Upload all {{ shipment.transferLabelCount }} requested shipping');
         expect(drawer).toContain('<RequestSupplyPlan');
         expect(drawer).not.toContain('Amount Approved');
         expect(drawer).not.toContain('Expected Surplus Unit');

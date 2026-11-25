@@ -32,20 +32,38 @@ async function openLabel(label:TransferShippingLabel,print:boolean){
 </script>
 <template>
  <section class="transfer-labels" aria-label="Shipping Labels">
-  <h4>Shipping Labels</h4>
-  <p v-if="data?.requestedLabelCount" class="muted-copy">{{data.labels.length}} of {{data.requestedLabelCount}} requested label(s) uploaded.</p>
-  <label v-if="canUpload && allowUpload!==false" class="field-label">Upload Shipping Labels<input type="file" multiple accept="application/pdf,image/png,image/jpeg" :disabled="busy || !data?.requestedLabelCount || labelsComplete" @change="upload" /><small>Upload {{data?.requestedLabelCount??'the requested number of'}} label(s) · PDF, PNG, or JPEG · 10 MB each</small></label>
-  <ul v-if="data?.labels.length"><li v-for="label in data.labels" :key="label.id"><span>{{label.fileName}}</span><div class="label-actions"><button class="text-button" type="button" @click="openLabel(label,false)">Download</button><button class="text-button" type="button" @click="openLabel(label,true)">Open / Print</button></div></li></ul>
-  <p v-else-if="!loadError" class="muted-copy">Shipping labels have not been uploaded.</p>
+  <div class="transfer-labels-header">
+   <h4>Shipping Labels</h4>
+   <span v-if="data?.requestedLabelCount" class="label-progress">{{ data.labels.length }} of {{ data.requestedLabelCount }} uploaded</span>
+  </div>
+  <label v-if="canUpload && allowUpload!==false && !labelsComplete" class="field-label label-upload">
+   Upload Shipping Labels
+   <input type="file" multiple accept="application/pdf,image/png,image/jpeg" :disabled="busy || !data?.requestedLabelCount" @change="upload" />
+   <small>PDF, PNG, or JPEG · 10 MB per file</small>
+  </label>
+  <ol v-if="data?.labels.length" class="label-files">
+   <li v-for="(label, index) in data.labels" :key="label.id">
+    <span class="label-file-name">{{ label.fileName }}</span>
+    <div class="label-actions">
+     <button class="text-button" type="button" :aria-label="`Download shipping label ${index + 1}`" @click="openLabel(label,false)">Download</button>
+     <button class="text-button" type="button" :aria-label="`Open or print shipping label ${index + 1}`" @click="openLabel(label,true)">Open / Print</button>
+    </div>
+   </li>
+  </ol>
+  <p v-else-if="!loadError" class="muted-copy">{{ data ? 'Shipping labels have not been uploaded.' : 'Loading shipping labels…' }}</p>
   <p v-if="loadError || error" class="form-error" role="alert">{{error || 'Shipping labels could not be loaded. Please refresh.'}}</p>
   <p v-if="message" role="status">{{message}}</p>
  </section>
 </template>
 <style scoped>
-.transfer-labels {margin-top:12px;padding-top:10px;border-top:1px solid var(--line);}
-.transfer-labels h4 {margin:0 0 8px;font-size:14px;font-weight:600;}
-.transfer-labels ul {list-style:none;padding:0;margin:8px 0;display:grid;gap:8px;}
-.transfer-labels li {display:flex;align-items:center;flex-wrap:wrap;justify-content:space-between;gap:6px 12px;overflow-wrap:anywhere;}
-.label-actions {display:flex;gap:12px;}
-.transfer-labels p {margin:8px 0;font-size:14px;}
+.transfer-labels {margin-top:8px;padding:12px;border:1px solid var(--line);border-radius:8px;}
+.transfer-labels-header {display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:4px 12px;}
+.transfer-labels h4 {margin:0;font-size:14px;font-weight:700;}
+.label-progress {color:var(--muted);font-size:12px;white-space:nowrap;}
+.label-upload {margin:10px 0 0;}
+.label-files {list-style:none;padding:0;margin:8px 0 0;}
+.label-files li {display:flex;align-items:center;flex-wrap:wrap;justify-content:space-between;gap:6px 12px;padding:8px 0;border-top:1px solid var(--line);}
+.label-file-name {flex:1 1 140px;min-width:0;overflow-wrap:anywhere;}
+.label-actions {display:flex;flex-wrap:wrap;gap:4px 12px;}
+.transfer-labels p {margin:8px 0 0;font-size:13px;}
 </style>

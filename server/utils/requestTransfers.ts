@@ -10,6 +10,20 @@ import {commitRequestTransfer} from './submittedRequests';
 import {linkedTransfer,reserveTransferInventory,shipTransferInventory,transferError} from './requestTransferInventory';
 import {localDate} from '../../shared/surplus';
 
+export async function recordTransferAvailabilityResponse(db: D1Database, id: string, user: SessionUser, response: unknown) {
+    if (user.memberType !== 'agency' || user.role === 'admin' || !user.agencyId)
+        throw transferError('Only the sending Local Agency can respond.', 403);
+    const message = typeof response === 'string' ? response.trim() : '';
+    if (!message || message.length > 1000)
+        throw transferError('Enter a response of 1 to 1,000 characters.', 400);
+    const result = await db.prepare(`
+        UPDATE surplus_transfers SET availability_response=?, availability_response_at=?
+        WHERE id=? AND source_agency_id=? AND request_id IS NOT NULL AND status='reserved' AND stock_confirmed_at IS NULL
+    `).bind(message, new Date().toISOString(), id, user.agencyId).run();
+    if (!result.meta.changes)
+        throw transferError('This transfer is no longer waiting for an availability response.');
+}
+
 export async function confirmRequestTransferStock(db:D1Database,id:string,user:SessionUser,requestedLabelCount:number){
  const transfer=await linkedTransfer(db,id);
  if(!transfer||(!isReviewer(user)&&user.agencyId!==transfer.source_agency_id))throw transferError('Transfer not found.',404);

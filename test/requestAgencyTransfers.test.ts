@@ -1,9 +1,9 @@
 import {it,expect} from 'vitest';
 import {surplusDb} from './helpers/surplusDb';
-import {ensureSurplusLot,executeSurplusCommand} from '../server/utils/surplusStore';
+import {ensureSurplusLot,executeSurplusCommand,listSurplus} from '../server/utils/surplusStore';
 import {getDemoUser} from '../server/utils/session';
 import {ensureSubmittedRequest,updateSubmittedShipmentReceipt} from '../server/utils/submittedRequests';
-import {authorizeRequestTransfer,shipRequestTransfer,saveRequestTransferEta,confirmRequestTransferStock} from '../server/utils/requestTransfers';
+import {authorizeRequestTransfer,shipRequestTransfer,saveRequestTransferEta,confirmRequestTransferStock,recordTransferAvailabilityResponse} from '../server/utils/requestTransfers';
 import {shipmentReceiptKey} from '../shared/shipmentReceipts';
 import {receiptQuantityKey} from '../shared/shipmentQuantities';
 import {syncRequestLocalSurplus} from '../server/utils/requestLocalSurplus';
@@ -15,6 +15,19 @@ it('notifies the source immediately on reservation, before any shipping details 
  const notice=(await listSurplusNotices(f.db,source)).find(n=>n.id===`transfer-stock:${id}`);
  expect(notice).toMatchObject({kind:'transfer-stock',transfer_id:id,quantity:12,is_read:0});
  for(const user of [f.admin,getDemoUser('internal'),getDemoUser('agency'),{...source,agencyId:12}])expect((await listSurplusNotices(f.db,user)).some(n=>n.id===`transfer-stock:${id}`)).toBe(false);
+});
+it('sends a shortage response to reviewers without confirming stock or exposing the message to the receiving agency', async () => {
+ const {listSurplusNotices}=await import('../server/utils/surplusNotices');
+ const f=await fixture();
+ const reserved=await authorizeRequestTransfer(f.db,f.request,[f.row],0,f.admin);
+ const id=reserved.shipments![0]!.transferId!;
+ const recipient=getDemoUser('agency');
+ const sender={...recipient,agencyId:11};
+ await expect(recordTransferAvailabilityResponse(f.db,id,recipient,'Other agency')).rejects.toThrow();
+ await recordTransferAvailabilityResponse(f.db,id,sender,'Only 8 units are available.');
+ expect((await listSurplus(f.db,sender)).transfers.find(t=>t.id===id)).toMatchObject({availability_response:'Only 8 units are available.',stock_confirmed_at:null});
+ expect((await listSurplus(f.db,recipient)).transfers.find(t=>t.id===id)?.availability_response).toBeUndefined();
+ expect(await listSurplusNotices(f.db,getDemoUser('internal'))).toContainEqual(expect.objectContaining({kind:'transfer-availability',transfer_id:id,notes:'Only 8 units are available.',is_read:0}));
 });
 it('allows assigning the exact catalog variant when the submitted request omitted its flavor',async()=>{
  const {db,sqlite}=surplusDb();const admin=getDemoUser('admin');
