@@ -30,6 +30,26 @@ async function sendAvailabilityResponse() {
 }
 const route=useRoute();
 async function confirmStock(){if(!Number.isSafeInteger(requestedLabelCount.value)||!requestedLabelCount.value||requestedLabelCount.value<1)return;busy.value=true;error.value='';try{await $fetch(`/api/request-transfers/${props.transfer.id}/confirm-stock`,{method:'POST',headers:{'x-demo-user':identity.value},body:{requestedLabelCount:requestedLabelCount.value}});emit('updated');window.dispatchEvent(new Event('request-messages-changed'));}catch(e){error.value=(e as any).data?.statusMessage??'Product availability could not be confirmed.';}finally{busy.value=false;}}
+const transferStatusLabel = computed(() => {
+    const transfer = props.transfer;
+    switch (transfer.status) {
+        case 'reserved':
+            if (!transfer.stock_confirmed_at) return 'Awaiting Stock Confirmation';
+            if (transfer.eta && transfer.tracking_reference) return 'Pending Pickup Confirmation';
+            return labelsReady.value ? 'Awaiting Shipping Details' : 'Awaiting Shipping Labels';
+        case 'shipped': return 'In Transit';
+        case 'received': return 'Confirmed Receipt';
+        case 'cancelled': return 'Cancelled';
+        default: return 'Blocked — expired';
+    }
+});
+const senderAction = computed(() => {
+    const transfer = props.transfer;
+    if (!props.canShip || transfer.status !== 'reserved') return '';
+    if (!transfer.stock_confirmed_at) return 'Confirm Product Availability';
+    if (transfer.eta && transfer.tracking_reference) return 'Print Labels & Confirm Pickup';
+    return '';
+});
 const visibleEta=computed(()=>props.canShip||props.transfer.status!=='reserved'?props.transfer.eta:'');
 const formulaLabel=computed(()=>`${props.transfer.formula_name} ${{powder:'Powder',concentrate:'Concentrate','ready-to-feed':'RTF'}[props.transfer.form]??props.transfer.form}`);
 const destination=computed(()=>{try{return JSON.parse(props.transfer.destination_shipping??'null') as import('~/../shared/shipping').RequestShipping|null;}catch{return null;}});
@@ -40,7 +60,11 @@ async function ship(){busy.value=true;error.value='';try{await $fetch(`/api/requ
  <details :id="`transfer-${transfer.id}`" class="transfer-shipment" :class="{'transfer-cancelled':transfer.status==='cancelled'}" :open="String(route.query.transfer??'')===transfer.id">
   <summary class="transfer-collapsed-summary">
    <span class="transfer-collapsed-title"><strong>{{formulaLabel}}<template v-if="transfer.flavor"> · {{transfer.flavor}}</template></strong><small>{{sourceName}} → {{destinationName}}</small></span>
-   <span class="transfer-status" :class="{'shipment-transit-status':transfer.status==='shipped'}">{{transfer.status==='reserved'?'Transfer Requested':transfer.status==='shipped'?'In Transit':transfer.status==='received'?'Confirmed Receipt':transfer.status==='cancelled'?'Cancelled':'Blocked — expired'}}</span>
+   <span v-if="senderAction" class="sender-action-summary">
+    <span class="sender-action-badge">Action needed</span>
+    <span><strong>{{ senderAction }}</strong><small>{{ transferStatusLabel }}</small></span>
+   </span>
+   <span v-else class="transfer-status" :class="{ 'shipment-transit-status': transfer.status === 'shipped', 'transfer-status-pending': transfer.status === 'reserved' }">{{ transferStatusLabel }}</span>
    <span class="transfer-collapsed-quantity">{{transfer.quantity}} {{unitLabel(transfer.quantity)}}</span>
   </summary>
   <div class="transfer-expanded-content">
@@ -109,6 +133,17 @@ async function ship(){busy.value=true;error.value='';try{await $fetch(`/api/requ
 .transfer-shipment {box-sizing:border-box;display:block;width:100%;max-width:var(--surplus-content-width,1120px);border:1px solid var(--line);padding:0 16px;border-radius:8px;margin:8px 0;font-size:13px;line-height:1.4;}
 .transfer-shipment.transfer-cancelled {background:var(--surface-raised);border-color:var(--line);color:var(--muted);}
 .transfer-shipment.transfer-cancelled .transfer-status {display:inline-flex;align-items:center;padding:2px 8px;border:1px solid var(--line);border-radius:12px;background:var(--surface-raised);color:var(--muted);font-size:12px;font-weight:600;white-space:nowrap;}
+.sender-action-summary {display:flex;align-items:center;flex-wrap:wrap;gap:5px 8px;}
+.sender-action-summary small {display:block;color:var(--muted);font-size:12px;}
+.sender-action-badge {
+    padding:2px 8px;
+    border-radius:999px;
+    background:light-dark(#ffedbd,#4e3406);
+    color:light-dark(#633900,#ffe0a3);
+    font-weight:750;
+    white-space:nowrap;
+}
+.transfer-status-pending {display:inline-block;padding:2px 8px;border:1px solid var(--line);border-radius:12px;color:light-dark(#774700,#ffcf7a);font-weight:650;}
 .transfer-collapsed-summary {display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px 16px;padding:12px 0;cursor:pointer;list-style:none;}
 .transfer-collapsed-summary::-webkit-details-marker {display:none;}
 .transfer-collapsed-summary::after {content:'Details';color:var(--muted);font-size:12px;}

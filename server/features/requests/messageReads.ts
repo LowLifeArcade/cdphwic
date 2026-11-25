@@ -1,3 +1,4 @@
+import { archiveNotification } from '../../../shared/notificationHistory';
 import type { RequestRecord, SessionUser } from '../../../shared/domain';
 import { canSeeAgency } from '../../../shared/surplus';
 import { conflict, nextRecord, writeRecord } from './persistence';
@@ -106,33 +107,30 @@ export async function markMoreInfoRead(db: D1Database, previous: RequestRecord, 
 
 export function moreInfoReadNoticeSteps(db: D1Database, previous: RequestRecord, user: SessionUser, noticeId?: string) {
     const reviewer = user.role === 'admin' || user.memberType === 'internal';
-    const ids = (previous.moreInfoRequests ?? [])
-        .filter((note) => !note.deletedAt)
-        .flatMap((note) => [
-            ...(!reviewer
-                ? [
-                      `followup:${note.id}`,
-                      ...(note.resubmissionOpen && note.resubmissionOpenedAt
-                          ? [`followup:${note.id}:reopen:${note.resubmissionOpenedAt}`]
-                          : []),
-                  ]
-                : []),
+    const snapshots = (previous.moreInfoRequests ?? [])
+        .filter(note => !note.deletedAt)
+        .flatMap(note => [
+            ...(!reviewer ? [
+                { id: `followup:${note.id}`, kind: 'request-info', notes: note.notes },
+                ...(note.resubmissionOpen && note.resubmissionOpenedAt ? [{
+                    id: `followup:${note.id}:reopen:${note.resubmissionOpenedAt}`, kind: 'request-info',
+                    title: 'Request Reopened for Resubmission', notes: note.notes,
+                }] : []),
+            ] : []),
             ...(note.responses ?? [])
-                .filter((response) =>
-                    reviewer ? response.respondedAs !== 'reviewer' : response.respondedAs === 'reviewer',
-                )
-                .map((response) => `followup-response:${response.id}`),
+                .filter(response => (response.respondedAs === 'reviewer') !== reviewer)
+                .map(response => ({ id: `followup-response:${response.id}`, kind: 'request-response', notes: response.notes })),
         ])
-        .filter((id) => !noticeId || id === noticeId);
-    return ids.length
-        ? [
-              db
-                  .prepare(
-                      'INSERT OR IGNORE INTO surplus_notice_reads(notice_id,user_id) SELECT value,? FROM json_each(?)',
-                  )
-                  .bind(user.id, JSON.stringify(ids)),
-          ]
+        .filter(notice => !noticeId || notice.id === noticeId)
+        .map(notice => archiveNotification({ ...notice, request_id: previous.id, formula_name: previous.productName }));
+    return snapshots.length
+        ? [db.prepare(
+            `INSERT INTO surplus_notice_reads(notice_id,user_id,notice_snapshot)
+            SELECT json_extract(value,'$.id'),?,value FROM json_each(?) WHERE true
+            ON CONFLICT(notice_id,user_id) DO UPDATE SET notice_snapshot=COALESCE(surplus_notice_reads.notice_snapshot,excluded.notice_snapshot)`,
+        ).bind(user.id, JSON.stringify(snapshots))]
         : [];
+
 }
 
 export async function readVisibleMoreInfoMessages(

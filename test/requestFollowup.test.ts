@@ -236,6 +236,8 @@ it('marks only visible incoming messages read with agency and revision protectio
  await expect(readVisibleMoreInfoMessages(db,sent,{...getDemoUser('agency'),agencyId:11},[id],sent.revision!)).rejects.toMatchObject({statusCode:404});
  await expect(readVisibleMoreInfoMessages(db,sent,getDemoUser('agency'),[id],0)).rejects.toMatchObject({statusCode:409});
  const read=await readVisibleMoreInfoMessages(db,sent,getDemoUser('agency'),[id],sent.revision!);
+ const snapshot=await db.prepare('SELECT notice_snapshot FROM surplus_notice_reads WHERE notice_id=? AND user_id=?').bind(id,getDemoUser('agency').id).first<string>('notice_snapshot');
+ expect(JSON.parse(snapshot!)).toMatchObject({id,requestId:9951,message:'Visible question'});
  expect(read.moreInfoRequests![0]!.readAt).toBeTruthy();expect((await requestNotices(db,getDemoUser('agency'))).find(n=>n.id===id)?.is_read).toBe(1);
 });
 it('does not treat a concurrent form change as a message-only revision',async()=>{
