@@ -17,14 +17,15 @@ const surplusRows=computed(()=>[{key:'planned-surplus',kind:'surplus' as const,l
         <RequestSupplySources :rows="sourceRows" />
         <div class="order-recommendation" aria-label="Recommended order" aria-live="polite">
             <h5>Recommended Order</h5>
-            <template v-if="plan.orderUnits!==undefined">
+            <p v-if="plan.supply.total <= 0">–</p>
+            <template v-else-if="plan.orderUnits!==undefined">
                 <p v-if="plan.needed">{{plan.needed}} {{unitLabel(plan.needed)}} to cover from distributor orders.</p>
                 <strong v-if="plan.cases">{{plan.cases}} {{plan.cases===1?'Case':'Cases'}} × {{plan.unitsPerCase}} {{unitLabel(plan.unitsPerCase)}} = {{plan.orderUnits}} {{unitLabel(plan.orderUnits)}}</strong>
                 <strong v-else>No additional order needed.</strong>
             </template>
             <p v-else>Confirm Units Per Case for this formula and its shipments to calculate the recommended order.</p>
         </div>
-        <p v-if="plan.supply.plannedUnits" class="draft-coverage">In distributor drafts: <strong>{{plan.supply.plannedUnits}} {{unitLabel(plan.supply.plannedUnits)}}</strong>.<template v-if="plan.stillToPlan===0"> Drafts cover the recommendation. Review and send ETA in Shipping.</template><template v-else-if="plan.stillToPlan!==undefined"> Still to plan: {{plan.stillToPlan}} {{unitLabel(plan.stillToPlan)}}.</template></p>
+        <p v-if="plan.supply.total > 0 && plan.supply.plannedUnits" class="draft-coverage">In distributor drafts: <strong>{{plan.supply.plannedUnits}} {{unitLabel(plan.supply.plannedUnits)}}</strong>.<template v-if="plan.stillToPlan===0"> Drafts cover the recommendation. Review and send ETA in Shipping.</template><template v-else-if="plan.stillToPlan!==undefined"> Still to plan: {{plan.stillToPlan}} {{unitLabel(plan.stillToPlan)}}.</template></p>
         <p v-if="plan.supply.unknownPlannedUnits" class="muted-copy">A distributor draft needs Units Per Case before its planned quantity can be calculated.</p>
         <RequestSupplySources :rows="surplusRows" />
         <p v-if="plan.needed&&plan.surplus!==undefined" class="muted-copy">Expected surplus includes the recommended whole-case order.</p>

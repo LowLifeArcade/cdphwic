@@ -16,8 +16,8 @@ const vTrackingSize:Directive<HTMLTextAreaElement>={mounted:fitTrackingNumbers,u
 function fitTrackingNumbers(input:HTMLTextAreaElement){input.style.height='auto';input.style.height=`${input.scrollHeight+input.offsetHeight-input.clientHeight}px`;}
 import {formulaOrders,allFormulasSpecialOrder,hasSpecialOrder} from '~/../shared/formulaOrders';
 import {formulaAuthorizations,formatIssuanceMonth,validateFormulaAuthorizations,type FormulaAuthorization} from '~/../shared/formulaAuthorizations';
-import {transferAuthorizationError,transferEntryQuantity,transferCatalogUnitsPerCase,matchingTransferLot,matchingLocalSurplusLot,surplusShipmentDraft,transferLotFormulaLabel} from '~/../shared/requestTransfers';
-import {localDate,daysRemaining,type SurplusLot} from '~/../shared/surplus';
+import {transferAuthorizationError,transferEntryQuantity,transferCatalogUnitsPerCase,matchingTransferLot,matchingLocalSurplusLot,surplusShipmentDraft} from '~/../shared/requestTransfers';
+import {localDate,daysRemaining,surplusLotFormulaDescription,type SurplusLot} from '~/../shared/surplus';
 import {canDeleteShipment,storedShipmentRows} from '~/../shared/shipmentDeletion';
 import {shipmentFeatureFlags} from '~/../shared/featureFlags';
 import {compactShipmentSummary} from '~/../shared/shipmentSummary';
@@ -808,8 +808,8 @@ async function saveAgencyUpdate() {
                 <div v-if="localAgencySurplusLots(authorization,formulaIndex).length" class="local-surplus-lots">
                     <p class="muted-copy">Available units are shown for each lot. Enter the number to assign, then save. Saving reserves those units; they remain in the On Hand balance until the Local Agency records an issue.</p>
                     <div v-for="lot in localAgencySurplusLots(authorization,formulaIndex)" :key="lot.id" class="local-surplus-lot">
-                        <div class="surplus-lot-info"><strong>{{transferLotFormulaLabel(lot)}}</strong><small>{{lot.clinicName||'Clinic not specified'}}</small><small>Exp {{formatDisplayDate(lot.expirationDate)}}</small><span>{{localSurplusAvailable(lot,formulaIndex)}} {{unitLabel(localSurplusAvailable(lot,formulaIndex))}} available</span></div>
-                        <label class="field-label local-surplus-assign-field">Assign Units<input class="form-input authorization-number" type="number" inputmode="numeric" min="0" :max="localSurplusAvailable(lot,formulaIndex)" :value="authorization.localSurplusAllocations?.find(row=>row.lotId===lot.id)?.units??0" :aria-label="`Units to assign from ${lot.clinicName||'clinic'}, expires ${lot.expirationDate}`" @input="setLocalSurplusAllocation(authorization,lot.id,Math.min(Number(($event.target as HTMLInputElement).value)||0,localSurplusAvailable(lot,formulaIndex)))" /></label>
+                        <div class="surplus-lot-info"><strong>{{surplusLotFormulaDescription(lot, products ?? [])}}</strong><small>{{lot.clinicName||'Clinic not specified'}}</small><small>Exp {{formatDisplayDate(lot.expirationDate)}}</small><span>{{localSurplusAvailable(lot,formulaIndex)}} {{unitLabel(localSurplusAvailable(lot,formulaIndex))}} available</span></div>
+                        <label class="field-label local-surplus-assign-field"><span>Assign<br />Units</span><input class="form-input" type="number" inputmode="numeric" min="0" :max="localSurplusAvailable(lot,formulaIndex)" :value="authorization.localSurplusAllocations?.find(row=>row.lotId===lot.id)?.units??0" :aria-label="`Units to assign from ${lot.clinicName||'clinic'}, expires ${lot.expirationDate}`" @input="setLocalSurplusAllocation(authorization,lot.id,Math.min(Number(($event.target as HTMLInputElement).value)||0,localSurplusAvailable(lot,formulaIndex)))" /></label>
                     </div>
                 </div>
                 <p v-else-if="transferStockError" class="form-error" role="alert">On Hand inventory could not be loaded. <button class="text-button" type="button" @click="refreshTransferStock()">Retry</button></p>
@@ -1163,11 +1163,13 @@ async function saveAgencyUpdate() {
 .local-surplus-assignment > p {margin:0;font-size:.875rem;line-height:1.5;}
 .local-surplus-lots {display:grid;}
 .local-surplus-lot {display:flex;justify-content:space-between;align-items:center;gap:16px;padding:12px 0;border-top:1px solid var(--line);}
-.local-surplus-lot .surplus-lot-info {display:grid;flex:1 1 190px;gap:3px;}
+.local-surplus-lot .surplus-lot-info {display:grid;flex:1 1 190px;min-width:0;gap:3px;overflow-wrap:anywhere;}
 .local-surplus-lot .surplus-lot-info > strong {font-size:14px;line-height:1.4;}
 .local-surplus-lot .surplus-lot-info small {display:block;margin:0;color:var(--muted);font-size:13px;line-height:1.4;}
 .local-surplus-lot .surplus-lot-info > span {font-size:14px;line-height:1.4;font-weight:600;}
-.local-surplus-assign-field {width:110px;flex:0 0 110px;margin:0;}
+.local-surplus-assign-field {flex:0 0 auto;margin:0 0 0 auto;justify-items:end;}
+.local-surplus-assign-field > span {width:100%;line-height:1.2;}
+.local-surplus-assign-field .form-input {box-sizing:border-box;width:60px;max-width:100%;}
 .anticipated-surplus-row {display:grid;grid-template-columns:minmax(220px,2fr) repeat(2,minmax(150px,1fr)) auto;align-items:center;gap:12px;padding:12px 0;border-top:1px solid var(--line);}
 .anticipated-surplus-row > div {display:grid;gap:3px;}
 .anticipated-surplus-row > div > span,.anticipated-surplus-row small {color:var(--muted);font-size:12px;}
