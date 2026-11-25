@@ -40,7 +40,7 @@ const transferStatusLabel = computed(() => {
         case 'shipped': return 'In Transit';
         case 'received': return 'Confirmed Receipt';
         case 'cancelled': return 'Cancelled';
-        default: return 'Blocked — expired';
+        default: return 'Blocked — Expired';
     }
 });
 const senderAction = computed(() => {
@@ -147,7 +147,7 @@ async function ship(){busy.value=true;error.value='';try{await $fetch(`/api/requ
 .transfer-collapsed-summary {display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px 16px;padding:12px 0;cursor:pointer;list-style:none;}
 .transfer-collapsed-summary::-webkit-details-marker {display:none;}
 .transfer-collapsed-summary::after {content:'Details';color:var(--muted);font-size:12px;}
-.transfer-shipment[open] > .transfer-collapsed-summary::after {content:'Hide details';}
+.transfer-shipment[open] > .transfer-collapsed-summary::after {content:'Hide Details';}
 .transfer-collapsed-title {display:grid;gap:3px;min-width:180px;flex:1;}
 .transfer-collapsed-title strong {font-size:14px;}
 .transfer-collapsed-title small {font-size:12px;color:var(--muted);}
