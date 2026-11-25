@@ -53,6 +53,22 @@ export function surplusProductPackaging(product:Pick<ProductRecord,'packaging'|'
     const size = product.form === 'ready-to-feed' && ounces ? `${ounces} fl oz` : '';
     return [size,packaging].filter(Boolean).join(' ');
 }
+export function surplusLotFormulaDescription(
+    lot: Pick<SurplusVariant, 'formulaName' | 'form' | 'flavor' | 'packaging'>,
+    products: ProductRecord[],
+): string {
+    const candidates = products.filter(product =>
+        normalizeVariantText(product.name) === normalizeVariantText(lot.formulaName) &&
+        product.form === lot.form &&
+        normalizeVariantText(product.flavor ?? '') === normalizeVariantText(lot.flavor ?? ''),
+    );
+    const packageKey = normalizeVariantText(lot.packaging ?? '');
+    const packageMatches = candidates.filter(product =>
+        normalizeVariantText(surplusProductPackaging(product)) === packageKey,
+    );
+    const match = packageMatches.length === 1 ? packageMatches[0] : candidates.length === 1 ? candidates[0] : undefined;
+    return match?.formulaDescription?.trim() || lot.formulaName;
+}
 export function surplusBarcodeMatches(products: ProductRecord[], input: string) {
     const barcode = input.trim().replace(/[ -]/g, '');
     if (!/^(?:[0-9]{8}|[0-9]{12,14})$/.test(barcode)) return [];

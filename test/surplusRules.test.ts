@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { variantKey, availableUnits, canAllocate, validateUnits, daysRemaining, surplusDisposition, localDate, surplusCatalogVariants, surplusBarcodeMatches, defaultSurplusCatalogOption } from '../shared/surplus';
+import { variantKey, availableUnits, canAllocate, validateUnits, daysRemaining, surplusDisposition, localDate, surplusCatalogVariants, surplusBarcodeMatches, defaultSurplusCatalogOption, surplusLotFormulaDescription } from '../shared/surplus';
 describe('surplus rules', () => {
     it('identifies variants and excludes quarantine from availability', () => {
         const v = { formulaName: ' Fortini ', form: 'ready-to-feed', flavor: '', expirationDate: '2027-01-01' };
@@ -54,6 +54,27 @@ describe('surplus rules', () => {
             {id:1,name:'Similac NeoSure',form:'ready-to-feed',flavor:'Unflavored',packaging:'Bottle',yield:2,active:true},
             {id:2,name:'Similac NeoSure',form:'ready-to-feed',flavor:'Unflavored',packaging:'Bottle',yield:32,active:true},
         ] as any)).toEqual([{formulaName:'Similac NeoSure',form:'ready-to-feed',flavor:'Unflavored',packagings:['2 fl oz Bottle','32 fl oz Bottle']}]);
+    });
+    it('uses the matching catalog Formula Description for a surplus lot',()=>{
+        const products = [
+            { id: 1, name: 'Fortini', form: 'ready-to-feed', flavor: 'Vanilla', packaging: 'Bottle', yield: 2, formulaDescription: 'Fortini 2 fl oz Vanilla', active: true },
+            { id: 2, name: 'Fortini', form: 'ready-to-feed', flavor: 'Vanilla', packaging: 'Bottle', yield: 32, formulaDescription: 'Fortini 32 fl oz Vanilla', active: true },
+            { id: 3, name: 'Fortini', form: 'ready-to-feed', flavor: 'Chocolate', packaging: 'Bottle', yield: 2, formulaDescription: 'Fortini 2 fl oz Chocolate', active: true },
+        ] as any;
+        const lot = { formulaName: 'Fortini', form: 'ready-to-feed', flavor: 'Vanilla', packaging: '2 fl oz Bottle' };
+
+        expect(surplusLotFormulaDescription(lot, products)).toBe('Fortini 2 fl oz Vanilla');
+    });
+    it('falls back to the stored formula name when the catalog match is ambiguous or has no description',()=>{
+        const lot = { formulaName: 'Fortini', form: 'ready-to-feed', flavor: 'Vanilla', packaging: '' };
+        const ambiguous = [
+            { name: 'Fortini', form: 'ready-to-feed', flavor: 'Vanilla', packaging: '2 oz', formulaDescription: 'Small', active: true },
+            { name: 'Fortini', form: 'ready-to-feed', flavor: 'Vanilla', packaging: '32 oz', formulaDescription: 'Large', active: true },
+        ] as any;
+        const noDescription = [{ name: 'Fortini', form: 'ready-to-feed', flavor: 'Vanilla', packaging: '', formulaDescription: ' ', active: true }] as any;
+
+        expect(surplusLotFormulaDescription(lot, ambiguous)).toBe('Fortini');
+        expect(surplusLotFormulaDescription(lot, noDescription)).toBe('Fortini');
     });
     it('defaults a catalog choice only when there is exactly one option',()=>{
         expect(defaultSurplusCatalogOption(['powder'])).toBe('powder');

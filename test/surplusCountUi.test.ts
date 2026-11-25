@@ -129,6 +129,13 @@ describe('Formula Surplus agency count and lot groups',()=>{
   expect(page).not.toContain('<summary>More</summary>');
  });
 
+ it('uses catalog Formula Descriptions in selected-lot action dialogs',()=>{
+  expect(page).toContain('surplusLotFormulaDescription(selected, productData?.products ?? [])');
+  expect(page).toContain('selected ? surplusLotFormulaDescription(selected, productData?.products ?? [])');
+  expect(page).toContain('surplusLotFormulaDescription(lot, productData?.products ?? [])');
+  expect(page).toContain('surplusLotFormulaDescription } from');
+ });
+
  it('formats the Use in Request popup like the inventory edit popup',()=>{
   expect(page).toContain("'use-request':'Use in Request'");
   expect(page).toContain("!['history','edit-inventory','use-request'].includes(modal)");
@@ -144,7 +151,7 @@ describe('Formula Surplus agency count and lot groups',()=>{
 
  it('formats inventory history dates and product details consistently',()=>{
   expect(page).toContain('{{formatDisplayDate(h.created_at)}}');
-  expect(page).toContain('[selected.formulaName,formulaFormLabel(selected.form),selected.flavor,selected.packaging].filter(Boolean).join(\' \')');
+  expect(page).toContain('[surplusLotFormulaDescription(selected, productData?.products ?? []),formulaFormLabel(selected.form),selected.flavor,selected.packaging].filter(Boolean).join(\' \')');
   expect(page).toContain('function movementLabel');
   expect(page).toContain("reconcile:'Physical count'");
   expect(page).toContain('class="history-entry-heading"');

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import {unitLabel} from '~/../shared/quantityLabels';
 import {formatDisplayDate,formulaFormLabel} from '~/../shared/requestPresentation';
-import { isReviewer, availableUnits, localDate, daysRemaining, surplusDisposition, lotKey, variantKey, normalizeVariantText, surplusCatalogVariants, surplusBarcodeMatches, surplusProductPackaging } from '~/../shared/surplus';
+import { isReviewer, availableUnits, localDate, daysRemaining, surplusDisposition, lotKey, variantKey, normalizeVariantText, surplusCatalogVariants, surplusBarcodeMatches, surplusProductPackaging, surplusLotFormulaDescription } from '~/../shared/surplus';
 import {surplusShipmentDraft} from '~/../shared/requestTransfers';
 import {formatClinic,type ClinicAddress,type ClinicRecord} from '~/../shared/shipping';
 import {groupSurplusLots} from '~/../shared/surplusInventoryGroups';
@@ -665,7 +665,7 @@ async function upload(kind: string, event: Event) {
             <p v-if="status === 'success' && !section.lots.length">No matching lots.</p>
             <article v-for="lot in section.lots" :key="lot.id" class="inventory-archive-row inventory-disposition-row">
                 <div>
-                    <strong>{{ lot.formulaName }} {{ formulaFormLabel(lot.form) }}</strong>
+                    <strong>{{ surplusLotFormulaDescription(lot, productData?.products ?? []) }} {{ formulaFormLabel(lot.form) }}</strong>
                     <small>{{ [lot.flavor, lot.packaging, reviewer ? agencyName(lot.agencyId) : '', lot.clinicName || 'Clinic not specified'].filter(Boolean).join(' · ') }}</small>
                 </div>
                 <div>Expiration <strong>{{ formatInventoryDate(lot.expirationDate) }}</strong></div>
@@ -765,7 +765,7 @@ async function upload(kind: string, event: Event) {
             >
                 <h2 id="surplus-dialog-title">{{modalTitle}}</h2>
                 <p v-if="selected && !['history','edit-inventory','use-request'].includes(modal)">
-                    {{ selected.formulaName }} · {{ selected.form }} {{ selected.flavor }}<template v-if="selected.packaging"> · {{selected.packaging}}</template> ·
+                    {{ surplusLotFormulaDescription(selected, productData?.products ?? []) }} · {{ selected.form }} {{ selected.flavor }}<template v-if="selected.packaging"> · {{selected.packaging}}</template> ·
                     {{ agencyName(selected.agencyId) }} · {{selected.clinicName || 'Clinic not specified'}}
                 </p>
                 <p
@@ -776,7 +776,7 @@ async function upload(kind: string, event: Event) {
                 </p>
                 <div v-if="modal === 'history'">
                     <div v-if="selected" class="history-product">
-                        <strong>{{[selected.formulaName,formulaFormLabel(selected.form),selected.flavor,selected.packaging].filter(Boolean).join(' ')}}</strong>
+                        <strong>{{[surplusLotFormulaDescription(selected, productData?.products ?? []),formulaFormLabel(selected.form),selected.flavor,selected.packaging].filter(Boolean).join(' ')}}</strong>
                         <span>{{agencyName(selected.agencyId)}} · {{selected.clinicName || 'Clinic not specified'}}</span>
                     </div>
                     <p v-if="!history.length" class="history-empty">No inventory history for this lot yet.</p>
@@ -808,7 +808,7 @@ async function upload(kind: string, event: Event) {
                 </div>
                 <div v-else-if="modal==='edit-inventory'" class="inventory-edit-actions">
                     <div v-if="selected" class="history-product">
-                        <strong>{{[selected.formulaName,formulaFormLabel(selected.form),selected.flavor,selected.packaging].filter(Boolean).join(' ')}}</strong>
+                        <strong>{{[surplusLotFormulaDescription(selected, productData?.products ?? []),formulaFormLabel(selected.form),selected.flavor,selected.packaging].filter(Boolean).join(' ')}}</strong>
                         <span>{{agencyName(selected.agencyId)}} · {{selected.clinicName || 'Clinic not specified'}}</span>
                     </div>
                     <p>Select an inventory action for this lot.</p>
@@ -822,7 +822,7 @@ async function upload(kind: string, event: Event) {
                 </div>
                 <form v-else-if="modal==='use-request'" @submit.prevent="openShipment">
                     <div v-if="selected" class="history-product">
-                        <strong>{{[selected.formulaName,formulaFormLabel(selected.form),selected.flavor,selected.packaging].filter(Boolean).join(' ')}}</strong>
+                        <strong>{{[surplusLotFormulaDescription(selected, productData?.products ?? []),formulaFormLabel(selected.form),selected.flavor,selected.packaging].filter(Boolean).join(' ')}}</strong>
                         <span>{{agencyName(selected.agencyId)}} · {{selected.clinicName || 'Clinic not specified'}}</span>
                     </div>
                     <p>Select a matching request. You’ll choose the quantity and reserve stock in its Shipment section.</p>
@@ -837,7 +837,7 @@ async function upload(kind: string, event: Event) {
                 </form>
                 <form v-else-if="modal==='correct-entry'" class="correction-form" @submit.prevent="submit">
                     <div v-if="selected" class="history-product">
-                        <strong>{{[selected.formulaName,formulaFormLabel(selected.form),selected.flavor,selected.packaging].filter(Boolean).join(' ')}}</strong>
+                        <strong>{{[surplusLotFormulaDescription(selected, productData?.products ?? []),formulaFormLabel(selected.form),selected.flavor,selected.packaging].filter(Boolean).join(' ')}}</strong>
                         <span>{{agencyName(selected.agencyId)}} · {{selected.clinicName || 'Clinic not specified'}}</span>
                     </div>
                     <article v-if="correctionTarget" class="history-entry correction-original-entry">
@@ -850,7 +850,7 @@ async function upload(kind: string, event: Event) {
                     <div class="correction-fields">
                         <label>Corrected Formula
                             <select v-model="correctedVariantSelection" required @change="selectCorrectedVariant(correctedVariantSelection)">
-                                <option v-if="correctedVariantSelection === 'current'" value="current">{{ selected?.formulaName }} · Current inventory entry</option>
+                                <option v-if="correctedVariantSelection === 'current'" value="current">{{ selected ? surplusLotFormulaDescription(selected, productData?.products ?? []) : '' }} · Current inventory entry</option>
                                 <option v-for="product in correctionProducts" :key="product.id" :value="String(product.id)">{{ surplusProductLabel(product) }}</option>
                             </select>
                         </label>
